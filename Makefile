@@ -9,8 +9,8 @@ STRIP := 1
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME := NotchNowPlaying
-NotchNowPlaying_FILES := Tweak.xm NNPState.m NNPView.m NNPController.m NNPDiagnostics.m NNPBackBoardReadOnlyDiagnostics.m
-NNP_SAFE_BOOT_TEST ?= 1
+NotchNowPlaying_FILES := Tweak.xm NNPState.m NNPView.m NNPController.m NNPDiagnostics.m NNPPreferences.m NNPLockStateController.m NNPDisplayController.m
+NNP_SAFE_BOOT_TEST ?= 0
 NNP_DEBUG_SHOW_WHILE_UNLOCKED ?= 0
 NNP_ALLOW_ALL_MEDIA ?= 0
 NNP_UI_SMOKE_TEST ?= 0
@@ -38,5 +38,11 @@ endif
 ifeq ($(NNP_PHASE2G_OBSERVER),1)
 NotchNowPlaying_FILES += NNPBlankingObserver.m
 endif
+
+ifeq ($(NNP_PHASE2J_READONLY_RUNTIME),1)
+NotchNowPlaying_FILES += NNPBackBoardReadOnlyDiagnostics.m
+endif
+
+NotchNowPlaying_INSTALL_FILES = Preferences/Root.plist=/Library/PreferenceLoader/Preferences/NotchNowPlaying.plist
 
 include $(THEOS_MAKE_PATH)/tweak.mk

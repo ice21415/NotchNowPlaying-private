@@ -1,6 +1,13 @@
 #import <UIKit/UIKit.h>
 @class NNPState;
 @interface NNPView : UIView
+@property(nonatomic) BOOL showArtwork;
+@property(nonatomic) BOOL showArtist;
+@property(nonatomic) BOOL showProgress;
+@property(nonatomic) CGFloat artworkSize;
+@property(nonatomic) CGFloat cornerRadius;
+@property(nonatomic) CGFloat textSize;
+@property(nonatomic) CGFloat progressHeight;
 - (void)updateState:(NNPState *)state;
 - (void)updateElapsed:(NSTimeInterval)elapsed duration:(NSTimeInterval)duration playing:(BOOL)playing;
 @end

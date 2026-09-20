@@ -6,4 +6,4 @@ Description: A lock-screen Now Playing notch prototype.
 Maintainer: USER
 Author: USER
 Section: Tweaks
-Depends: mobilesubstrate
+Depends: mobilesubstrate, preferenceloader
