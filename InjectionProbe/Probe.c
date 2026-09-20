@@ -1,3 +1,4 @@
+#include <CoreFoundation/CoreFoundation.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/time.h>
@@ -19,4 +20,6 @@ static void NNPProbeWrite(const char *path) {
 
 __attribute__((constructor)) static void NNPInjectionProbeConstructor(void) {
     NNPProbeWrite("/var/mobile/Library/Preferences/NNPInjectionProbe.log");
+    CFPreferencesSetAppValue(CFSTR("ConstructorReached"), CFSTR("YES"), CFSTR("com.user.nnpinjectionprobe"));
+    CFPreferencesAppSynchronize(CFSTR("com.user.nnpinjectionprobe"));
 }

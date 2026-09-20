@@ -9,5 +9,6 @@ TWEAK_NAME := NNPInjectionProbe
 NNPInjectionProbe_FILES := Probe.c
 NNPInjectionProbe_CFLAGS := -fvisibility=hidden -fno-ident
 NNPInjectionProbe_LDFLAGS := -Wl,-dead_strip -lsubstrate
+NNPInjectionProbe_FRAMEWORKS := CoreFoundation
 
 include $(THEOS_MAKE_PATH)/tweak.mk
