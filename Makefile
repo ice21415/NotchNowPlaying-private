@@ -18,7 +18,7 @@ NotchNowPlaying_FRAMEWORKS := UIKit
 
 ifeq ($(NNP_SAFE_BOOT_TEST),0)
 NotchNowPlaying_FILES += NNPMediaController.m
-NotchNowPlaying_PRIVATE_FRAMEWORKS = MediaRemote
+NotchNowPlaying_LDFLAGS += -Wl,-undefined,dynamic_lookup
 endif
 
 include $(THEOS_MAKE_PATH)/tweak.mk
