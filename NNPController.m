@@ -86,7 +86,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     }
     self.window = activeScene ? [[UIWindow alloc] initWithWindowScene:activeScene] : [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     self.window.frame = UIScreen.mainScreen.bounds;
-    self.window.windowLevel = UIWindowLevelStatusBar + 1.0;
+    self.window.windowLevel = UIWindowLevelAlert + 1.0;
     self.window.backgroundColor = UIColor.clearColor; self.window.userInteractionEnabled = NO;
     UIViewController *root = [UIViewController new]; root.view.backgroundColor = UIColor.clearColor; root.view.userInteractionEnabled = NO;
     root.view.frame = self.window.bounds;
