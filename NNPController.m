@@ -77,11 +77,20 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 }
 - (void)makeWindow {
     if (self.window) return;
-    self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    UIWindowScene *activeScene = nil;
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        if (scene.activationState == UISceneActivationStateUnattached) continue;
+        activeScene = (UIWindowScene *)scene;
+        break;
+    }
+    self.window = activeScene ? [[UIWindow alloc] initWithWindowScene:activeScene] : [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    self.window.frame = UIScreen.mainScreen.bounds;
     self.window.windowLevel = UIWindowLevelStatusBar + 1.0;
     self.window.backgroundColor = UIColor.clearColor; self.window.userInteractionEnabled = NO;
     UIViewController *root = [UIViewController new]; root.view.backgroundColor = UIColor.clearColor; root.view.userInteractionEnabled = NO;
-    self.view = [[NNPView alloc] initWithFrame:root.view.bounds]; self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    root.view.frame = self.window.bounds;
+    self.view = [[NNPView alloc] initWithFrame:self.window.bounds]; self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [root.view addSubview:self.view]; self.window.rootViewController = root; self.window.hidden = YES;
 }
 - (void)setLocked:(BOOL)locked {
