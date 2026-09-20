@@ -69,7 +69,7 @@ static NSString * const NNPAssertionLog = @"[NotchNowPlaying/DisplayAssertion]";
     NNPDiagnosticSetInteger(@"AssertionID", identifier);
     NNPDiagnosticSetBool(@"AssertionIDValid", !nullIdentifier);
     NNPDiagnosticSetBool(@"AssertionActive", NO);
-    NNPDiagnosticSetString(@"LastError", result == kIOReturnSuccess ? @"null_assertion_id" : symbolic);
+    NNPDiagnosticSetString(@"LastError", result == kIOReturnSuccess ? (nullIdentifier ? @"null_assertion_id" : @"none") : symbolic);
     if (result != kIOReturnSuccess || identifier == kIOPMNullAssertionID) {
         NSLog(@"%@ acquire failed, return=%d", NNPAssertionLog, result);
         return NO;
