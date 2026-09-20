@@ -8,6 +8,7 @@ static NSString * const NNPDiagDirectory = @"/var/mobile/Library/NotchNowPlaying
 static NSString * const NNPDiagLog = @"/var/mobile/Library/NotchNowPlaying/load-path-diagnostic.log";
 static NSString * const NNPDiagFallbackLog = @"/var/mobile/Library/Logs/NotchNowPlaying-load-path-diagnostic.log";
 static NSString * const NNPDiagArm = @"/var/mobile/Library/NotchNowPlaying/display-assertion-arm";
+static CFStringRef const NNPDiagDomain = CFSTR("com.user.notchnowplaying.diagnostics");
 
 NSString *NNPDiagnosticDirectoryPath(void) { return NNPDiagDirectory; }
 NSString *NNPDiagnosticLogPath(void) { return NNPDiagLog; }
@@ -31,8 +32,33 @@ void NNPDiagnosticLog(NSString *event) {
 
 void NNPDiagnosticRecordStartup(NSString *detail) {
     if (!detail.length) detail = @"TWEAK_LOADED";
-    CFPreferencesSetAppValue(CFSTR("TWEAK_LOADED"), (__bridge CFPropertyListRef)detail, CFSTR("com.user.notchnowplaying.diagnostics"));
-    CFPreferencesAppSynchronize(CFSTR("com.user.notchnowplaying.diagnostics"));
+    NNPDiagnosticSetBool(@"TweakLoaded", YES);
+    NNPDiagnosticSetInteger(@"SpringBoardPID", getpid());
+    NNPDiagnosticSetString(@"StartupTimestamp", [[NSDate date] description]);
+    NNPDiagnosticSetString(@"TWEAK_LOADED", detail);
+}
+
+void NNPDiagnosticSetValue(NSString *key, id value) {
+    if (!key.length || !value) return;
+    CFPreferencesSetAppValue((__bridge CFStringRef)key, (__bridge CFPropertyListRef)value, NNPDiagDomain);
+    CFPreferencesAppSynchronize(NNPDiagDomain);
+}
+
+id NNPDiagnosticCopyValue(NSString *key) {
+    if (!key.length) return nil;
+    return CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)key, NNPDiagDomain));
+}
+
+void NNPDiagnosticSetBool(NSString *key, BOOL value) {
+    NNPDiagnosticSetValue(key, @(value));
+}
+
+void NNPDiagnosticSetInteger(NSString *key, NSInteger value) {
+    NNPDiagnosticSetValue(key, @(value));
+}
+
+void NNPDiagnosticSetString(NSString *key, NSString *value) {
+    if (value.length) NNPDiagnosticSetValue(key, value);
 }
 
 BOOL NNPDiagnosticArmExists(BOOL *readable) {

@@ -1,11 +1,9 @@
 #import "NNPDisplayAssertionController.h"
+#import "NNPDiagnostics.h"
 #import <IOKit/pwr_mgt/IOPMLib.h>
 #import <mach/mach_error.h>
 
-static NSString * const NNPAssertionLog = @"[Lilywhite/DisplayAssertion]";
-static NSString * const NNPDiagnosticDirectory = @"/var/mobile/Library/NotchNowPlaying";
-static NSString * const NNPDiagnosticPath = @"/var/mobile/Library/NotchNowPlaying/display-assertion-diagnostic.log";
-static NSString * const NNPArmPath = @"/var/mobile/Library/NotchNowPlaying/display-assertion-arm";
+static NSString * const NNPAssertionLog = @"[NotchNowPlaying/DisplayAssertion]";
 
 @interface NNPDisplayAssertionController ()
 @property(nonatomic) IOPMAssertionID assertionID;
@@ -20,36 +18,20 @@ static NSString * const NNPArmPath = @"/var/mobile/Library/NotchNowPlaying/displ
 - (instancetype)init {
     self = [super init];
     if (self) {
-        [self appendDiagnostic:@"state=DISARMED"]; 
+        self.assertionID = kIOPMNullAssertionID;
+        self.attempted = [NNPDiagnosticCopyValue(@"DisplayAssertionExperimentAttempted") boolValue];
+        self.armed = [NNPDiagnosticCopyValue(@"DisplayAssertionExperimentArmed") boolValue] && !self.attempted;
+        NNPDiagnosticSetBool(@"ControllerInitialized", YES);
+        NNPDiagnosticSetBool(@"DisplayAssertionExperimentAttempted", self.attempted);
+        NNPDiagnosticSetBool(@"DisplayAssertionExperimentArmed", self.armed);
     }
     return self;
 }
 
-- (void)appendDiagnostic:(NSString *)event {
-    NSFileManager *manager = [NSFileManager defaultManager];
-    [manager createDirectoryAtPath:NNPDiagnosticDirectory
-        withIntermediateDirectories:YES
-        attributes:@{NSFilePosixPermissions: @0755}
-        error:NULL];
-    NSString *timestamp = [NSString localizedStringWithFormat:@"%@", [NSDate date]];
-    NSString *line = [NSString stringWithFormat:@"[%@] %@\n", timestamp, event];
-    NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:NNPDiagnosticPath];
-    if (!handle) {
-        [manager createFileAtPath:NNPDiagnosticPath contents:nil attributes:@{NSFilePosixPermissions: @0644}];
-        handle = [NSFileHandle fileHandleForWritingAtPath:NNPDiagnosticPath];
-    }
-    [handle seekToEndOfFile];
-    [handle writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
-    [handle closeFile];
-}
-
 - (void)refreshManualArming {
-    if (self.armed || self.attempted) return;
-    if (![[NSFileManager defaultManager] fileExistsAtPath:NNPArmPath]) return;
-    [[NSFileManager defaultManager] removeItemAtPath:NNPArmPath error:NULL];
-    self.armed = YES;
-    [self appendDiagnostic:@"state=ARMED source=explicit-trigger-file"]; 
-    NSLog(@"%@ armed by explicit trigger", NNPAssertionLog);
+    BOOL requested = [NNPDiagnosticCopyValue(@"DisplayAssertionExperimentArmed") boolValue];
+    if (!self.attempted) self.armed = requested;
+    NNPDiagnosticSetBool(@"DisplayAssertionExperimentArmed", self.armed);
 }
 
 - (BOOL)attemptTemporaryAssertion {
@@ -58,12 +40,15 @@ static NSString * const NNPArmPath = @"/var/mobile/Library/NotchNowPlaying/displ
 
     self.attempted = YES;
     self.armed = NO;
-    [self appendDiagnostic:@"state=ATTEMPTED"]; 
+    NNPDiagnosticSetBool(@"DisplayAssertionExperimentAttempted", YES);
+    NNPDiagnosticSetBool(@"DisplayAssertionExperimentArmed", NO);
+    NNPDiagnosticSetBool(@"AssertionAttempted", YES);
+    NNPDiagnosticSetString(@"AssertionCreateTimestamp", [[NSDate date] description]);
 
     IOPMAssertionID identifier = kIOPMNullAssertionID;
     IOReturn result = IOPMAssertionCreateWithDescription(
         kIOPMAssertionTypePreventUserIdleDisplaySleep,
-        CFSTR("NotchNowPlaying Phase 2D"),
+        CFSTR("NotchNowPlaying Phase 2E"),
         CFSTR("Temporary display assertion experiment"),
         NULL,
         NULL,
@@ -72,7 +57,12 @@ static NSString * const NNPArmPath = @"/var/mobile/Library/NotchNowPlaying/displ
         &identifier);
     BOOL nullIdentifier = identifier == kIOPMNullAssertionID;
     NSString *symbolic = result == kIOReturnSuccess ? @"kIOReturnSuccess" : [NSString stringWithFormat:@"mach_error=%s", mach_error_string(result) ?: "unknown"];
-    [self appendDiagnostic:[NSString stringWithFormat:@"acquire result=%d hex=0x%08x symbolic=%@ id=%u null_id=%@", result, result, symbolic, identifier, nullIdentifier ? @"YES" : @"NO"]];
+    NNPDiagnosticSetInteger(@"AssertionCreateResultDecimal", result);
+    NNPDiagnosticSetString(@"AssertionCreateResultHex", [NSString stringWithFormat:@"0x%08x", (unsigned int)result]);
+    NNPDiagnosticSetInteger(@"AssertionID", identifier);
+    NNPDiagnosticSetBool(@"AssertionIDValid", !nullIdentifier);
+    NNPDiagnosticSetBool(@"AssertionActive", NO);
+    NNPDiagnosticSetString(@"LastError", result == kIOReturnSuccess ? @"null_assertion_id" : symbolic);
     if (result != kIOReturnSuccess || identifier == kIOPMNullAssertionID) {
         NSLog(@"%@ acquire failed, return=%d", NNPAssertionLog, result);
         return NO;
@@ -80,8 +70,8 @@ static NSString * const NNPArmPath = @"/var/mobile/Library/NotchNowPlaying/displ
 
     self.assertionID = identifier;
     self.assertionActive = YES;
+    NNPDiagnosticSetBool(@"AssertionActive", YES);
     NSUInteger generation = ++self.generation;
-    [self appendDiagnostic:@"acquire accepted timeout=10s"]; 
     NSLog(@"%@ acquired, timeout=10s", NNPAssertionLog);
 
     __weak typeof(self) weakSelf = self;
@@ -108,7 +98,11 @@ static NSString * const NNPArmPath = @"/var/mobile/Library/NotchNowPlaying/displ
     self.generation += 1;
     IOReturn result = IOPMAssertionRelease(identifier);
     NSString *symbolic = result == kIOReturnSuccess ? @"kIOReturnSuccess" : [NSString stringWithFormat:@"mach_error=%s", mach_error_string(result) ?: "unknown"];
-    [self appendDiagnostic:[NSString stringWithFormat:@"release reason=%@ id=%u result=%d hex=0x%08x symbolic=%@", reason ?: @"unknown", identifier, result, result, symbolic]];
+    NNPDiagnosticSetBool(@"AssertionActive", NO);
+    NNPDiagnosticSetString(@"AssertionReleaseReason", reason ?: @"unknown");
+    NNPDiagnosticSetInteger(@"AssertionReleaseResult", result);
+    NNPDiagnosticSetString(@"AssertionReleaseTimestamp", [[NSDate date] description]);
+    if (result != kIOReturnSuccess) NNPDiagnosticSetString(@"LastError", symbolic);
     NSLog(@"%@ released, return=%d", NNPAssertionLog, result);
 }
 

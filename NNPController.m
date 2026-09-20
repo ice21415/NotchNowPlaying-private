@@ -8,12 +8,14 @@
 #import "NNPView.h"
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
-#if NNP_PHASE2D2_DIAGNOSTIC
-#import "NNPDiagnostics.h"
-#endif
-
 #ifndef NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
 #define NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT 0
+#endif
+#ifndef NNP_PHASE2D2_DIAGNOSTIC
+#define NNP_PHASE2D2_DIAGNOSTIC 0
+#endif
+#if NNP_PHASE2D2_DIAGNOSTIC || NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
+#import "NNPDiagnostics.h"
 #endif
 
 #if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
@@ -31,9 +33,6 @@
 #endif
 #ifndef NNP_UI_SMOKE_TEST
 #define NNP_UI_SMOKE_TEST 0
-#endif
-#ifndef NNP_PHASE2D2_DIAGNOSTIC
-#define NNP_PHASE2D2_DIAGNOSTIC 0
 #endif
 static NSString * const NNPLog = @"[Lilywhite/NowPlaying]";
 static NSString * const NNPSpotify = @"com.spotify.client";
@@ -85,6 +84,9 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 #if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
         self.displayAssertion = [NNPDisplayAssertionController new];
 #endif
+#if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
+        NNPDiagnosticSetBool(@"ControllerInitialized", YES);
+#endif
 #if NNP_PHASE2D2_DIAGNOSTIC
         NNPDiagnosticLog(@"CONTROLLER_INIT");
 #endif
@@ -120,10 +122,23 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     [root.view addSubview:self.view]; self.window.rootViewController = root; self.window.hidden = YES;
 }
 - (void)setLocked:(BOOL)locked {
-    dispatch_async(dispatch_get_main_queue(), ^{ if (_locked == locked) return; _locked = locked; NSLog(@"%@ Device %@", NNPLog, locked ? @"locked" : @"unlocked"); [self reconcile]; });
+    dispatch_async(dispatch_get_main_queue(), ^{ if (_locked == locked) return; _locked = locked; NSLog(@"%@ Device %@", NNPLog, locked ? @"locked" : @"unlocked");
+#if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
+        NNPDiagnosticSetBool(@"Locked", locked);
+        NNPDiagnosticSetString(@"LastLockState", locked ? @"locked" : @"unlocked");
+        NNPDiagnosticSetString(@"LastLockStateTimestamp", [[NSDate date] description]);
+#endif
+        [self reconcile]; });
 }
 - (void)receive:(NNPState *)state {
-    dispatch_async(dispatch_get_main_queue(), ^{ self.state = state; [self reconcile]; if (!self.window.hidden) { [self.view updateState:state]; [self tick]; } });
+    dispatch_async(dispatch_get_main_queue(), ^{ self.state = state;
+#if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
+        NNPDiagnosticSetBool(@"SpotifyDetected", [self spotifyState:state]);
+        NNPDiagnosticSetBool(@"PlaybackActive", state.playing);
+        NNPDiagnosticSetBool(@"NowPlayingValid", state.hasTrack);
+        if (state.bundleIdentifier.length) NNPDiagnosticSetString(@"ActiveMediaBundle", state.bundleIdentifier);
+#endif
+        [self reconcile]; if (!self.window.hidden) { [self.view updateState:state]; [self tick]; } });
 }
 - (void)pollLockState {
     Class lockClass = NSClassFromString(@"SBLockScreenManager");
@@ -134,6 +149,11 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         if (locked != self.locked) {
             _locked = locked;
             NSLog(@"%@ Device %@", NNPLog, locked ? @"locked" : @"unlocked");
+#if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
+            NNPDiagnosticSetBool(@"Locked", locked);
+            NNPDiagnosticSetString(@"LastLockState", locked ? @"locked" : @"unlocked");
+            NNPDiagnosticSetString(@"LastLockStateTimestamp", [[NSDate date] description]);
+#endif
 #if NNP_PHASE2D2_DIAGNOSTIC
             NNPDiagnosticLog([NSString stringWithFormat:@"LOCK_STATE locked=%d", locked]);
 #endif
@@ -150,6 +170,14 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 }
 - (void)reconcile {
     BOOL show = self.state.hasTrack && self.state.playing && [self spotifyState:self.state] && (self.locked || NNP_DEBUG_SHOW_WHILE_UNLOCKED);
+#if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
+    BOOL eligible = self.locked && self.state.hasTrack && self.state.playing && [self spotifyState:self.state];
+    NNPDiagnosticSetBool(@"Locked", self.locked);
+    NNPDiagnosticSetBool(@"SpotifyDetected", [self spotifyState:self.state]);
+    NNPDiagnosticSetBool(@"PlaybackActive", self.state.playing);
+    NNPDiagnosticSetBool(@"NowPlayingValid", self.state.hasTrack);
+    NNPDiagnosticSetBool(@"EligibilityPassed", eligible);
+#endif
 #if NNP_PHASE2D2_DIAGNOSTIC
     BOOL readable = NO;
     BOOL armExists = NNPDiagnosticArmExists(&readable);
@@ -166,7 +194,6 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 #if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
     if (self.displayAssertion) {
         [self.displayAssertion refreshManualArming];
-        BOOL eligible = self.locked && self.state.hasTrack && self.state.playing && [self spotifyState:self.state];
         if (eligible && !self.displayAssertion.assertionActive) {
             [self.displayAssertion attemptTemporaryAssertion];
         } else if (!eligible) {
