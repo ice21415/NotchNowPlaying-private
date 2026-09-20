@@ -6,6 +6,10 @@
 #import <mach/mach_time.h>
 #import <unistd.h>
 
+#ifndef NNP_PHASE2J_CALL_GETTERS
+#define NNP_PHASE2J_CALL_GETTERS 0
+#endif
+
 typedef BOOL (*NNPBKSStartFunction)(void);
 typedef BOOL (*NNPIsScreenDisabledFunction)(id);
 typedef BOOL (*NNPGetBlankingRemovesPowerFunction)(id);
@@ -64,12 +68,14 @@ static NSNumber *NNPBBScreenIsOn(void) {
     } mutableCopy];
     NSNumber *screenOn = NNPBBScreenIsOn();
     if (screenOn) entry[@"screenIsOn"] = screenOn;
+ #if NNP_PHASE2J_CALL_GETTERS
     if (_isScreenDisabled && _identifierFound) {
         entry[@"screenDisabled"] = @(_isScreenDisabled(_displayIdentifier));
     }
     if (_getBlankingRemovesPower && _displayObject) {
         entry[@"blankingRemovesPower"] = @(_getBlankingRemovesPower(_displayObject));
     }
+ #endif
     NNPDiagnosticAppendEvent(entry);
 }
 
