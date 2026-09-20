@@ -1,6 +1,6 @@
 name: Build and publish RootHide package
 
-'on':
+on:
   push:
     branches: [main]
     paths:
@@ -11,13 +11,6 @@ name: Build and publish RootHide package
       - 'control'
       - 'NotchNowPlaying.plist'
       - '.github/workflows/build-roothide.yml'
-  workflow_dispatch:
-    inputs:
-      safe_boot_test:
-        description: Build without MediaRemote/UI initialization
-        required: true
-        default: true
-        type: boolean
 
 permissions:
   contents: read
@@ -35,7 +28,7 @@ jobs:
 
       - name: Install RootHide build tools
         run: |
-          set -euo pipefail
+          set -o pipefail
           brew install ldid dpkg
           git clone --recursive https://github.com/roothide/theos.git "$HOME/roothide-theos"
           export THEOS="$HOME/roothide-theos"
@@ -48,17 +41,12 @@ jobs:
             clang --version | head -n 1
           } | tee toolchain.txt
 
-      - name: Build arm64e release package
+      - name: Build safe-boot arm64e package
         run: |
           set -o pipefail
           export THEOS="$HOME/roothide-theos"
-          if [[ "${{ github.event_name == 'workflow_dispatch' && inputs.safe_boot_test || 'true' }}" == "true" ]]; then
-            safe_boot=1
-          else
-            safe_boot=0
-          fi
           mkdir -p build-packages
-          make clean package THEOS_PACKAGE_SCHEME=roothide FINALPACKAGE=1 DEBUG=0 STRIP=1 NNP_SAFE_BOOT_TEST="$safe_boot" 2>&1 | tee build.log
+          make clean package THEOS_PACKAGE_SCHEME=roothide FINALPACKAGE=1 DEBUG=0 STRIP=1 NNP_SAFE_BOOT_TEST=1 2>&1 | tee build.log
 
       - name: Upload build diagnostics
         if: always()
@@ -81,7 +69,7 @@ jobs:
           retention-days: 14
 
       - name: Checkout public package repo
-        if: success() && env.PUBLIC_REPO_TOKEN != '' && env.PUBLIC_REPO != ''
+        if: success() && env.PUBLIC_REPO_TOKEN != ''
         uses: actions/checkout@v4
         with:
           repository: ${{ env.PUBLIC_REPO }}
@@ -89,7 +77,7 @@ jobs:
           path: public-repo
 
       - name: Publish to public package repo
-        if: success() && env.PUBLIC_REPO_TOKEN != '' && env.PUBLIC_REPO != ''
+        if: success() && env.PUBLIC_REPO_TOKEN != ''
         run: |
           set -euo pipefail
           cp build-packages/*.deb public-repo/
@@ -126,5 +114,4 @@ EOF
 
       - name: Publishing setup notice
         if: success() && env.PUBLIC_REPO_TOKEN == ''
-        run: |
-          echo "Build succeeded. Set PUBLIC_REPO_TOKEN to enable publishing."
+        run: echo "Build succeeded. Set PUBLIC_REPO_TOKEN to enable publishing."
