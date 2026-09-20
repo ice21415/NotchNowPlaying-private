@@ -14,12 +14,18 @@
 #ifndef NNP_PHASE2D2_DIAGNOSTIC
 #define NNP_PHASE2D2_DIAGNOSTIC 0
 #endif
+#ifndef NNP_PHASE2G_OBSERVER
+#define NNP_PHASE2G_OBSERVER 0
+#endif
 #if NNP_PHASE2D2_DIAGNOSTIC || NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
 #import "NNPDiagnostics.h"
 #endif
 
 #if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
 #import "NNPDisplayAssertionController.h"
+#endif
+#if NNP_PHASE2G_OBSERVER
+#import "NNPBlankingObserver.h"
 #endif
 
 #ifndef NNP_DEBUG_SHOW_WHILE_UNLOCKED
@@ -54,6 +60,9 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 #if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
 @property(nonatomic, strong) NNPDisplayAssertionController *displayAssertion;
 #endif
+#if NNP_PHASE2G_OBSERVER
+@property(nonatomic, strong) NNPBlankingObserver *blankingObserver;
+#endif
 @end
 
 @implementation NNPController
@@ -84,6 +93,10 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 #if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
         self.displayAssertion = [NNPDisplayAssertionController new];
 #endif
+#if NNP_PHASE2G_OBSERVER
+        self.blankingObserver = [NNPBlankingObserver new];
+        [self.blankingObserver start];
+#endif
 #if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
         NNPDiagnosticSetBool(@"ControllerInitialized", YES);
 #endif
@@ -95,6 +108,9 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         id (*noArg)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
         id manager = lockClass ? noArg(lockClass, @selector(sharedInstance)) : nil;
         if ([manager respondsToSelector:@selector(isUILocked)]) self.locked = ((BOOL (*)(id, SEL))objc_msgSend)(manager, @selector(isUILocked));
+#if NNP_PHASE2G_OBSERVER
+        [self.blankingObserver recordLogicalLock:self.locked];
+#endif
         __weak typeof(self) lockWeakSelf = self;
         self.lockTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(__unused NSTimer *timer) {
             [lockWeakSelf pollLockState];
@@ -149,6 +165,9 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         if (locked != self.locked) {
             _locked = locked;
             NSLog(@"%@ Device %@", NNPLog, locked ? @"locked" : @"unlocked");
+#if NNP_PHASE2G_OBSERVER
+            [self.blankingObserver recordLogicalLock:locked];
+#endif
 #if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
             NNPDiagnosticSetBool(@"Locked", locked);
             NNPDiagnosticSetString(@"LastLockState", locked ? @"locked" : @"unlocked");

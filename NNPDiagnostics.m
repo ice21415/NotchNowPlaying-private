@@ -62,6 +62,15 @@ void NNPDiagnosticSetString(NSString *key, NSString *value) {
     if (value.length) NNPDiagnosticSetValue(key, value);
 }
 
+void NNPDiagnosticAppendEvent(NSDictionary *event) {
+    if (![event isKindOfClass:NSDictionary.class]) return;
+    NSArray *existing = NNPDiagnosticCopyValue(@"BlankingObserverEvents");
+    NSMutableArray *events = existing.count ? [existing mutableCopy] : [NSMutableArray array];
+    [events addObject:event];
+    if (events.count > 64) [events removeObjectsInRange:NSMakeRange(0, events.count - 64)];
+    NNPDiagnosticSetValue(@"BlankingObserverEvents", events);
+}
+
 BOOL NNPDiagnosticArmExists(BOOL *readable) {
     BOOL exists = [[NSFileManager defaultManager] fileExistsAtPath:NNPDiagArm];
     if (readable) *readable = exists && access(NNPDiagArm.UTF8String, R_OK) == 0;
