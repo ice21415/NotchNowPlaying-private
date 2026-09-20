@@ -16,4 +16,9 @@ NotchNowPlaying_CFLAGS := -fobjc-arc -DNNP_SAFE_BOOT_TEST=$(NNP_SAFE_BOOT_TEST) 
 NotchNowPlaying_LDFLAGS := -Wl,-dead_strip
 NotchNowPlaying_FRAMEWORKS := UIKit
 
+ifeq ($(NNP_SAFE_BOOT_TEST),0)
+NotchNowPlaying_FILES += NNPMediaController.m
+NotchNowPlaying_PRIVATE_FRAMEWORKS = MediaRemote
+endif
+
 include $(THEOS_MAKE_PATH)/tweak.mk
