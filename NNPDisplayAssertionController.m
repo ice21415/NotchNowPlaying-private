@@ -3,6 +3,10 @@
 #import <IOKit/pwr_mgt/IOPMLib.h>
 #import <mach/mach_error.h>
 
+#ifndef NNP_PHASE2E_ARM_AT_START
+#define NNP_PHASE2E_ARM_AT_START 0
+#endif
+
 static NSString * const NNPAssertionLog = @"[NotchNowPlaying/DisplayAssertion]";
 
 @interface NNPDisplayAssertionController ()
@@ -21,6 +25,9 @@ static NSString * const NNPAssertionLog = @"[NotchNowPlaying/DisplayAssertion]";
         self.assertionID = kIOPMNullAssertionID;
         self.attempted = [NNPDiagnosticCopyValue(@"DisplayAssertionExperimentAttempted") boolValue];
         self.armed = [NNPDiagnosticCopyValue(@"DisplayAssertionExperimentArmed") boolValue] && !self.attempted;
+#if NNP_PHASE2E_ARM_AT_START
+        if (!self.attempted) self.armed = YES;
+#endif
         NNPDiagnosticSetBool(@"ControllerInitialized", YES);
         NNPDiagnosticSetBool(@"DisplayAssertionExperimentAttempted", self.attempted);
         NNPDiagnosticSetBool(@"DisplayAssertionExperimentArmed", self.armed);
