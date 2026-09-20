@@ -15,10 +15,6 @@ on:
 permissions:
   contents: read
 
-env:
-  PUBLIC_REPO_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
-  PUBLIC_REPO: ice21415/NotchNowPlaying
-
 jobs:
   build:
     runs-on: macos-14
@@ -61,15 +57,13 @@ jobs:
           if-no-files-found: error
 
       - name: Checkout public package repo
-        if: success() && env.PUBLIC_REPO_TOKEN != ''
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.PUBLIC_REPO }}
-          token: ${{ env.PUBLIC_REPO_TOKEN }}
+          repository: ice21415/NotchNowPlaying
+          token: ${{ secrets.PUBLIC_REPO_TOKEN }}
           path: public-repo
 
       - name: Publish package repository
-        if: success() && env.PUBLIC_REPO_TOKEN != ''
         run: |
           set -euo pipefail
           cp build-packages/*.deb public-repo/
@@ -103,7 +97,3 @@ EOF
           git add ./*.deb Packages Packages.bz2 Release
           git diff --cached --quiet || git commit -m "Publish NotchNowPlaying package"
           git push origin HEAD:main
-
-      - name: Publishing setup notice
-        if: success() && env.PUBLIC_REPO_TOKEN == ''
-        run: echo "Build succeeded. Set PUBLIC_REPO_TOKEN to enable publishing."
