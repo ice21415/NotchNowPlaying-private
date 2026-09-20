@@ -21,6 +21,21 @@ The package contained `dlsym` resolution for:
 
 The source did not call any mutation symbol.
 
+### Follow-up safe probe
+
+A second package was built with `NNP_PHASE2J_READONLY_RUNTIME=1` and
+`NNP_PHASE2J_CALL_GETTERS=0`. It loaded into SpringBoard without the previous
+Safe Mode behavior. CFPreferences recorded:
+
+```text
+BKSStartResolved = 1
+BKSStartResult = 1
+TweakLoaded = 1
+SpringBoardPID = 4102
+```
+
+The safe probe deliberately did not call either getter.
+
 ## Main display objects
 
 The attempted probe used the Phase 2I disassembly constant `<main>` as the
@@ -28,6 +43,19 @@ identifier and obtained a display object through the private `UIScreen`
 `_display` accessor when present. This was not sufficient runtime proof that
 the object/identifier pair matched the exact getter ABI. No object dump or
 getter return value was safely captured.
+
+The start-only probe independently recorded:
+
+```text
+MainDisplayIdentifierFound = 1
+MainDisplayIdentifierClass = __NSCFConstantString
+MainDisplayObjectFound = 1
+MainDisplayObjectClass = CADisplay
+```
+
+This verifies that a genuine `CADisplay` object can be obtained in SpringBoard,
+but it does not prove that the guessed `<main>` identifier is the correct
+argument for `BKSDisplayServicesIsScreenDisabled`.
 
 ## Awake baseline and lock timeline
 
@@ -44,6 +72,11 @@ proves only that the current guessed runtime object acquisition path must not
 be used in SpringBoard. The likely boundary is the display identifier/object
 argument contract, but a crash report was not available in the readable crash
 directories after removal, so the exact offending call is unresolved.
+
+The follow-up narrows the failure boundary: injection and
+`BKSDisplayServicesStart` are stable; the unsafe boundary is the getter
+invocation/argument contract. No getter should be re-enabled until the exact
+identifier class and caller ABI are recovered.
 
 ## Safety result
 
