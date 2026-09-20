@@ -1,0 +1,11 @@
+name: macOS smoke test
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  smoke:
+    runs-on: macos-14
+    steps:
+      - run: echo "macOS runner is available"
