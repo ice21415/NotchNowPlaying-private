@@ -1,0 +1,9 @@
+Package: com.user.nnpinjectionprobe
+Name: NNP Injection Probe
+Version: 0.1.0
+Architecture: iphoneos-arm64e
+Description: Minimal roothide SpringBoard injection diagnostic.
+Maintainer: USER
+Author: USER
+Section: Tweaks
+Depends: mobilesubstrate
