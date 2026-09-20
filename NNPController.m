@@ -9,6 +9,14 @@
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
 
+#ifndef NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
+#define NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT 0
+#endif
+
+#if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
+#import "NNPDisplayAssertionController.h"
+#endif
+
 #ifndef NNP_DEBUG_SHOW_WHILE_UNLOCKED
 #define NNP_DEBUG_SHOW_WHILE_UNLOCKED 0
 #endif
@@ -21,7 +29,6 @@
 #ifndef NNP_UI_SMOKE_TEST
 #define NNP_UI_SMOKE_TEST 0
 #endif
-
 static NSString * const NNPLog = @"[Lilywhite/NowPlaying]";
 static NSString * const NNPSpotify = @"com.spotify.client";
 
@@ -35,6 +42,9 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 @property(nonatomic) BOOL installed;
 @property(nonatomic) NSUInteger ticks;
 @property(nonatomic, strong) NSTimer *lockTimer;
+#if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
+@property(nonatomic, strong) NNPDisplayAssertionController *displayAssertion;
+#endif
 @end
 
 @implementation NNPController
@@ -62,6 +72,9 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     dispatch_async(dispatch_get_main_queue(), ^{
         self.media = [NNPMediaController new]; __weak typeof(self) weakSelf = self;
         self.media.stateHandler = ^(NNPState *state) { [weakSelf receive:state]; };
+#if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
+        self.displayAssertion = [NNPDisplayAssertionController new];
+#endif
         [self.media start];
         Class lockClass = NSClassFromString(@"SBLockScreenManager");
         id (*noArg)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
@@ -117,6 +130,16 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 }
 - (void)reconcile {
     BOOL show = self.state.hasTrack && self.state.playing && [self spotifyState:self.state] && (self.locked || NNP_DEBUG_SHOW_WHILE_UNLOCKED);
+#if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
+    if (self.displayAssertion) {
+        BOOL eligible = self.locked && self.state.hasTrack && self.state.playing && [self spotifyState:self.state];
+        if (eligible && !self.displayAssertion.assertionActive) {
+            [self.displayAssertion acquireTemporaryAssertion];
+        } else if (!eligible) {
+            [self.displayAssertion releaseAssertion];
+        }
+    }
+#endif
     if (!show) {
         if (self.window && !self.window.hidden) { self.window.hidden = YES; [self stopTimer]; NSLog(@"%@ Overlay hidden", NNPLog); }
         return;
