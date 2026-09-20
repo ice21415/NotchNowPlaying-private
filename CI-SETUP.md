@@ -20,4 +20,4 @@ PUBLIC_REPO_TOKEN
 
 The token needs permission to push to `ice21415/NotchNowPlaying`.
 
-Normal pushes build the safe-boot test variant by default. Use **Run workflow** to choose whether MediaRemote/UI initialization is included. Build logs and the `.deb` are retained as Actions artifacts.
+Normal pushes currently build the safe-boot test variant. Build logs and the `.deb` are retained as Actions artifacts. The formal MediaRemote build will be enabled only after the safe-boot CI path is confirmed.
