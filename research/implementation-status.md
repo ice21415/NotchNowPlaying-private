@@ -12,6 +12,28 @@
 - Lightweight CFPreferences diagnostics
 - Release builds that exclude the Phase 2J BackBoard probe
 
+## Latest device verification
+
+The complete Release package was installed through the known-good roothide
+workflow over Wi-Fi and SpringBoard was reloaded once. The post-test
+CFPreferences snapshot recorded:
+
+```text
+TweakLoaded = 1
+SpringBoardPID = 4219
+ControllerInitialized = 1
+MediaRemoteConnected = 1
+ActiveMediaBundle = com.spotify.client
+SpotifyDetected = 1
+PlaybackActive = 0
+LogicalLockState = 1
+UIVisible = 0
+```
+
+The final hidden state is consistent with the test ending while locked and
+playback stopped/paused. No BackBoard display API was present in the Release
+probe path.
+
 ## Disabled pending research
 
 - Locked-visible mode
