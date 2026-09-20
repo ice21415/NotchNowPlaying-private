@@ -1,0 +1,22 @@
+{
+    PreferenceSpecifiers = (
+        { Type = PSGroupSpecifier; Title = "General"; },
+        { Type = PSSwitchSpecifier; Title = "Enabled"; Key = Enabled; DefaultValue = YES; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { Type = PSSwitchSpecifier; Title = "Spotify Only"; Key = SpotifyOnly; DefaultValue = YES; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { Type = PSSwitchSpecifier; Title = "Show While Unlocked"; Key = ShowWhileUnlocked; DefaultValue = YES; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { Type = PSSwitchSpecifier; Title = "Show On Lock Screen"; Key = ShowOnLockScreen; DefaultValue = YES; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { Type = PSGroupSpecifier; Title = "Appearance"; },
+        { Type = PSSwitchSpecifier; Title = "Show Artwork"; Key = ShowArtwork; DefaultValue = YES; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { Type = PSSwitchSpecifier; Title = "Show Artist"; Key = ShowArtist; DefaultValue = YES; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { Type = PSSwitchSpecifier; Title = "Show Progress"; Key = ShowProgress; DefaultValue = YES; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { Type = PSSliderSpecifier; Title = "Artwork Size"; Key = ArtworkSize; DefaultValue = 40; MinimumValue = 28; MaximumValue = 56; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { Type = PSSliderSpecifier; Title = "Corner Radius"; Key = CornerRadius; DefaultValue = 9; MinimumValue = 4; MaximumValue = 16; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { Type = PSSliderSpecifier; Title = "Text Size"; Key = TextSize; DefaultValue = 14; MinimumValue = 10; MaximumValue = 20; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { Type = PSGroupSpecifier; Title = "Behavior"; },
+        { Type = PSSwitchSpecifier; Title = "Hide When Paused"; Key = HideWhenPaused; DefaultValue = YES; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { Type = PSSliderSpecifier; Title = "Progress Update Interval"; Key = ProgressUpdateInterval; DefaultValue = 1; MinimumValue = 0.5; MaximumValue = 5; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { Type = PSGroupSpecifier; Title = "Locked Display"; FooterText = "Locked-visible display mode is currently disabled because the iOS 17.1.2 BackBoard display argument contract is still under verification."; },
+        { Type = PSSwitchSpecifier; Title = "Keep Visible When Locked"; Key = KeepVisibleWhenLocked; DefaultValue = NO; Disabled = YES; },
+        { Type = PSGroupSpecifier; Title = "Diagnostics"; FooterText = "Runtime diagnostics are stored separately and do not include account information, song history, or credentials."; }
+    );
+}

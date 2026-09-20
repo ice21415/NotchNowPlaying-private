@@ -43,6 +43,5 @@ ifeq ($(NNP_PHASE2J_READONLY_RUNTIME),1)
 NotchNowPlaying_FILES += NNPBackBoardReadOnlyDiagnostics.m
 endif
 
-NotchNowPlaying_INSTALL_FILES = Preferences/Root.plist=/Library/PreferenceLoader/Preferences/NotchNowPlaying.plist
 
 include $(THEOS_MAKE_PATH)/tweak.mk
