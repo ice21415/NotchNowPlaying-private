@@ -46,6 +46,7 @@ void NNPDiagnosticSetValue(NSString *key, id value) {
 
 id NNPDiagnosticCopyValue(NSString *key) {
     if (!key.length) return nil;
+    CFPreferencesAppSynchronize(NNPDiagDomain);
     return CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)key, NNPDiagDomain));
 }
 
