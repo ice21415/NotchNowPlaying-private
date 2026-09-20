@@ -8,6 +8,9 @@
 #import "NNPView.h"
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
+#if NNP_PHASE2D2_DIAGNOSTIC
+#import "NNPDiagnostics.h"
+#endif
 
 #ifndef NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
 #define NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT 0
@@ -29,6 +32,9 @@
 #ifndef NNP_UI_SMOKE_TEST
 #define NNP_UI_SMOKE_TEST 0
 #endif
+#ifndef NNP_PHASE2D2_DIAGNOSTIC
+#define NNP_PHASE2D2_DIAGNOSTIC 0
+#endif
 static NSString * const NNPLog = @"[Lilywhite/NowPlaying]";
 static NSString * const NNPSpotify = @"com.spotify.client";
 
@@ -42,6 +48,10 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 @property(nonatomic) BOOL installed;
 @property(nonatomic) NSUInteger ticks;
 @property(nonatomic, strong) NSTimer *lockTimer;
+#if NNP_PHASE2D2_DIAGNOSTIC
+@property(nonatomic) BOOL diagnosticArmed;
+@property(nonatomic) BOOL diagnosticAttempted;
+#endif
 #if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
 @property(nonatomic, strong) NNPDisplayAssertionController *displayAssertion;
 #endif
@@ -74,6 +84,9 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         self.media.stateHandler = ^(NNPState *state) { [weakSelf receive:state]; };
 #if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
         self.displayAssertion = [NNPDisplayAssertionController new];
+#endif
+#if NNP_PHASE2D2_DIAGNOSTIC
+        NNPDiagnosticLog(@"CONTROLLER_INIT");
 #endif
         [self.media start];
         Class lockClass = NSClassFromString(@"SBLockScreenManager");
@@ -118,7 +131,14 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     id manager = lockClass ? noArg(lockClass, @selector(sharedInstance)) : nil;
     if ([manager respondsToSelector:@selector(isUILocked)]) {
         BOOL locked = ((BOOL (*)(id, SEL))objc_msgSend)(manager, @selector(isUILocked));
-        if (locked != self.locked) { _locked = locked; NSLog(@"%@ Device %@", NNPLog, locked ? @"locked" : @"unlocked"); [self reconcile]; }
+        if (locked != self.locked) {
+            _locked = locked;
+            NSLog(@"%@ Device %@", NNPLog, locked ? @"locked" : @"unlocked");
+#if NNP_PHASE2D2_DIAGNOSTIC
+            NNPDiagnosticLog([NSString stringWithFormat:@"LOCK_STATE locked=%d", locked]);
+#endif
+            [self reconcile];
+        }
     }
 }
 - (BOOL)spotifyState:(NNPState *)state {
@@ -130,6 +150,19 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 }
 - (void)reconcile {
     BOOL show = self.state.hasTrack && self.state.playing && [self spotifyState:self.state] && (self.locked || NNP_DEBUG_SHOW_WHILE_UNLOCKED);
+#if NNP_PHASE2D2_DIAGNOSTIC
+    BOOL readable = NO;
+    BOOL armExists = NNPDiagnosticArmExists(&readable);
+    if (armExists && !self.diagnosticAttempted) self.diagnosticArmed = YES;
+    NNPDiagnosticLog([NSString stringWithFormat:@"ARM_CHECK exists=%d readable=%d", armExists, readable]);
+    NNPDiagnosticLog([NSString stringWithFormat:@"RECONCILE armed=%d locked=%d playing=%d nowPlaying=%d", self.diagnosticArmed, self.locked, self.state.playing, self.state.hasTrack]);
+    if (self.diagnosticArmed && !self.diagnosticAttempted && self.locked && self.state.playing && self.state.hasTrack && [self spotifyState:self.state]) {
+        self.diagnosticAttempted = YES;
+        self.diagnosticArmed = NO;
+        NNPDiagnosticLog(@"ASSERTION_WOULD_BE_ATTEMPTED");
+        NNPDiagnosticConsumeArm();
+    }
+#endif
 #if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
     if (self.displayAssertion) {
         [self.displayAssertion refreshManualArming];

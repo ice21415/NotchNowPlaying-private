@@ -4,6 +4,9 @@
 #import <MediaRemote/MediaRemote.h>
 #import <objc/message.h>
 #import <math.h>
+#if NNP_PHASE2D2_DIAGNOSTIC
+#import "NNPDiagnostics.h"
+#endif
 
 static NSString * const NNPLog = @"[Lilywhite/NowPlaying]";
 
@@ -102,6 +105,16 @@ static UIImage *NNPArtwork(NSDictionary *info) {
     state.playing = state.playbackRate > 0.001f;
     state.validDuration = isfinite(state.duration) && state.duration > 0.0;
     state.bundleIdentifier = NNPBundleForPID(self.pid);
+#if NNP_PHASE2D2_DIAGNOSTIC
+    static BOOL lastPlaying = NO;
+    static NSString *lastBundle = nil;
+    NSString *bundle = state.bundleIdentifier ?: @"unknown";
+    if (state.playing != lastPlaying || ![bundle isEqualToString:lastBundle ?: @""]) {
+        NNPDiagnosticLog([NSString stringWithFormat:@"MEDIA playing=%d bundle=%@ title-present=%d", state.playing, bundle, state.title.length > 0]);
+        lastPlaying = state.playing;
+        lastBundle = [bundle copy];
+    }
+#endif
     if (state.bundleIdentifier.length) NSLog(@"%@ Now Playing application: %@", NNPLog, state.bundleIdentifier);
     if (self.stateHandler) self.stateHandler([state copyState]);
 }
