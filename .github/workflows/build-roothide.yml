@@ -15,6 +15,10 @@ on:
 permissions:
   contents: read
 
+env:
+  PUBLIC_REPO_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+  PUBLIC_REPO: ice21415/NotchNowPlaying
+
 jobs:
   build:
     runs-on: macos-14
@@ -55,3 +59,51 @@ jobs:
           name: notchnowplaying-roothide-package
           path: build-packages/*.deb
           if-no-files-found: error
+
+      - name: Checkout public package repo
+        if: success() && env.PUBLIC_REPO_TOKEN != ''
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PUBLIC_REPO }}
+          token: ${{ env.PUBLIC_REPO_TOKEN }}
+          path: public-repo
+
+      - name: Publish package repository
+        if: success() && env.PUBLIC_REPO_TOKEN != ''
+        run: |
+          set -euo pipefail
+          cp build-packages/*.deb public-repo/
+          cd public-repo
+          dpkg-scanpackages --multiversion . /dev/null > Packages
+          bzip2 -kf Packages
+          packages_size=$(wc -c < Packages | tr -d ' ')
+          packages_bz2_size=$(wc -c < Packages.bz2 | tr -d ' ')
+          md5_packages=$(md5 -q Packages)
+          md5_packages_bz2=$(md5 -q Packages.bz2)
+          sha256_packages=$(shasum -a 256 Packages | awk '{print $1}')
+          sha256_packages_bz2=$(shasum -a 256 Packages.bz2 | awk '{print $1}')
+          cat > Release <<EOF
+Origin: NotchNowPlaying
+Label: NotchNowPlaying
+Suite: stable
+Codename: stable
+Version: 1.0
+Architectures: iphoneos-arm64 iphoneos-arm64e
+Components: main
+Description: NotchNowPlaying RootHide tweak repository
+MD5Sum:
+ $md5_packages $packages_size Packages
+ $md5_packages_bz2 $packages_bz2_size Packages.bz2
+SHA256:
+ $sha256_packages $packages_size Packages
+ $sha256_packages_bz2 $packages_bz2_size Packages.bz2
+EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ./*.deb Packages Packages.bz2 Release
+          git diff --cached --quiet || git commit -m "Publish NotchNowPlaying package"
+          git push origin HEAD:main
+
+      - name: Publishing setup notice
+        if: success() && env.PUBLIC_REPO_TOKEN == ''
+        run: echo "Build succeeded. Set PUBLIC_REPO_TOKEN to enable publishing."
