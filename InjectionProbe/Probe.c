@@ -18,6 +18,5 @@ static void NNPProbeWrite(const char *path) {
 }
 
 __attribute__((constructor)) static void NNPInjectionProbeConstructor(void) {
-    NNPProbeWrite("/var/mobile/Library/Logs/NNPInjectionProbe.log");
-    NNPProbeWrite("/tmp/NNPInjectionProbe.log");
+    NNPProbeWrite("/var/mobile/Library/Preferences/NNPInjectionProbe.log");
 }
