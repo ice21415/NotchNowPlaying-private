@@ -1,0 +1,39 @@
+name: Build UI smoke package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Install RootHide build tools
+        run: |
+          set -euo pipefail
+          brew install ldid dpkg
+          git clone --recursive https://github.com/roothide/theos.git "$HOME/roothide-theos"
+          export THEOS="$HOME/roothide-theos"
+          export GITHUB_TOKEN="${{ github.token }}"
+          "$THEOS/bin/install-sdk" latest
+      - name: Build UI smoke package
+        run: |
+          set -o pipefail
+          export THEOS="$HOME/roothide-theos"
+          make clean package THEOS_PACKAGE_SCHEME=roothide FINALPACKAGE=1 DEBUG=0 STRIP=1 NNP_SAFE_BOOT_TEST=1 NNP_UI_SMOKE_TEST=1 2>&1 | tee build.log
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notchnowplaying-ui-smoke-log
+          path: build.log
+      - name: Upload package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notchnowplaying-ui-smoke-package
+          path: build-packages/*.deb

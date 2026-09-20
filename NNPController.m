@@ -18,6 +18,9 @@
 #ifndef NNP_ALLOW_ALL_MEDIA
 #define NNP_ALLOW_ALL_MEDIA 0
 #endif
+#ifndef NNP_UI_SMOKE_TEST
+#define NNP_UI_SMOKE_TEST 0
+#endif
 
 static NSString * const NNPLog = @"[Lilywhite/NowPlaying]";
 static NSString * const NNPSpotify = @"com.spotify.client";
@@ -38,6 +41,20 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 + (instancetype)sharedController { static NNPController *c; static dispatch_once_t once; dispatch_once(&once, ^{ c = [self new]; }); return c; }
 - (void)install {
     if (self.installed) return; self.installed = YES;
+#if NNP_UI_SMOKE_TEST
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NNPState *smoke = [NNPState new];
+        smoke.title = @"NotchNowPlaying UI smoke";
+        smoke.artist = @"SpringBoard injection is active";
+        smoke.playing = YES;
+        self.state = smoke;
+        [self makeWindow];
+        [self.view updateState:smoke];
+        self.window.hidden = NO;
+        NSLog(@"%@ UI smoke shown", NNPLog);
+    });
+    return;
+#endif
 #if NNP_SAFE_BOOT_TEST
     NSLog(@"%@ Safe boot test loaded; MediaRemote and UI disabled", NNPLog);
     return;
