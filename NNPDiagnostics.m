@@ -1,4 +1,5 @@
 #import "NNPDiagnostics.h"
+#import <CoreFoundation/CoreFoundation.h>
 #import <fcntl.h>
 #import <sys/stat.h>
 #import <unistd.h>
@@ -26,6 +27,12 @@ void NNPDiagnosticLog(NSString *event) {
         write(fd, data.bytes, data.length);
         close(fd);
     }
+}
+
+void NNPDiagnosticRecordStartup(NSString *detail) {
+    if (!detail.length) detail = @"TWEAK_LOADED";
+    CFPreferencesSetAppValue(CFSTR("TWEAK_LOADED"), (__bridge CFPropertyListRef)detail, CFSTR("com.user.notchnowplaying.diagnostics"));
+    CFPreferencesAppSynchronize(CFSTR("com.user.notchnowplaying.diagnostics"));
 }
 
 BOOL NNPDiagnosticArmExists(BOOL *readable) {
