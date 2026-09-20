@@ -130,10 +130,8 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 - (void)stopTimer { [self.timer invalidate]; self.timer = nil; }
 - (void)tick {
     NNPState *state = self.state; if (!state) return;
-#if NNP_DEBUG_SHOW_WHILE_UNLOCKED
     if (self.window && self.window.hidden) self.window.hidden = NO;
     if (self.window && self.window.alpha < 1.0) self.window.alpha = 1.0;
-#endif
     NSTimeInterval elapsed = state.elapsed;
     if (state.playing && state.playbackRate > 0 && state.timestamp > 0) elapsed += MAX(0, NSDate.date.timeIntervalSince1970 - state.timestamp) * state.playbackRate;
     [self.view updateElapsed:elapsed duration:state.duration playing:state.playing];
