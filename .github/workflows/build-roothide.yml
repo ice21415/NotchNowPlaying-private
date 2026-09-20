@@ -1,6 +1,6 @@
 name: Build and publish RootHide package
 
-on:
+'on':
   push:
     branches: [main]
     paths:
