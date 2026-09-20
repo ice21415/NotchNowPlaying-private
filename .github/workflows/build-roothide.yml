@@ -28,6 +28,7 @@ jobs:
           brew install ldid dpkg
           git clone --recursive https://github.com/roothide/theos.git "$HOME/roothide-theos"
           export THEOS="$HOME/roothide-theos"
+          export GITHUB_TOKEN="${{ github.token }}"
           "$THEOS/bin/install-sdk" latest
           git -C "$THEOS" rev-parse HEAD | tee theos-commit.txt
 
