@@ -15,6 +15,9 @@
 #ifndef NNP_SAFE_BOOT_TEST
 #define NNP_SAFE_BOOT_TEST 0
 #endif
+#ifndef NNP_ALLOW_ALL_MEDIA
+#define NNP_ALLOW_ALL_MEDIA 0
+#endif
 
 static NSString * const NNPLog = @"[Lilywhite/NowPlaying]";
 static NSString * const NNPSpotify = @"com.spotify.client";
@@ -79,7 +82,13 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         if (locked != self.locked) { _locked = locked; NSLog(@"%@ Device %@", NNPLog, locked ? @"locked" : @"unlocked"); [self reconcile]; }
     }
 }
-- (BOOL)spotifyState:(NNPState *)state { return [state.bundleIdentifier isEqualToString:NNPSpotify]; }
+- (BOOL)spotifyState:(NNPState *)state {
+#if NNP_ALLOW_ALL_MEDIA
+    return state.hasTrack;
+#else
+    return [state.bundleIdentifier isEqualToString:NNPSpotify];
+#endif
+}
 - (void)reconcile {
     BOOL show = self.state.hasTrack && self.state.playing && [self spotifyState:self.state] && (self.locked || NNP_DEBUG_SHOW_WHILE_UNLOCKED);
     if (!show) {

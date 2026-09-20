@@ -1,0 +1,48 @@
+name: Build diagnostic Now Playing package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install RootHide build tools
+        run: |
+          set -euo pipefail
+          brew install ldid dpkg
+          git clone --recursive https://github.com/roothide/theos.git "$HOME/roothide-theos"
+          export THEOS="$HOME/roothide-theos"
+          export GITHUB_TOKEN="${{ github.token }}"
+          "$THEOS/bin/install-sdk" latest
+          git -C "$THEOS" rev-parse HEAD | tee theos-commit.txt
+
+      - name: Build diagnostic arm64e package
+        run: |
+          set -o pipefail
+          export THEOS="$HOME/roothide-theos"
+          make clean package THEOS_PACKAGE_SCHEME=roothide FINALPACKAGE=1 DEBUG=0 STRIP=1 NNP_SAFE_BOOT_TEST=0 NNP_DEBUG_SHOW_WHILE_UNLOCKED=1 NNP_ALLOW_ALL_MEDIA=1 2>&1 | tee build.log
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notchnowplaying-diagnostic-build-diagnostics
+          path: |
+            build.log
+            theos-commit.txt
+          if-no-files-found: ignore
+
+      - name: Upload package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notchnowplaying-diagnostic-roothide-package
+          path: build-packages/*.deb
+          if-no-files-found: error
