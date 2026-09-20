@@ -132,11 +132,13 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     BOOL show = self.state.hasTrack && self.state.playing && [self spotifyState:self.state] && (self.locked || NNP_DEBUG_SHOW_WHILE_UNLOCKED);
 #if NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT
     if (self.displayAssertion) {
+        [self.displayAssertion refreshManualArming];
         BOOL eligible = self.locked && self.state.hasTrack && self.state.playing && [self spotifyState:self.state];
         if (eligible && !self.displayAssertion.assertionActive) {
-            [self.displayAssertion acquireTemporaryAssertion];
+            [self.displayAssertion attemptTemporaryAssertion];
         } else if (!eligible) {
-            [self.displayAssertion releaseAssertion];
+            NSString *reason = self.locked ? @"playback_stopped_or_state_invalid" : @"unlock";
+            [self.displayAssertion releaseAssertionWithReason:reason];
         }
     }
 #endif

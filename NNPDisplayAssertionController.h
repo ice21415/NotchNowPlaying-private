@@ -2,6 +2,8 @@
 
 @interface NNPDisplayAssertionController : NSObject
 @property(nonatomic, readonly) BOOL assertionActive;
-- (BOOL)acquireTemporaryAssertion;
+- (void)refreshManualArming;
+- (BOOL)attemptTemporaryAssertion;
 - (void)releaseAssertion;
+- (void)releaseAssertionWithReason:(NSString *)reason;
 @end
