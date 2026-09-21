@@ -13,6 +13,7 @@ static BOOL gNNPPhase4ALockLogged;
 static BOOL gNNPPhase4AObjectLogged;
 static NSString * const NNPPhase4ATracePath = @"/var/mobile/Library/NotchNowPlaying/phase4a-trace.log";
 
+__attribute__((used, visibility("default")))
 void NNPPhase4ATrace(NSString *line) {
     if (!line.length) return;
     int fd = open(NNPPhase4ATracePath.UTF8String, O_WRONLY | O_CREAT | O_APPEND, 0644);
@@ -94,6 +95,7 @@ static void NNPPhase4ABlankedScreenCallback(CFNotificationCenterRef center, void
     NNPPhase4ATrace(@"LOCK_SAMPLE_DONE");
 }
 
+__attribute__((used, visibility("default")))
 void NNPPhase4AStartReadOnlyBacklightObservation(void) {
     NNPPhase4ATrace(@"PHASE4A_START_ENTER");
     NNPPhase4ATrace([NSString stringWithFormat:@"UIApplicationState=%ld", (long)UIApplication.sharedApplication.applicationState]);
