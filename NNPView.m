@@ -71,9 +71,9 @@
 - (void)updateState:(NNPState *)state {
     NSString *title = state.title.length ? state.title : @"Not Playing";
 #if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG
-    title = [title stringByAppendingFormat:@" [P4A-%@]", @NNP_PHASE4A_BUILD_ID];
+    title = [NSString stringWithFormat:@"[P4A-%@] %@", @NNP_PHASE4A_BUILD_ID, title];
 #elif NNP_DIAGNOSTIC_UI_MARKER
-    title = [title stringByAppendingFormat:@" [DIAG-%@]", @NNP_DIAGNOSTIC_BUILD_ID];
+    title = [NSString stringWithFormat:@"[DIAG-%@] %@", @NNP_DIAGNOSTIC_BUILD_ID, title];
 #endif
     self.title.text = title;
     self.artist.text = state.artist.length ? state.artist : (state.album ?: @"");
