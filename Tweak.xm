@@ -21,7 +21,10 @@ static NNPBackBoardReadOnlyDiagnostics *gNNPBackBoardReadOnlyDiagnostics;
 #ifndef NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG
 #define NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG 0
 #endif
-#if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG
+#ifndef NNP_PHASE4A_CTOR_PREFERENCES_PROBE
+#define NNP_PHASE4A_CTOR_PREFERENCES_PROBE 0
+#endif
+#if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG || NNP_PHASE4A_CTOR_PREFERENCES_PROBE
 #import "NNPPhase4AReadOnlyBacklight.h"
 #endif
 #if NNP_PHASE2D2_DIAGNOSTIC || NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT || NNP_PHASE2G_OBSERVER
@@ -34,6 +37,8 @@ static NNPBackBoardReadOnlyDiagnostics *gNNPBackBoardReadOnlyDiagnostics;
     NNPPhase4ASetDiagnosticBoolean(@"CtorEntered", YES);
     NNPPhase4ATrace(@"PHASE4A_COMPILED");
     NNPPhase4ATrace(@"CTOR_ENTER");
+#elif NNP_PHASE4A_CTOR_PREFERENCES_PROBE
+    NNPPhase4ASetDiagnosticBoolean(@"CtorPreferencesProbeEntered", YES);
 #endif
 #if NNP_PHASE2D2_DIAGNOSTIC || NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT || NNP_PHASE2G_OBSERVER
     NNPDiagnosticRecordStartup([NSString stringWithFormat:@"TWEAK_LOADED pid=%d process=%@ bundle=%@", getpid(), NSProcessInfo.processInfo.processName ?: @"unknown", NSBundle.mainBundle.bundleIdentifier ?: @"unknown"]);
