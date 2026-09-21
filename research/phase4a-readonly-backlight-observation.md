@@ -32,6 +32,21 @@ Reload:           `/usr/bin/sbreload` invoked
 Runtime logs:     NOT AVAILABLE
 ```
 
+## File-logging fallback attempt
+
+```text
+Source fix commit: 3ca6ebe6b9b7c4434560563bfa797a89e784fc56
+GitHub Actions:   PASS — run 35567883357
+Artifact SHA256:  9A174423EE9554DE3B56234DA56908FFA8D94B46C0D63EE6ECE4627BECF0D95F
+SCP transfer:     PASS to /var/tmp/notchnowplaying-phase4a.deb
+Remote checksum:  NOT OBTAINED — subsequent SSH banner exchange timed out
+Installation:     NOT ATTEMPTED for revised artifact
+Runtime logs:     NONE
+```
+
+The revised artifact was not installed or reloaded. No additional runtime
+probe was performed.
+
 The bounded BatchMode check established that the endpoint requires interactive
 authentication. The explicitly authorized interactive connection then
 completed transfer and installation. No SSH or device configuration was
