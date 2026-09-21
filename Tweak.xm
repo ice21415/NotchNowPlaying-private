@@ -18,6 +18,12 @@ static NNPBackBoardReadOnlyDiagnostics *gNNPBackBoardReadOnlyDiagnostics;
 #ifndef NNP_PHASE2G_OBSERVER
 #define NNP_PHASE2G_OBSERVER 0
 #endif
+#ifndef NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG
+#define NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG 0
+#endif
+#if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG
+#import "NNPPhase4AReadOnlyBacklight.h"
+#endif
 #if NNP_PHASE2D2_DIAGNOSTIC || NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT || NNP_PHASE2G_OBSERVER
 #import "NNPDiagnostics.h"
 #endif
@@ -34,5 +40,8 @@ static NNPBackBoardReadOnlyDiagnostics *gNNPBackBoardReadOnlyDiagnostics;
         [gNNPBackBoardReadOnlyDiagnostics start];
 #endif
         [[NNPController sharedController] install];
+#if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG
+        NNPPhase4AStartReadOnlyBacklightObservation();
+#endif
     });
 }
