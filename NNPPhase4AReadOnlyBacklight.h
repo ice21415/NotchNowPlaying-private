@@ -1,5 +1,9 @@
 #import <Foundation/Foundation.h>
 
 // Compiled only for the one-read-per-condition Phase 4A experiment.
+NSString *NNPPhase4ABuildIdentity(void);
+void NNPPhase4ASetDiagnosticValue(NSString *key, id value);
+void NNPPhase4ASetDiagnosticBoolean(NSString *key, BOOL value);
+void NNPPhase4ASetDiagnosticInteger(NSString *key, long long value);
 void NNPPhase4ATrace(NSString *marker);
 void NNPPhase4AStartReadOnlyBacklightObservation(void);

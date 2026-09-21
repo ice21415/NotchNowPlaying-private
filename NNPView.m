@@ -2,6 +2,13 @@
 #import "NNPState.h"
 #import <math.h>
 
+#ifndef NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG
+#define NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG 0
+#endif
+#ifndef NNP_PHASE4A_BUILD_ID
+#define NNP_PHASE4A_BUILD_ID "unknown"
+#endif
+
 @interface NNPView ()
 @property(nonatomic, strong) UIImageView *art;
 @property(nonatomic, strong) UILabel *title;
@@ -56,7 +63,11 @@
     _dot.frame = CGRectMake(MAX(px - 3.5, MIN(px + pw - 3.5, px + fw - 3.5)), py - 2.5, 7, 7);
 }
 - (void)updateState:(NNPState *)state {
-    self.title.text = state.title.length ? state.title : @"Not Playing";
+    NSString *title = state.title.length ? state.title : @"Not Playing";
+#if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG
+    title = [title stringByAppendingFormat:@" [P4A-%@]", @NNP_PHASE4A_BUILD_ID];
+#endif
+    self.title.text = title;
     self.artist.text = state.artist.length ? state.artist : (state.album ?: @"");
     self.art.image = state.artwork;
     [self setNeedsLayout];

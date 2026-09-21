@@ -30,6 +30,8 @@ static NNPBackBoardReadOnlyDiagnostics *gNNPBackBoardReadOnlyDiagnostics;
 
 %ctor {
 #if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG
+    NNPPhase4ASetDiagnosticValue(@"BuildIdentity", NNPPhase4ABuildIdentity());
+    NNPPhase4ASetDiagnosticBoolean(@"CtorEntered", YES);
     NNPPhase4ATrace(@"PHASE4A_COMPILED");
     NNPPhase4ATrace(@"CTOR_ENTER");
 #endif
@@ -40,6 +42,7 @@ static NNPBackBoardReadOnlyDiagnostics *gNNPBackBoardReadOnlyDiagnostics;
 #endif
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
 #if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG
+        NNPPhase4ASetDiagnosticBoolean(@"PostStartupEntered", YES);
         NNPPhase4ATrace(@"POST_STARTUP_BLOCK_ENTER");
 #endif
 #if NNP_PHASE2J_READONLY_RUNTIME
@@ -48,8 +51,10 @@ static NNPBackBoardReadOnlyDiagnostics *gNNPBackBoardReadOnlyDiagnostics;
 #endif
         [[NNPController sharedController] install];
 #if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG
+        NNPPhase4ASetDiagnosticBoolean(@"Phase4ACallBegin", YES);
         NNPPhase4ATrace(@"PHASE4A_CALL_BEGIN");
         NNPPhase4AStartReadOnlyBacklightObservation();
+        NNPPhase4ASetDiagnosticBoolean(@"Phase4ACallReturned", YES);
         NNPPhase4ATrace(@"PHASE4A_CALL_RETURN");
 #endif
     });
