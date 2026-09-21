@@ -13,11 +13,31 @@ GitHub Actions:      PASS — run 35566036139
 Artifact:            PASS — downloaded from that run
 Artifact SHA256:     469AB0ECA2F0902B3B470CD454396A8CC118AF640E4D5F0D83F352AFE04612FF
 SSH uname check:     PASS
-Transfer/install:    FAIL — scp/ssh command did not return and was stopped;
-                     no install result or runtime logs were obtained
+Transfer/install:    PASS — scp completed and dpkg installed the package
 Awake sample:        NOT EXECUTED
 Lock sample:         NOT EXECUTED
 ```
+
+## Deployment diagnosis
+
+```text
+Artifact SHA256:  PASS
+SSH basic:        PASS (`NNP_SSH_OK`)
+SSH BatchMode:    FAIL — interactive keyboard/password authentication required
+Transfer method:  SCP/SFTP
+Remote path:     `/var/tmp/notchnowplaying-phase4a.deb`
+Remote SHA256:    PASS
+Installation:    PASS (`dpkg -i`)
+Reload:           `/usr/bin/sbreload` invoked
+Runtime logs:     NOT AVAILABLE
+```
+
+The bounded BatchMode check established that the endpoint requires interactive
+authentication. The explicitly authorized interactive connection then
+completed transfer and installation. No SSH or device configuration was
+changed. The device had no usable `/usr/bin/log`, `syslog`, or
+`idevicesyslog`; `log` resolved only to a zsh builtin and produced no Phase4A
+records. Therefore no runtime sample was claimed.
 
 The commit contains only the Phase 4A source, flag integration, dedicated
 workflow, and this report. No package was compiled locally.
@@ -133,11 +153,10 @@ model:
 The implementation does not label an observed value `Off`, `ActiveOn`, or
 `AlwaysOn`; that would exceed the evidence of one observation.
 
-## Phase 4B recommendation
+## Deployment result
 
 ```text
-E — CI/artifact/SSH/install sequence stopped before observation because the
-    package transfer/install command did not complete.
+F — runtime log/callback remains the blocker; no Phase4A sample was obtained.
 ```
 
 No display mutation was performed.
