@@ -337,3 +337,42 @@ Therefore the first missing execution stage is the injected dylib constructor,
 before the existing four-second block, UIApplication state, BLS class lookup,
 or notification registration. No BLS accessor was called and no runtime state
 value was collected.
+
+## Loaded image identity
+
+```text
+SpringBoard PID: 11613
+Active jbroot: /var/containers/Bundle/Application/.jbroot-0E34A8F7F290BABD/
+```
+
+The three visible NotchNowPlaying dylib paths are one backing file, not stale
+duplicates:
+
+| Path | Inode | Size | mtime | SHA256 |
+| --- | ---: | ---: | --- | --- |
+| `/var/jb/usr/lib/TweakInject/NotchNowPlaying.dylib` | 7152676 | 108192 | 2026-09-21 16:07 | `fe164043d2b651ebaa49f7f40e3b7a7ac50c47aa20a6f2c90ead5ab11f02eb03` |
+| `/var/jb/Library/MobileSubstrate/DynamicLibraries/NotchNowPlaying.dylib` | 7152676 | 108192 | 2026-09-21 16:07 | same inode / same file |
+| `/var/containers/Bundle/Application/.jbroot-0E34A8F7F290BABD/usr/lib/TweakInject/NotchNowPlaying.dylib` | 7152676 | 108192 | 2026-09-21 16:07 | same inode / same file |
+
+The package manager owns the canonical logical package path. RootHide's
+installer/patch layer expands the installed backing image beyond the GitHub
+payload size; its backing-file SHA256 therefore differs from the raw package
+payload SHA256. The installed arm64e Mach-O contains the instrumented strings:
+
+```text
+phase4a-trace.log
+CTOR_ENTER
+PHASE4A_START_ENTER
+BLS_CLASS_LOOKUP_BEGIN
+BACKLIGHT_STATE
+```
+
+The `mobile` user successfully appended a temporary write to the trace path
+after its directory ownership was corrected to `mobile:mobile`; the test file
+was then removed. Thus the trace path itself is writable.
+
+Existing read-only process-image interfaces could not enumerate SpringBoard's
+mapped Mach-O images: `launchctl procinfo` returned `Could not print Mach info
+for pid 11613: 0x5`, and `/proc/11613/maps` did not expose the mapping. The
+exact mapped path and loaded-image hash consequently remain unproven, although
+no stale disk copy was found.
