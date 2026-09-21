@@ -8,6 +8,12 @@
 #ifndef NNP_PHASE4A_BUILD_ID
 #define NNP_PHASE4A_BUILD_ID "unknown"
 #endif
+#ifndef NNP_DIAGNOSTIC_UI_MARKER
+#define NNP_DIAGNOSTIC_UI_MARKER 0
+#endif
+#ifndef NNP_DIAGNOSTIC_BUILD_ID
+#define NNP_DIAGNOSTIC_BUILD_ID "unknown"
+#endif
 
 @interface NNPView ()
 @property(nonatomic, strong) UIImageView *art;
@@ -66,6 +72,8 @@
     NSString *title = state.title.length ? state.title : @"Not Playing";
 #if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG
     title = [title stringByAppendingFormat:@" [P4A-%@]", @NNP_PHASE4A_BUILD_ID];
+#elif NNP_DIAGNOSTIC_UI_MARKER
+    title = [title stringByAppendingFormat:@" [DIAG-%@]", @NNP_DIAGNOSTIC_BUILD_ID];
 #endif
     self.title.text = title;
     self.artist.text = state.artist.length ? state.artist : (state.album ?: @"");
