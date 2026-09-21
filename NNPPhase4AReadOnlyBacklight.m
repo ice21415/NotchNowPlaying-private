@@ -6,17 +6,28 @@
 #import <CoreFoundation/CoreFoundation.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
+#include <stdio.h>
 
 static BOOL gNNPPhase4AAwakeLogged;
 static BOOL gNNPPhase4ALockLogged;
 static BOOL gNNPPhase4AObjectLogged;
 static id gNNPPhase4AAwakeObserver;
 
+static void NNPPhase4AFileLog(NSString *line) {
+    if (!line.length) return;
+    FILE *file = fopen("/var/tmp/notchnowplaying-phase4a.log", "a");
+    if (!file) return;
+    fprintf(file, "%s\n", line.UTF8String ?: "");
+    fflush(file);
+    fclose(file);
+}
+
 static id NNPPhase4AExistingBacklight(void) {
     Class backlightClass = NSClassFromString(@"BLSBacklight");
     SEL sharedSelector = NSSelectorFromString(@"sharedBacklight");
     if (!backlightClass || !class_respondsToSelector(object_getClass(backlightClass), sharedSelector)) {
         NSLog(@"[NNP][Phase4A] failure=BLSBacklight-singleton-unavailable");
+        NNPPhase4AFileLog(@"failure=BLSBacklight-singleton-unavailable");
         return nil;
     }
 
@@ -25,6 +36,7 @@ static id NNPPhase4AExistingBacklight(void) {
     id backlight = ((id (*)(id, SEL))objc_msgSend)((id)backlightClass, sharedSelector);
     if (!backlight || ![backlight isKindOfClass:backlightClass]) {
         NSLog(@"[NNP][Phase4A] failure=unexpected-BLSBacklight-class");
+        NNPPhase4AFileLog(@"failure=unexpected-BLSBacklight-class");
         return nil;
     }
     return backlight;
@@ -35,14 +47,17 @@ static void NNPLogBacklightState(NSString *reason) {
     SEL stateSelector = NSSelectorFromString(@"backlightState");
     if (!backlight || ![backlight respondsToSelector:stateSelector]) {
         NSLog(@"[NNP][Phase4A] failure=backlightState-unavailable");
+        NNPPhase4AFileLog(@"failure=backlightState-unavailable");
         return;
     }
     if (!gNNPPhase4AObjectLogged) {
         gNNPPhase4AObjectLogged = YES;
         NSLog(@"[NNP][Phase4A] BLSBacklight object=%p class=%@", backlight, NSStringFromClass([backlight class]));
+        NNPPhase4AFileLog([NSString stringWithFormat:@"BLSBacklight class=%@", NSStringFromClass([backlight class])]);
     }
     long long state = ((long long (*)(id, SEL))objc_msgSend)(backlight, stateSelector);
     NSLog(@"[NNP][Phase4A] reason=%@ state=%lld", reason, state);
+    NNPPhase4AFileLog([NSString stringWithFormat:@"reason=%@ state=%lld", reason, state]);
 }
 
 static void NNPPhase4ABlankedScreenCallback(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo) {
