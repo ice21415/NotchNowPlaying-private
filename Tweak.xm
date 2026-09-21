@@ -27,7 +27,10 @@ static NNPBackBoardReadOnlyDiagnostics *gNNPBackBoardReadOnlyDiagnostics;
 #ifndef NNP_PHASE4A_DELAYED_TRACE_PROBE
 #define NNP_PHASE4A_DELAYED_TRACE_PROBE 0
 #endif
-#if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG || NNP_PHASE4A_CTOR_PREFERENCES_PROBE || NNP_PHASE4A_DELAYED_TRACE_PROBE
+#ifndef NNP_PHASE4A_UI_STATE_PROBE
+#define NNP_PHASE4A_UI_STATE_PROBE 0
+#endif
+#if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG || NNP_PHASE4A_CTOR_PREFERENCES_PROBE || NNP_PHASE4A_DELAYED_TRACE_PROBE || NNP_PHASE4A_UI_STATE_PROBE
 #import "NNPPhase4AReadOnlyBacklight.h"
 #endif
 #if NNP_PHASE2D2_DIAGNOSTIC || NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT || NNP_PHASE2G_OBSERVER
@@ -58,6 +61,12 @@ static NNPBackBoardReadOnlyDiagnostics *gNNPBackBoardReadOnlyDiagnostics;
         [gNNPBackBoardReadOnlyDiagnostics start];
 #endif
         [[NNPController sharedController] install];
+#if NNP_PHASE4A_UI_STATE_PROBE
+        long long phase4AState = 0;
+        BOOL phase4AReadOK = NNPPhase4AReadBacklightState(&phase4AState);
+        NNPPhase4ASetUIState(phase4AReadOK, phase4AState);
+        [[NNPController sharedController] refreshDiagnosticUI];
+#endif
 #if NNP_PHASE4A_DELAYED_TRACE_PROBE
         NNPPhase4ATrace(@"DELAYED_TRACE_PROBE");
 #endif

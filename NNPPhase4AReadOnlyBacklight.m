@@ -16,11 +16,41 @@
 static BOOL gNNPPhase4AAwakeLogged;
 static BOOL gNNPPhase4ALockLogged;
 static BOOL gNNPPhase4AObjectLogged;
+static BOOL gNNPPhase4AUIStateValid;
+static long long gNNPPhase4AUIState;
 static NSString * const NNPPhase4ATracePath = @"/var/mobile/Library/NotchNowPlaying/phase4a-trace.log";
 static CFStringRef const NNPPhase4ADiagnosticDomain = CFSTR("com.user.notchnowplaying.phase4a");
 
 NSString *NNPPhase4ABuildIdentity(void) {
     return @NNP_PHASE4A_BUILD_ID;
+}
+
+BOOL NNPPhase4AReadBacklightState(long long *state) {
+    if (!state) return NO;
+    Class backlightClass = NSClassFromString(@"BLSBacklight");
+    SEL sharedSelector = NSSelectorFromString(@"sharedBacklight");
+    SEL stateSelector = NSSelectorFromString(@"backlightState");
+    if (!backlightClass ||
+        !class_respondsToSelector(object_getClass(backlightClass), sharedSelector)) {
+        return NO;
+    }
+    id backlight = ((id (*)(id, SEL))objc_msgSend)((id)backlightClass, sharedSelector);
+    if (!backlight || ![backlight isKindOfClass:backlightClass] ||
+        ![backlight respondsToSelector:stateSelector]) {
+        return NO;
+    }
+    *state = ((long long (*)(id, SEL))objc_msgSend)(backlight, stateSelector);
+    return YES;
+}
+
+void NNPPhase4ASetUIState(BOOL succeeded, long long state) {
+    gNNPPhase4AUIStateValid = succeeded;
+    gNNPPhase4AUIState = state;
+}
+
+NSString *NNPPhase4AUIStateMarker(void) {
+    if (!gNNPPhase4AUIStateValid) return @"A:ERR";
+    return [NSString stringWithFormat:@"A:%lld", gNNPPhase4AUIState];
 }
 
 void NNPPhase4ASetDiagnosticValue(NSString *key, id value) {

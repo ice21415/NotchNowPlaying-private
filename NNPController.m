@@ -44,6 +44,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 #endif
 }
 - (void)preferencesChanged:(NSNotification *)note { [self.preferences reload]; [self reconcile]; }
+- (void)refreshDiagnosticUI { [self reconcile]; }
 - (void)setLocked:(BOOL)locked { if (_locked == locked) return; _locked = locked; NNPDiagnosticSetBool(@"LogicalLockState", locked); NSLog(@"%@ device %@", NNPLog, locked ? @"locked" : @"unlocked"); [self reconcile]; }
 - (void)receive:(NNPState *)state { dispatch_async(dispatch_get_main_queue(), ^{ self.state = state; NNPDiagnosticSetString(@"ActiveMediaBundle", state.bundleIdentifier ?: @""); NNPDiagnosticSetBool(@"SpotifyDetected", [self isAllowedMedia:state]); NNPDiagnosticSetBool(@"PlaybackActive", state.playing); [self reconcile]; }); }
 - (BOOL)isAllowedMedia:(NNPState *)state { if (!state.bundleIdentifier.length) return NO; return !self.preferences.spotifyOnly || [state.bundleIdentifier isEqualToString:NNPSpotify]; }

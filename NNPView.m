@@ -14,6 +14,12 @@
 #ifndef NNP_DIAGNOSTIC_BUILD_ID
 #define NNP_DIAGNOSTIC_BUILD_ID "unknown"
 #endif
+#ifndef NNP_PHASE4A_UI_STATE_PROBE
+#define NNP_PHASE4A_UI_STATE_PROBE 0
+#endif
+#if NNP_PHASE4A_UI_STATE_PROBE
+#import "NNPPhase4AReadOnlyBacklight.h"
+#endif
 
 @interface NNPView ()
 @property(nonatomic, strong) UIImageView *art;
@@ -74,6 +80,8 @@
     title = [NSString stringWithFormat:@"[P4A-%@] %@", @NNP_PHASE4A_BUILD_ID, title];
 #elif NNP_DIAGNOSTIC_UI_MARKER
     title = [NSString stringWithFormat:@"[DIAG-%@] %@", @NNP_DIAGNOSTIC_BUILD_ID, title];
+#elif NNP_PHASE4A_UI_STATE_PROBE
+    title = [NSString stringWithFormat:@"[P4A-%@ %@] %@", @NNP_PHASE4A_BUILD_ID, NNPPhase4AUIStateMarker(), title];
 #endif
     self.title.text = title;
     self.artist.text = state.artist.length ? state.artist : (state.album ?: @"");
