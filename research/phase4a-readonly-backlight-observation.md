@@ -305,3 +305,35 @@ Repair result: NOT REPAIRED — requires the supported Relaxin/RootHide
 ```
 
 No display mutation was performed.
+
+## Phase4A execution trace
+
+```text
+Trace source commit: 49466eb80890927cae1eb504d24d7fc425a87056
+GitHub Actions: PASS — run 35573463100
+Artifact SHA256: A5609B019241FC6753274967F74DBBF1D0C7D9E9383D49EE29F29DAB59DED0F8
+Phase4A implementation strings in artifact: PASS
+Trace directory: /var/mobile/Library/NotchNowPlaying
+Trace directory permissions: corrected to mobile:mobile 755
+Trace file: MISSING after SpringBoard reload
+```
+
+The artifact was independently inspected and contains the implementation
+markers, including `phase4a-trace.log`, `PHASE4A_START_ENTER`,
+`BLS_CLASS_LOOKUP_BEGIN`, and `BACKLIGHT_STATE`. The diagnostics directory was
+also made writable by the SpringBoard `mobile` user and a direct mobile write
+test succeeded before reload.
+
+No runtime marker was produced, including the first constructor marker:
+
+```text
+PHASE4A_COMPILED: no runtime record
+CTOR_ENTER: no runtime record
+POST_STARTUP_BLOCK_ENTER: no runtime record
+PHASE4A_START_ENTER: no runtime record
+```
+
+Therefore the first missing execution stage is the injected dylib constructor,
+before the existing four-second block, UIApplication state, BLS class lookup,
+or notification registration. No BLS accessor was called and no runtime state
+value was collected.
