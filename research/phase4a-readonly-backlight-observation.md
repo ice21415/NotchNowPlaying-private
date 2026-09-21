@@ -1,8 +1,26 @@
 # Phase 4A — Read-Only Backlight Observation
 
-This phase prepared one disabled-by-default observational path. It was not
-built, installed, enabled, or run, and no device was accessed. Consequently,
+This phase prepared one disabled-by-default observational path. It was built
+by GitHub Actions but was not installed or run on the device. Consequently,
 no state values are claimed in this report.
+
+## Execution attempt
+
+```text
+Local/remote commit: 7296432d75eee27d4a74265e9181aa5a851c5c23
+GitHub push:         PASS
+GitHub Actions:      PASS — run 35566036139
+Artifact:            PASS — downloaded from that run
+Artifact SHA256:     469AB0ECA2F0902B3B470CD454396A8CC118AF640E4D5F0D83F352AFE04612FF
+SSH uname check:     PASS
+Transfer/install:    FAIL — scp/ssh command did not return and was stopped;
+                     no install result or runtime logs were obtained
+Awake sample:        NOT EXECUTED
+Lock sample:         NOT EXECUTED
+```
+
+The commit contains only the Phase 4A source, flag integration, dedicated
+workflow, and this report. No package was compiled locally.
 
 ## Acquisition
 
@@ -118,9 +136,8 @@ The implementation does not label an observed value `Off`, `ActiveOn`, or
 ## Phase 4B recommendation
 
 ```text
-B — the prepared observation is informative, but one bounded read-only
-    correlation would still be required before semantic feature use. No
-    observation has been performed in this offline workspace.
+E — CI/artifact/SSH/install sequence stopped before observation because the
+    package transfer/install command did not complete.
 ```
 
 No display mutation was performed.
