@@ -1,7 +1,5 @@
 #import "NNPPhase4AReadOnlyBacklight.h"
 
-#if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG
-
 #import <UIKit/UIKit.h>
 #import <CoreFoundation/CoreFoundation.h>
 #import <objc/message.h>
@@ -62,11 +60,6 @@ static id NNPPhase4AExistingBacklight(void) {
         return nil;
     }
     NNPPhase4ATrace(@"BLS_SHARED_BACKLIGHT_OK");
-    if (!backlight || ![backlight isKindOfClass:backlightClass]) {
-        NSLog(@"[NNP][Phase4A] failure=unexpected-BLSBacklight-class");
-        NNPPhase4AFileLog(@"failure=unexpected-BLSBacklight-class");
-        return nil;
-    }
     return backlight;
 }
 
@@ -117,10 +110,3 @@ void NNPPhase4AStartReadOnlyBacklightObservation(void) {
                                     CFNotificationSuspensionBehaviorDeliverImmediately);
     NNPPhase4ATrace(@"DARWIN_OBSERVER_REGISTERED");
 }
-
-#else
-
-void NNPPhase4AStartReadOnlyBacklightObservation(void) {}
-void NNPPhase4ATrace(NSString *line) { (void)line; }
-
-#endif
