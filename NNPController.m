@@ -11,6 +11,10 @@
 static NSString * const NNPLog = @"[NotchNowPlaying]";
 static NSString * const NNPSpotify = @"com.spotify.client";
 
+#ifndef NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
+#define NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE 0
+#endif
+
 @interface NNPController ()
 @property(nonatomic, strong) NNPMediaController *media;
 @property(nonatomic, strong) NNPLockStateController *lockState;
@@ -55,10 +59,26 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     self.window = scene ? [[UIWindow alloc] initWithWindowScene:scene] : [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds]; self.window.frame = UIScreen.mainScreen.bounds; self.window.windowLevel = UIWindowLevelStatusBar + 1.0; self.window.backgroundColor = UIColor.clearColor; self.window.userInteractionEnabled = NO;
     UIViewController *root = [UIViewController new]; root.view.backgroundColor = UIColor.clearColor; root.view.userInteractionEnabled = NO; self.view = [[NNPView alloc] initWithFrame:self.window.bounds]; self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight; [root.view addSubview:self.view]; self.window.rootViewController = root; self.window.hidden = YES;
 }
+- (void)applyLockedBackground { self.window.backgroundColor = self.locked ? UIColor.blackColor : UIColor.clearColor; self.window.rootViewController.view.backgroundColor = self.locked ? UIColor.blackColor : UIColor.clearColor; }
 - (void)applyViewPreferences { self.view.showArtwork = self.preferences.showArtwork; self.view.showArtist = self.preferences.showArtist; self.view.showProgress = self.preferences.showProgress; self.view.artworkSize = self.preferences.artworkSize; self.view.cornerRadius = self.preferences.cornerRadius; self.view.textSize = self.preferences.textSize; self.view.progressHeight = self.preferences.progressHeight; [self.view setNeedsLayout]; }
-- (void)reconcile { dispatch_async(dispatch_get_main_queue(), ^{ BOOL show = [self shouldShow]; NNPDiagnosticSetBool(@"UIVisible", show); if (!show) { [self hide]; return; } [self makeWindow]; [self applyViewPreferences]; [self.view updateState:self.state]; if (self.window.hidden) { self.window.hidden = NO; NSLog(@"%@ overlay shown", NNPLog); } [self startProgressTimer]; [self updateProgress]; }); }
-- (void)hide { if (!self.window.hidden) { self.window.hidden = YES; NSLog(@"%@ overlay hidden", NNPLog); } [self.progressTimer invalidate]; self.progressTimer = nil; }
+- (void)reconcile { dispatch_async(dispatch_get_main_queue(), ^{ BOOL show = [self shouldShow]; NNPDiagnosticSetBool(@"UIVisible", show); if (!show) { [self hide]; return; } [self makeWindow]; [self applyLockedBackground]; [self applyViewPreferences]; [self.view updateState:self.state];
+#if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
+        if (self.locked) { [self.display startLockedVisibleMode]; } else { [self.display stopLockedVisibleMode]; }
+#endif
+        if (self.window.hidden) { self.window.hidden = NO; NSLog(@"%@ overlay shown", NNPLog); } [self startProgressTimer]; [self updateProgress]; }); }
+- (void)hide {
+#if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
+    [self.display stopLockedVisibleMode];
+#endif
+    if (!self.window.hidden) { self.window.hidden = YES; NSLog(@"%@ overlay hidden", NNPLog); }
+    [self.progressTimer invalidate]; self.progressTimer = nil;
+}
 - (void)startProgressTimer { if (self.progressTimer) return; __weak typeof(self) weakSelf = self; self.progressTimer = [NSTimer scheduledTimerWithTimeInterval:self.preferences.progressUpdateInterval repeats:YES block:^(__unused NSTimer *timer) { [weakSelf updateProgress]; }]; }
 - (void)updateProgress { if (!self.state || self.window.hidden) return; NSTimeInterval elapsed = self.state.elapsed; if (self.state.playing && self.state.playbackRate > 0.0 && self.state.timestamp > 0.0) elapsed += MAX(0.0, NSDate.date.timeIntervalSince1970 - self.state.timestamp) * self.state.playbackRate; if (self.state.duration > 0.0) elapsed = MIN(self.state.duration, MAX(0.0, elapsed)); [self.view updateElapsed:elapsed duration:self.state.duration playing:self.state.playing]; }
-- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; [_lockState stop]; [_progressTimer invalidate]; }
+- (void)dealloc {
+#if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
+    [_display stopLockedVisibleMode];
+#endif
+    [[NSNotificationCenter defaultCenter] removeObserver:self]; [_lockState stop]; [_progressTimer invalidate];
+}
 @end

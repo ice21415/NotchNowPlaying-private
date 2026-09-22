@@ -16,6 +16,12 @@ compact artwork, title, artist, and progress bar around the notch.
 Continuous locked-screen display retention is not enabled in the current
 release. This is not native AOD.
 
+Phase 5 keeps `NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE` disabled by default.
+The awake-screen presentation remains available, but the locked-visible
+controller reports `UNSUPPORTED` because Phase 4 did not establish a safe,
+reversible way to retain panel visibility after the system's zero-factor
+BackBoard HID handoff. See `research/phase5-locked-visible-experiments.md`.
+
 ## Installation
 
 Build with Theos and the roothide scheme:
