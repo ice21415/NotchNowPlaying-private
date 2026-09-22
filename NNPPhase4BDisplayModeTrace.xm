@@ -338,6 +338,27 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
             }
         }
     }
+    if (displayClientClass) {
+        unsigned int platformCount = 0;
+        Method *platformMethods = class_copyMethodList(NSClassFromString(@"SBBacklightPlatformProvider"),
+                                                        &platformCount);
+        NSMutableArray *platformNames = [NSMutableArray array];
+        for (unsigned int index = 0; platformMethods && index < platformCount; index++) {
+            const char *name = sel_getName(method_getName(platformMethods[index]));
+            if (!name) continue;
+            NSString *selectorName = [NSString stringWithUTF8String:name];
+            NSString *lower = selectorName.lowercaseString;
+            if ([lower containsString:@"backlight"] || [lower containsString:@"display"] ||
+                [lower containsString:@"brightness"] || [lower containsString:@"curve"] ||
+                [lower containsString:@"blank"] || [lower containsString:@"screen"] ||
+                [lower containsString:@"power"] || [lower containsString:@"sleep"]) {
+                [platformNames addObject:selectorName];
+            }
+        }
+        if (platformMethods) free(platformMethods);
+        NNPPhase4BDisplayModeSet(@"PlatformProviderMethods",
+                                 [platformNames componentsJoinedByString:@"|"]);
+    }
     Class displayStateClass = NSClassFromString(@"BLSHBacklightDisplayStateMachine");
     SEL displayModeSelector = NSSelectorFromString(@"setDisplayMode:withRampDuration:");
     NNPPhase4BDisplayModeSet(@"DisplayModeClassFound", @(displayStateClass != Nil));
