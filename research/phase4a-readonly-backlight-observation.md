@@ -519,3 +519,38 @@ current evidence points to the trace helper or its file-write path, not to
 `sharedBacklight` or `backlightState`, which have not been invoked in this
 matrix branch.
 ```
+
+## Trace-helper micro isolation
+
+Test 5A retained the passing delayed controller installation and called
+`NNPPhase4ATrace(@"DELAYED_TRACE_PROBE")`, but compiled the trace function as
+an empty function that only discards its argument and returns. Spotify UI still
+did not appear. SpringBoard remained running at PID 15070 in two bounded
+checks separated by five seconds; no crash/Jetsam evidence was found.
+
+```text
+5A empty helper: FAIL
+5B line.length: NOT RUN
+5C path UTF8String: NOT RUN
+5D controller + CFPreferences: NOT RUN
+5E open /dev/null: NOT RUN
+5F open trace path: NOT RUN
+5G raw C write: NOT RUN
+5H NSString append: NOT RUN
+5I NSData conversion: NOT RUN
+5J Foundation file write: NOT RUN
+5K trace + CFPreferences: NOT RUN
+
+workflow: 35672892534
+commit: 611b858df20a10688f5788d8dfb2eb29541d8028
+artifact SHA256: 2E1A79B61311B7A014C8BEF8470007FFBB51A72681A78257F68A1B6A6ABFDFE8
+install: PASS
+reload: PASS
+Spotify UI: FAIL
+SpringBoard PID: 15070, stable across bounded check
+Crash/Jetsam: not observed
+First failing sub-operation: trace helper call/linkage or diagnostic object presence
+```
+
+No BLS class lookup, `sharedBacklight`, or `backlightState` operation was run
+in this branch.
