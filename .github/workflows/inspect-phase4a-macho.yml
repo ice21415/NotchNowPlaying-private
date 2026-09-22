@@ -1,0 +1,47 @@
+name: Inspect Phase 4A Mach-O bindings
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install RootHide build tools
+        run: |
+          set -euo pipefail
+          brew install ldid dpkg
+          git clone --recursive https://github.com/roothide/theos.git "$HOME/roothide-theos"
+          export THEOS="$HOME/roothide-theos"
+          export GITHUB_TOKEN="${{ github.token }}"
+          "$THEOS/bin/install-sdk" latest
+      - name: Build inspection image
+        run: |
+          set -euo pipefail
+          export THEOS="$HOME/roothide-theos"
+          make clean package THEOS_PACKAGE_SCHEME=roothide FINALPACKAGE=1 DEBUG=0 STRIP=1 NNP_SAFE_BOOT_TEST=0 NNP_PHASE4A_CROSS_FILE_CONSTANT_TEST=1 NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG=0 NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT=0 NNP_PHASE2E_ARM_AT_START=0 NNP_PHASE2G_OBSERVER=0 NNP_PHASE2G_ARM_AT_START=0 NNP_PHASE2D2_DIAGNOSTIC=0 NNP_PHASE2J_READONLY_RUNTIME=0 NNP_PHASE2J_CALL_GETTERS=0 2>&1 | tee build.log
+          mkdir -p inspect-root
+          dpkg-deb -x build-packages/*.deb inspect-root
+          dylib="$(find inspect-root -name NotchNowPlaying.dylib -print -quit)"
+          echo "DYLIB=$dylib" | tee macho-report.txt
+          shasum -a 256 "$dylib" | tee -a macho-report.txt
+          echo '=== nm defined/undefined symbols ===' | tee -a macho-report.txt
+          nm -m "$dylib" | grep -E 'NNPPhase4A(Noop|Trace|Constant)|Tweak' | tee -a macho-report.txt || true
+          echo '=== otool load commands ===' | tee -a macho-report.txt
+          otool -l "$dylib" | grep -A5 -E 'LC_LOAD_DYLIB|LC_DYLD_INFO|LC_DYLD_CHAINED_FIXUPS|LC_FUNCTION_STARTS' | tee -a macho-report.txt || true
+          echo '=== otool indirect/bind information ===' | tee -a macho-report.txt
+          otool -Iv "$dylib" | grep -E 'NNPPhase4A(Noop|Trace|Constant)|lazy|bind|stub' | tee -a macho-report.txt || true
+          echo '=== disassembly symbol references ===' | tee -a macho-report.txt
+          otool -tvV "$dylib" | grep -A8 -B4 -E 'NNPPhase4A(Noop|Trace|Constant)' | tee -a macho-report.txt || true
+      - name: Upload inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase4a-macho-inspection
+          path: |
+            build.log
+            macho-report.txt
+          if-no-files-found: error
