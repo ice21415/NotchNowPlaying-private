@@ -35,7 +35,8 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
                              @(gNNPPhase4BDisplayModeSequence));
 
     if (gNNPPhase4BDisplayModeSequence == 1) {
-        id downstream = *(id *)((uint8_t *)(__bridge void *)self + 0x18);
+        id __unsafe_unretained downstream =
+            *(id __unsafe_unretained *)((uint8_t *)(__bridge void *)self + 0x18);
         if (downstream) {
             SEL transitionSelector = NSSelectorFromString(@"transitionToDisplayMode:withDuration:");
             Method transitionMethod = class_getInstanceMethod(object_getClass(downstream),
