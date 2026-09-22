@@ -174,6 +174,38 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
 %ctor {
     NNPPhase4BDisplayModeSet(@"DisplayModeHookBuildIdentity",
                              @"phase4b-display-mode");
+    Class displayClientClass = NSClassFromString(@"CBDisplayStateClient");
+    SEL displayClientSelector = NSSelectorFromString(@"transitionToDisplayMode:withDuration:error:");
+    Method displayClientMethod = displayClientClass
+        ? class_getInstanceMethod(displayClientClass, displayClientSelector) : NULL;
+    NNPPhase4BDisplayModeSet(@"DisplayClientClassFound", @(displayClientClass != Nil));
+    NNPPhase4BDisplayModeSet(@"DisplayClientSelectorFound", @(displayClientMethod != NULL));
+    if (displayClientClass) {
+        NNPPhase4BDisplayModeSet(@"DisplayClientClass", NSStringFromClass(displayClientClass));
+    }
+    if (displayClientMethod) {
+        IMP displayClientIMP = method_getImplementation(displayClientMethod);
+        Dl_info displayClientInfo = {0};
+        if (displayClientIMP && dladdr((const void *)displayClientIMP, &displayClientInfo)) {
+            void *strippedDisplayClientIMP = ptrauth_strip((void *)displayClientIMP,
+                                                            ptrauth_key_function_pointer);
+            NNPPhase4BDisplayModeSet(@"DisplayClientIMP",
+                                     [NSString stringWithFormat:@"0x%llx",
+                                      (unsigned long long)(uintptr_t)strippedDisplayClientIMP]);
+            NNPPhase4BDisplayModeSet(@"DisplayClientImageBase",
+                                     [NSString stringWithFormat:@"0x%llx",
+                                      (unsigned long long)(uintptr_t)displayClientInfo.dli_fbase]);
+            if (displayClientInfo.dli_fname) {
+                NNPPhase4BDisplayModeSet(@"DisplayClientImage",
+                                         [NSString stringWithUTF8String:displayClientInfo.dli_fname]);
+            }
+            if (displayClientInfo.dli_saddr) {
+                NNPPhase4BDisplayModeSet(@"DisplayClientSymbolAddress",
+                                         [NSString stringWithFormat:@"0x%llx",
+                                          (unsigned long long)(uintptr_t)displayClientInfo.dli_saddr]);
+            }
+        }
+    }
     Class displayStateClass = NSClassFromString(@"BLSHBacklightDisplayStateMachine");
     SEL displayModeSelector = NSSelectorFromString(@"setDisplayMode:withRampDuration:");
     NNPPhase4BDisplayModeSet(@"DisplayModeClassFound", @(displayStateClass != Nil));
