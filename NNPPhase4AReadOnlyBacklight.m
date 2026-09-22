@@ -15,6 +15,9 @@
 #ifndef NNP_PHASE4A_TRACE_MICRO_TEST
 #define NNP_PHASE4A_TRACE_MICRO_TEST 0
 #endif
+#ifndef NNP_PHASE4A_ENTRY_NOOP_TEST
+#define NNP_PHASE4A_ENTRY_NOOP_TEST 0
+#endif
 
 #if NNP_PHASE4A_CROSS_FILE_NOOP_TEST
 __attribute__((used, visibility("hidden"), noinline))
@@ -191,6 +194,9 @@ static void NNPPhase4ABlankedScreenCallback(CFNotificationCenterRef center, void
 
 __attribute__((used, visibility("default")))
 void NNPPhase4AStartReadOnlyBacklightObservation(void) {
+#if NNP_PHASE4A_ENTRY_NOOP_TEST
+    return;
+#endif
     NNPPhase4ASetDiagnosticBoolean(@"Phase4AStartEntered", YES);
     NNPPhase4ATrace(@"PHASE4A_START_ENTER");
     long applicationState = (long)UIApplication.sharedApplication.applicationState;
