@@ -2177,3 +2177,298 @@ No BKS/MIG request was invoked and no daemon was modified.  The current
 strongest physical-boundary candidate is therefore
 `BKDisplaySetDisplayBlanked` → `_BKDisplayBlankingContext -blank`, while the
 exact BLS-to-that-server causal message remains unresolved.
+
+## Phase 4B-21 — Target/current bridge and scene-state propagation
+
+### Question
+
+Where does the observed target display mode become an applied transition, and
+is there a non-display-service scene object that receives a blanking state?
+
+### Target/current bridge
+
+Receiver-proven analysis of `BLSHBacklightTransitionStateMachine` identifies
+the following bridge:
+
+```text
+current aggregate: self +0x98
+target aggregate:  self +0xa0
+        │
+        └─ lock_displayOperationForTarget:isNullOperationAllowed:
+             reads current displayMode
+             reads target displayMode
+             creates BLSHPendingUpdateDisplayMode
+        │
+        └─ BLSHBacklightDisplayStateMachine
+             setDisplayMode:withRampDuration:
+        │
+        └─ BLSHBacklightOSInterfaceProvider
+             transitionToDisplayMode:withDuration:
+```
+
+This supersedes the earlier interim note that the bridge was “not found”:
+the direct ivar replacement is absent, but the operation-based target-to-
+current/display-state bridge is confirmed.
+
+The runtime anchors remain:
+
+```text
+awake: provider state 2 → target displayMode 4
+lock:  provider state 0 → target displayMode 0
+```
+
+The display-state machine therefore receives mode 4 and mode 0 through the
+same semantic operation path. This is a logical/display-state transition,
+not yet proof of panel power.
+
+### Lower provider branch
+
+The exact `transitionToDisplayMode:withDuration:` implementation has these
+receiver-proven branches:
+
+```text
+provider +0x38  (_displayStateClient: CBDisplayStateClient)
+  → transitionToDisplayMode:withDuration:error:
+
+provider +0x08  (_platformProvider: SBBacklightPlatformProvider)
+  → useAlwaysOnBrightnessCurve:withRampDuration:
+
+provider internal branch
+  → SetBacklightFactor/brightness-policy bookkeeping
+```
+
+The live object used for the natural transition had `_displayStateClient ==
+nil`; the passive class hook recorded zero CoreBrightness calls. The
+platform-provider hook also recorded no call in the captured window. Thus the
+CoreBrightness call is a strong static display-service candidate, but is not
+runtime-confirmed for this device/sample.
+
+### Scene-host propagation
+
+BacklightServicesHost also contains the receiver-proven scene host class:
+
+```text
+BLSHBacklightFBSceneHostEnvironment
+```
+
+Its exact `setDisplayBlanked:` implementation does not call a BKS setter. It:
+
+```text
+loads the FBScene settings object from self +0x08
+calls updateSettingsWithBlock:
+block calls bls_setBlanked: on FBSMutableSceneSettings
+```
+
+The block receives the existing `FBSMutableSceneSettings` object and writes
+the boolean argument unchanged. This is the first concrete scene/FrontBoard
+state-propagation boundary found in the BacklightServicesHost image:
+
+```text
+BLSHBacklightFBSceneHostEnvironment
+  → FBScene updateSettingsWithBlock:
+  → FBSMutableSceneSettings bls_setBlanked:
+```
+
+It is classified as `STATE PROPAGATION / SCENE SETTINGS`, not as physical
+blanking. The implementation changes scene settings; it does not itself
+create a display transaction, call CoreBrightness, invoke BKS/MIG, or touch
+panel power. The previously inspected
+`SBScreenSleepCoordinatorBacklightEnvironment setDisplayBlanked:` is a no-op
+and remains excluded as a physical boundary.
+
+### Built-in versus external BKS distinction
+
+Static shared-stub xrefs show the recovered SpringBoard callers of
+`BKSDisplayServicesSetDisplayBlanked` and
+`BKSDisplayServicesSetBlankingRemovesPower` belong to
+`SBExternalDisplayCoverSheetController`. No built-in iPhone caller was
+identified in that bounded SpringBoard search. Those external-display calls
+must not be used as the causal path for the observed internal panel.
+
+### Updated chain and status
+
+```text
+BLS provider state 2/0
+  → target displayMode 4/0
+  → BLSHPendingUpdateDisplayMode
+  → BLSHBacklightDisplayStateMachine
+  → BLSHBacklightOSInterfaceProvider
+  → [CBDisplayStateClient, if live] or platform/policy branch
+  → scene-state propagation may use FBScene/FBSMutableSceneSettings
+  → lower display service
+  → BackBoard display-services server
+  → _BKDisplayBlankingContext -blank
+  → CAWindowServerDisplay/CAContext transaction
+```
+
+Confirmed now:
+
+```text
+target/current bridge:       CONFIRMED
+logical display transition:  CONFIRMED
+scene-state propagation:     STATICALLY CONFIRMED as a separate host path
+CBDisplayStateClient:         STATIC CANDIDATE, RUNTIME NOT REACHED
+BackBoard blanking context:  STATIC PHYSICAL CANDIDATE
+causal BLS→BackBoard link:   UNRESOLVED
+physical panel-power action: UNRESOLVED below server policy
+```
+
+No new runtime hook is justified yet: the remaining ambiguity is whether the
+live iPhone path uses the nil CoreBrightness receiver, the platform/policy
+branch, or a separate scene/display-service client. A hook on a generic
+scene-settings setter would not distinguish those routes. The next bounded
+static target is the exact owner/consumer that calls
+`BLSHBacklightFBSceneHostEnvironment setDisplayBlanked:` or the first
+FrontBoard scene-settings commit after `bls_setBlanked:`; if that cannot be
+causally connected to the manual transition, the safe cutoff is the already
+identified BackBoard server boundary rather than active display mutation.
+
+## Phase 4B-22 — Direct BackBoard HID backlight-factor handoff
+
+### Question
+
+What is the first external display-service call on the actual built-in BLS
+display-mode path, excluding the nil CoreBrightness client and the separate
+external-display BKS setters?
+
+### Exact caller and branch
+
+The bounded implementation of
+`-[BLSHBacklightOSInterfaceProvider transitionToDisplayMode:withDuration:]`
+contains a direct shared TEXT_STUB call at:
+
+```text
+caller: 0x200de3f2c
+callee stub: 0x2068bff60
+```
+
+The stub was decoded from the iOS 17.1.2 `.40` TEXT_STUBS mapping. Its target
+is:
+
+```text
+0x2068bff60
+  → 0x18fd9c600
+  → _BKSHIDServicesSetBacklightFactorWithFadeDurationAsync
+```
+
+The BackBoardServices implementation at `0x18fd9c600` establishes the
+`com.apple.backboard.hid.services` endpoint and then tail-branches to:
+
+```text
+__BKSHIDSetBacklightFactorWithFadeDurationAsync
+```
+
+using `_BKSHIDServerPort` and `_BKSHIDServerMachPort`. This is a direct
+BackBoard HID service handoff, not a trace call, scene bookkeeping call, or
+BKS external-display setter.
+
+### ABI and value provenance
+
+At the BLS caller, the relevant values are:
+
+```text
+x0 = 1
+s0 = derived backlight factor
+s1 = derived fade duration
+```
+
+The factor is derived from the provider's state table:
+
+```text
+resolved state 1 → factor 1.0
+resolved state 2 → _backlightDimmedFactor
+other/off-side state → factor 0.0
+```
+
+For the observed manual transition, the static branch inputs are:
+
+```text
+prior display mode: 4
+target display mode: 0
+target/off-side table state: 0
+factor argument: 0.0
+fade duration: transition duration carried by d8
+```
+
+The mode-0 call is reached when the prior mode differs from the target mode;
+the earlier runtime observation confirmed that the provider method was
+entered for the natural `4 → 0` transition. This gives strong static plus
+runtime evidence that the observed lock transition selects the zero-factor
+BackBoard HID handoff. No synthetic call or argument modification was made.
+
+### Server-side classification
+
+The local iOS 17.1.2 `backboardd` symbol/string inventory contains the
+matching server operations:
+
+```text
+_BKHIDXXSetBacklightFactorPending
+_BKHIDXXSetBacklightFactorWithFadeDuration
+_BKHIDXXSetBacklightFactorWithFadeDurationAsync
+```
+
+The first causal external boundary for the observed built-in path is now
+identified as:
+
+```text
+BLSHBacklightOSInterfaceProvider
+  → _BKSHIDServicesSetBacklightFactorWithFadeDurationAsync
+  → com.apple.backboard.hid.services
+  → __BKSHIDSetBacklightFactorWithFadeDurationAsync
+  → backboardd _BKHIDXXSetBacklightFactorWithFadeDurationAsync
+```
+
+Classification:
+
+```text
+target/current bridge:       CONFIRMED
+applied display transition:  CONFIRMED
+external display service:    CONFIRMED
+BackBoard HID handoff:       CONFIRMED
+zero-factor blanking input:  STRONGLY CORRELATED
+panel power removal:         NOT PROVEN
+```
+
+This is materially stronger than the previously considered
+`CBDisplayStateClient` path: the CoreBrightness receiver is nil on the live
+object, while the HID service call is a statically resolved direct branch in
+the active provider implementation.
+
+### Physical-boundary limit
+
+`_BKSHIDServicesSetBacklightFactorWithFadeDurationAsync` is the first
+display-service boundary that directly receives a zero backlight factor and
+fade duration. It is the strongest evidence-backed boundary for the visual
+OLED-black transition. It is not, by itself, proof that the panel power rail
+is removed: the BackBoard server may apply a zero factor while leaving panel
+power available for Always-On or other policy reasons.
+
+The separate `BKDisplaySetBlankingRemovesPower` operation remains an
+independent panel-power policy dimension, and its recovered SpringBoard
+caller is external-display-only. Consequently the exact panel-power decision
+below the BackBoard HID factor service remains unresolved without passive
+observation inside the server/driver path. Such observation would require a
+new process boundary and must remain read-only; no active display mutation is
+justified.
+
+### Updated final chain
+
+```text
+BLS provider state 2 → target displayMode 4
+BLS provider state 0 → target displayMode 0
+  → current/target mode operation bridge
+  → BLSHPendingUpdateDisplayMode
+  → BLSHBacklightDisplayStateMachine setDisplayMode:withRampDuration:
+  → BLSHBacklightOSInterfaceProvider transitionToDisplayMode:withDuration:
+  → _BKSHIDServicesSetBacklightFactorWithFadeDurationAsync
+  → com.apple.backboard.hid.services
+  → backboardd _BKHIDXXSetBacklightFactorWithFadeDurationAsync
+  → zero factor / fade application
+  → physical OLED/display response below the service boundary
+```
+
+The exact visual-to-panel-power implementation after the BackBoard HID
+server entry is outside the current safe SpringBoard-only observation scope.
+No additional SpringBoard runtime hook is needed to establish the first
+external handoff; a server-side passive hook would only be justified if the
+remaining panel-power distinction is required.
