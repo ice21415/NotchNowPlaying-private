@@ -16,12 +16,11 @@ static void NNPPhase4BEnvironmentSet(NSString *key, id value) {
 - (void)setPresentation:(id)presentation withTargetBacklightState:(long long)state {
     %orig;
     gNNPPhase4BEnvironmentSequence++;
-    gNNPPhase4BEnvironmentSequence;
     NNPPhase4BEnvironmentSet(@"EnvSetPresentationCount", @(gNNPPhase4BEnvironmentSequence));
     NNPPhase4BEnvironmentSet(@"LastEnvTargetBacklightState", @(state));
     NNPPhase4BEnvironmentSet(@"LastEnvPresentationClass",
                              presentation ? NSStringFromClass([presentation class]) : @"nil");
-    NNPPhase4BEnvironmentSet(@"LastEnvMachineClass", NSStringFromClass([self class]));
+    NNPPhase4BEnvironmentSet(@"LastEnvMachineClass", NSStringFromClass(object_getClass(self)));
     NNPPhase4BEnvironmentSet(@"Sequence", @(gNNPPhase4BEnvironmentSequence));
 }
 
