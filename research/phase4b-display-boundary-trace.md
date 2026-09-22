@@ -1711,3 +1711,391 @@ created by `initWithIdentifier:queue:allowsInvalidation:monitorProvider:sleepAss
 Only the receiver/protocol object that supplies `systemPowerChanged:` should
 be followed.  Generic SystemWake internals and power assertions remain out of
 scope; no assertion is to be acquired or modified.
+
+## Phase 4B-17  SystemWake provider owner provenance
+
+### Question
+
+Which concrete SystemWake objects own the `SWSystemSleepMonitor` power-notification
+path, and does that path identify a display operation or only a system-power
+notification boundary?
+
+### Runtime evidence
+
+The initializer provenance build was produced by GitHub Actions run
+`35695485083`, commit `622006ff142e621c78aafecf4b42220c559ddb9b`, and deployed
+without changing any display or power state.  The persisted Phase 4B domain
+recorded:
+
+```text
+SWSystemSleepMonitor initializer:
+  monitorProvider         = SWSystemSleepMonitorProvider
+  sleepAssertionProvider  = SWSystemSleepAssertionProvider
+  queue                   = OS_dispatch_queue_main
+  result                  = SWSystemSleepMonitor
+```
+
+The provider metadata build then recorded:
+
+```text
+SWSystemSleepMonitorProvider methods:
+  registerForSystemPowerOnQueue:withDelegate:
+  allowPowerChange:
+  cancelPowerChange:
+
+SWSystemSleepMonitorProvider ivars:
+  _lock_systemPowerConnection       int
+  _lock_systemPowerPort             IONotificationPort *
+  _lock_systemPowerNotifier         int
+  _lock_registered                   BOOL
+  _lock_queue                        NSObject<OS_dispatch_queue> *
+  _lock_weakDelegateWrapper          BSZeroingWeakReference *
+
+SWSystemSleepAssertionProvider:
+  acquirePreventSystemSleepAssertionWithIdentifier:
+```
+
+The provider metadata came from GitHub Actions run `35695756887`, commit
+`e0caf27c6c7f96e56154ed90e330885c2c0b8dba`; the downloaded package SHA-256
+was `F312CD9BA15B05BDD8784298A000F1583ACE643114B53058667460F4CD12E0FB`.
+
+### Classification
+
+`SWSystemSleepMonitorProvider` is a concrete SystemWake power-notification
+owner, not a display-state commit object.  Its receiver-proven ivars show an
+IOKit notification port, power-connection/notifier handles, registration
+state, and a weak delegate.  The exact registration selector is therefore the
+next semantic handoff inside SystemWake:
+
+```text
+SWSystemSleepMonitor
+  ← delegate from SWSystemSleepMonitorProvider
+  ← IOKit system-power notification registration
+  → systemPowerChanged:notificationID:
+  → SystemWake monitor state/callbacks
+  → BLSHOnSystemSleepAction callbacks (runtime confirmed)
+```
+
+This is an **IOKit/SystemWake power-notification boundary**, not yet the
+physical OLED boundary.  The `SWSystemSleepAssertionProvider` is intentionally
+not followed as a display path: its only recovered method acquires a sleep
+assertion, and assertions are lifecycle policy rather than panel blanking.
+
+### BackBoard/display-service evidence
+
+The previously extracted iOS 17.1.2 `backboardd` image independently exposes
+the actual display blanking service surface:
+
+```text
+Mach service: com.apple.backboard.display.services
+server entry: BKDisplayServices MiG Server
+server operations:
+  BKDisplaySetDisplayBlanked
+  BKDisplaySetBlankingRemovesPower
+  BKDisplayWillUnblank
+```
+
+The server image also contains:
+
+```text
+BKDisplayController -displayIsBlanked:
+BKDisplayBlankingObserver -display:didBecomeBlank:
+_BKDisplayBlankingContext -blank
+_BKDisplayBlankingContext -clear
+```
+
+`_BKDisplayBlankingContext` owns a `CAWindowServerDisplay` and `CAContext`,
+and its `-blank` method is the strongest static physical-boundary candidate
+recovered so far: it is the first identified object whose role is to create
+the display blanking context rather than merely represent BLS state.  The
+separate `BKDisplaySetBlankingRemovesPower` server operation establishes that
+panel-power removal is a distinct policy step from visual blanking.
+
+The BackBoard client wrapper evidence remains:
+
+```text
+client service: com.apple.backboard.display.services
+client operation: BKSDisplayServicesSetDisplayBlanked
+server operation: __BKSDisplaySetDisplayBlanked
+```
+
+However, no passive observation in the SpringBoard-injected process has yet
+shown the BLS transition directly invoking that wrapper, and no exact IPC
+message from the SystemWake provider to the BackBoard server has been
+recovered.  Thus the following distinction is required:
+
+```text
+SystemWake/IOKit handoff:             runtime/static confirmed
+BackBoard display-service existence: static confirmed
+Current BLS → BackBoard IPC:          unresolved
+physical OLED/power execution:        strong static candidate, not runtime confirmed
+```
+
+### Disproven or excluded paths
+
+```text
+BLSHBacklightEnvironmentStateMachine setPresentation:...:  no runtime events
+0x200e30044                                             trace/bookkeeping only
+0x2068c02c0                                             libsystem_trace only
+BLSSetPresentationOperation                             passive data carrier
+BLSHTransitionStateMachine +0x40                        BLSAssertion lifecycle
+CBDisplayStateClient                                    nil on observed provider
+BLSHBacklightDisplayStateMachine display callback        not observed
+```
+
+### Next semantic target
+
+The highest-value remaining passive/static target is the exact registration
+and delegate relationship for:
+
+```text
+SWSystemSleepMonitorProvider -registerForSystemPowerOnQueue:withDelegate:
+```
+
+followed by the already identified BackBoard service boundary only through
+static IPC/service evidence.  A direct runtime hook in `backboardd` would be
+needed to prove the final server-side `BKDisplaySetDisplayBlanked`/blanking
+context call, but injecting into that unrelated daemon is outside this phase's
+safety boundary.  No active display mutation is justified.
+
+## Phase 4B-18  SystemWake provider registration and IOKit ownership
+
+### Question
+
+Which object is the actual `SWSystemSleepMonitor` delegate, and does the
+SystemWake provider expose a concrete power-notification handoff rather than
+an inferred display call?
+
+### Runtime evidence
+
+The provider-metadata build was produced by GitHub Actions run `35695756887`,
+commit `e0caf27c6c7f96e56154ed90e330885c2c0b8dba`, and deployed through the
+normal RootHide package path.  Persisted diagnostics recorded:
+
+```text
+registerForSystemPowerOnQueue:withDelegate: count = 1
+delegate class                         = SWSystemSleepMonitor
+queue class                            = OS_dispatch_queue_main
+```
+
+The same run recorded the class-level provider metadata:
+
+```text
+provider: SWSystemSleepMonitorProvider
+  registerForSystemPowerOnQueue:withDelegate:
+  allowPowerChange:
+  cancelPowerChange:
+
+provider ivars:
+  _lock_systemPowerConnection = int
+  _lock_systemPowerPort       = IONotificationPort *
+  _lock_systemPowerNotifier   = int
+  _lock_registered             = BOOL
+  _lock_weakDelegateWrapper    = BSZeroingWeakReference *
+```
+
+The exact registration receiver and delegate are therefore runtime-confirmed;
+the provider is not a guessed owner based on a selector name.  Its power
+connection/notifier fields and `IONotificationPort` type establish an IOKit
+system-power notification path.  The previously observed
+`systemPowerChanged:notificationID:` receiver is the registered
+`SWSystemSleepMonitor` delegate, and its callback path reaches the already
+runtime-confirmed `BLSHOnSystemSleepAction` sleep callbacks.
+
+### Classification
+
+```text
+BLS provider/target transition:       runtime confirmed
+SystemWake monitor owner:              runtime confirmed
+SystemWake provider registration:      runtime confirmed
+IOKit system-power notification path:  static + runtime owner confirmed
+BackBoard display-service call:        not runtime observed
+physical OLED/power operation:         unresolved
+```
+
+`allowPowerChange:` and `cancelPowerChange:` remain passive observation
+points for one natural side-button transition.  They are not called manually
+and no power assertion is acquired.  Their presence does not itself prove
+that a panel is blanked; it proves only the power-notification acknowledgement
+layer.
+
+### Static physical-boundary candidate
+
+The extracted iOS 17.1.2 `backboardd` image contains the next distinct
+service boundary:
+
+```text
+com.apple.backboard.display.services
+  → BKDisplayServices MiG Server
+  → __BKSDisplaySetDisplayBlanked / BKDisplaySetDisplayBlanked
+  → BKDisplayController / _BKDisplayBlankingContext
+  → CAWindowServerDisplay + CAContext
+```
+
+The server-side `_BKDisplayBlankingContext` owns a `CAWindowServerDisplay`
+and exposes `-blank`/`-clear`; the server also exposes a separate
+`BKDisplaySetBlankingRemovesPower` operation.  This is the strongest static
+display-service/physical-boundary candidate, while the SystemWake provider is
+the preceding power-notification boundary.
+
+The BLS-to-BackBoard message association is still not directly proven: the
+observed BLS provider's `_displayStateClient` was nil, and no SpringBoard-side
+passive hook recorded a `CBDisplayStateClient` call.  No unrelated daemon was
+injected, and no BKS/MIG operation was invoked.
+
+### Next semantic target
+
+The only remaining in-scope passive observation is one natural transition at
+the already registered provider methods:
+
+```text
+SWSystemSleepMonitorProvider -allowPowerChange:
+SWSystemSleepMonitorProvider -cancelPowerChange:
+```
+
+If those callbacks occur without a display-service call in SpringBoard, the
+remaining server-side blanking invocation cannot be proven from the current
+process without a separately authorized passive backboardd observation or
+additional static IPC reconstruction.  No active display mutation is
+justified.
+
+## Phase 4B-19  Static resolution of the SystemWake power handoff
+
+### Question
+
+Does the SystemWake provider merely name a power path, or does its actual
+implementation prove the IOKit handoff and its acknowledgement semantics?
+
+### Provider implementation
+
+The `SystemWake.framework` image was extracted from the local iOS 17.1.2
+shared cache.  Runtime method addresses were mapped to the static image using
+the runtime image base `0x211dbe000` and static image base `0x1f436e000`.
+
+```text
+selector                                      runtime       static
+registerForSystemPowerOnQueue:withDelegate:  0x211dc1e48  0x1f4371e48
+allowPowerChange:                            0x211dc2768  0x1f4372768
+cancelPowerChange:                           0x211dc2924  0x1f4372924
+```
+
+The static `registerForSystemPowerOnQueue:withDelegate:` implementation:
+
+```text
+stores the delegate through a BSZeroingWeakReference
+constructs _SWSystemPowerCallback
+calls the IOKit registration path
+stores the returned connection at self +0x20
+stores the notification port at self +0x28
+stores the notifier at self +0x30
+sets the registered byte at self +0x34
+```
+
+The image's undefined-symbol surface contains the exact IOKit imports:
+
+```text
+_IORegisterForSystemPower
+_IOAllowPowerChange
+_IOCancelPowerChange
+_IODeregisterForSystemPower
+_IONotificationPortDestroy
+_IONotificationPortSetDispatchQueue
+```
+
+At `0x1f4371eec`–`0x1f4371efc`, the callback pointer is formed as
+`_SWSystemPowerCallback` and passed into the registration helper; the return
+value is stored into the provider's connection field.  This is exact
+receiver/argument provenance, not selector-name inference.
+
+The static `allowPowerChange:` implementation loads the provider connection
+from `self +0x20`, passes it as the first argument, and passes the method's
+`messageID` as the second argument to the resolved IOKit import at the
+`IOAllowPowerChange` stub.  `cancelPowerChange:` performs the corresponding
+operation through `IOCancelPowerChange`, using the same connection and
+message-ID provenance.
+
+### Semantic classification
+
+```text
+SWSystemSleepMonitorProvider registration:  IOKit power-notification setup
+SWSystemPowerCallback:                       IOKit → SystemWake callback
+systemPowerChanged:notificationID::          SystemWake state machine
+allowPowerChange:/cancelPowerChange::        power-notification acknowledgement
+BLSHOnSystemSleepAction callbacks:           BLS lifecycle propagation
+```
+
+Neither `IOAllowPowerChange` nor `IOCancelPowerChange` is a display blanking
+operation.  They acknowledge a system-power notification; they do not set a
+display mode, blank flag, or panel power bit.  This eliminates the tempting
+but incorrect classification of the SystemWake provider as the physical
+display boundary.
+
+### BackBoard physical candidate, statically bounded
+
+The extracted `backboardd` image provides stronger evidence for the first
+display-specific boundary.  Objective-C metadata gives:
+
+```text
+_BKDisplayBlankingContext
+  _display          CAWindowServerDisplay *  +0x08
+  _blankingContext  CAContext *              +0x10
+```
+
+At `0x10001b8c0`, `-[_BKDisplayBlankingContext blank]` checks whether the
+blanking context already exists, constructs a block, and calls
+`-[_BKDisplayBlankingContext _wrapInCATransaction:]`.  The wrapper begins a
+`CATransaction`, invokes the supplied block, and commits the transaction.
+The implementation logs “blanking display” and the context owns the
+`CAWindowServerDisplay`/`CAContext` pair.  Its inverse
+`-clear` logs “clearing blanked display”.
+
+The same server image exposes:
+
+```text
+BKDisplaySetDisplayBlanked
+BKDisplaySetBlankingRemovesPower
+BKDisplayWillUnblank
+```
+
+behind the Mach service:
+
+```text
+com.apple.backboard.display.services
+```
+
+Thus the evidence-backed lower chain is:
+
+```text
+SystemWake IOKit power notification
+  → BackBoard display-services Mach endpoint
+  → BKDisplaySetDisplayBlanked
+  → _BKDisplayBlankingContext -blank / CATransaction
+  → CAWindowServerDisplay + CAContext
+```
+
+The separate `BKDisplaySetBlankingRemovesPower` operation means that the
+server distinguishes visual blanking from removal of panel power.  The final
+panel-power decision is therefore a server-side policy/driver consequence of
+the display-service request, not the SystemWake acknowledgement itself.
+
+### Runtime status and stop boundary
+
+The current passive build confirmed registration and delegate provenance, but
+no new natural transition occurred after installation, so
+`allowPowerChange:`/`cancelPowerChange:` have not acquired a fresh runtime
+count.  Earlier natural-transition runtime evidence already confirmed the
+SystemWake monitor receiver and the two `BLSHOnSystemSleepAction` callbacks.
+
+No SpringBoard-side `CBDisplayStateClient` call was observed because the live
+provider's `_displayStateClient` was nil.  Proving the final server-side
+blanking invocation would require either:
+
+```text
+an exact static reconstruction of the SystemWake/backboardd message route,
+or a passive observation inside the unrelated backboardd server process
+```
+
+No BKS/MIG request was invoked and no daemon was modified.  The current
+strongest physical-boundary candidate is therefore
+`BKDisplaySetDisplayBlanked` → `_BKDisplayBlankingContext -blank`, while the
+exact BLS-to-that-server causal message remains unresolved.
