@@ -2,6 +2,7 @@
 #import <dlfcn.h>
 #import <ptrauth.h>
 #import <objc/runtime.h>
+#import <string.h>
 
 static CFStringRef const NNPPhase4BDisplayModeDomain =
     CFSTR("com.user.notchnowplaying.phase4b");
@@ -35,8 +36,10 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
                              @(gNNPPhase4BDisplayModeSequence));
 
     if (gNNPPhase4BDisplayModeSequence == 1) {
-        id __unsafe_unretained downstream =
-            *(id __unsafe_unretained *)((uint8_t *)(__bridge void *)self + 0x18);
+        id __unsafe_unretained downstream = nil;
+        memcpy(&downstream,
+               (const void *)((uintptr_t)(__bridge void *)self + 0x18),
+               sizeof(downstream));
         if (downstream) {
             SEL transitionSelector = NSSelectorFromString(@"transitionToDisplayMode:withDuration:");
             Method transitionMethod = class_getInstanceMethod(object_getClass(downstream),
