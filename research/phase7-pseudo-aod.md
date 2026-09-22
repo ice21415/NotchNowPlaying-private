@@ -164,8 +164,10 @@ NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE=0
 ```
 
 No experimental Phase 7 package was built or installed because no experimental
-controller implementation was justified. The previously validated baseline
-run `35723934048` remains the package/injection reference. Any future
+controller implementation was justified. The production baseline rebuild
+completed successfully in GitHub Actions run `35726881401` (34 seconds), with
+the experimental flag still disabled. The previously validated baseline run
+`35723934048` remains the package/injection reference. Any future
 candidate must receive a separate workflow and artifact identity before device
 deployment.
 
