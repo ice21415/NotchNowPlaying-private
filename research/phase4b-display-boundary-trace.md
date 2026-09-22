@@ -1571,3 +1571,72 @@ provider object's object-valued ivars and mode/duration call record.  This is
 needed to determine whether an additional receiver, distinct from `+0x08` and
 `+0x38`, is the actual display-service owner.  It does not invoke a new
 private API or alter any argument.
+
+## Phase 4B-15  Sleep-monitor callback and applied-state callback check
+
+### Question
+
+The provider's live object graph identified both a nil CoreBrightness client
+and a non-nil sleep/lifecycle path.  A new passive build recorded the provider
+transition, enumerated all object-valued provider ivars once, and observed the
+existing display-state delegate callback without changing any call.
+
+### Runtime evidence
+
+The natural transition record was:
+
+```text
+provider transition mode:       0
+provider transition duration:   0.185
+provider object:                 BLSHBacklightOSInterfaceProvider
+```
+
+The receiver-proven provider object contained:
+
+```text
+_platformProvider          = SBBacklightPlatformProvider
+_watchdogProvider          = BLSHWatchdogProvider
+_criticalAssertProvider    = BLSHCriticalAssertProvider
+_displayStateClient        = nil
+_suppressionManager        = nil
+_setCBDisplayModeTimer     = BSContinuousMachTimer
+_lock_watchdogTimer        = nil
+_cbDisplayModeDelegate     = BLSHBacklightDisplayStateMachine
+```
+
+The passive hook on
+`BLSHBacklightDisplayStateMachine -displayState:didUpdateToMode:` recorded no
+callback.  This rules out a runtime-confirmed applied-mode acknowledgement
+through that delegate for this sample; it does not make the method unsafe or
+prove that it is never used on another path.
+
+In the same transition, the existing `BLSHOnSystemSleepAction` hooks did
+record:
+
+```text
+systemSleepMonitor:prepareForSleepWithCompletion:  count=1
+systemSleepMonitor:sleepRequestedWithResult:       count=1
+monitor class: SWSystemSleepMonitor
+completion class: __NSStackBlock__
+```
+
+This is the first runtime-confirmed callback leaving the BLS state-machine
+object graph toward the system sleep coordinator.  It is a state/lifecycle
+propagation boundary, not yet proof of the final panel-power operation.
+
+### Classification
+
+```text
+BLS provider state/target:             confirmed
+provider transition:                   confirmed
+CoreBrightness display client:         not reached (nil receiver)
+display-state delegate acknowledgement: not observed
+BLSHOnSystemSleepAction:               runtime confirmed
+SWSystemSleepMonitor:                  runtime confirmed receiver
+physical blanking/power boundary:      unresolved
+```
+
+The next bounded static target is the implementation of the two
+`BLSHOnSystemSleepAction` callbacks, using their exact class/method ownership,
+or the single callback/completion receiver that they invoke.  Generic sleep
+monitor internals will not be expanded.  No display mutation is justified.

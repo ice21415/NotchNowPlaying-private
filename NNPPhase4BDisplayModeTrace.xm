@@ -350,26 +350,6 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
 
 %end
 
-%hook BLSHOnSystemSleepAction
-
-- (void)systemSleepMonitor:(id)monitor sleepRequestedWithResult:(id)completion {
-    NNPPhase4BDisplayModeSet(@"SleepRequestedCallCount", @1);
-    NNPPhase4BDisplayModeSet(@"SleepRequestedMonitorClass",
-                             monitor ? NSStringFromClass(object_getClass(monitor)) : @"<nil>");
-    NNPPhase4BDisplayModeSet(@"SleepRequestedCompletionClass",
-                             completion ? NSStringFromClass(object_getClass(completion)) : @"<nil>");
-    %orig;
-}
-
-- (void)systemSleepMonitor:(id)monitor prepareForSleepWithCompletion:(id)completion {
-    NNPPhase4BDisplayModeSet(@"PrepareForSleepCallCount", @1);
-    NNPPhase4BDisplayModeSet(@"PrepareForSleepMonitorClass",
-                             monitor ? NSStringFromClass(object_getClass(monitor)) : @"<nil>");
-    %orig;
-}
-
-%end
-
 %hook BSServiceConnection
 
 - (id)performChangeRequest:(id)request {
@@ -475,6 +455,30 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
         NNPPhase4BDisplayModeSet(@"SleepActionClassFound", @YES);
         NNPPhase4BDisplayModeSet(@"SleepActionMethods",
                                  [sleepNames componentsJoinedByString:@"|"]);
+        SEL requestedSelector = NSSelectorFromString(@"systemSleepMonitor:sleepRequestedWithResult:");
+        SEL prepareSelector = NSSelectorFromString(@"systemSleepMonitor:prepareForSleepWithCompletion:");
+        Method requestedMethod = class_getInstanceMethod(sleepActionClass, requestedSelector);
+        Method prepareMethod = class_getInstanceMethod(sleepActionClass, prepareSelector);
+        Method methodsToInspect[2] = { requestedMethod, prepareMethod };
+        for (NSUInteger index = 0; index < 2; index++) {
+            Method method = methodsToInspect[index];
+            if (!method) continue;
+            IMP imp = method_getImplementation(method);
+            Dl_info info = {0};
+            if (!imp || !dladdr((const void *)imp, &info)) continue;
+            void *strippedIMP = ptrauth_strip((void *)imp, ptrauth_key_function_pointer);
+            NSString *address = [NSString stringWithFormat:@"0x%llx",
+                                 (unsigned long long)(uintptr_t)strippedIMP];
+            NSString *image = info.dli_fname
+                ? [NSString stringWithUTF8String:info.dli_fname] : @"unknown";
+            if (index == 0) {
+                NNPPhase4BDisplayModeSet(@"SleepRequestedOriginalIMP", address);
+                NNPPhase4BDisplayModeSet(@"SleepRequestedOriginalImage", image);
+            } else {
+                NNPPhase4BDisplayModeSet(@"PrepareForSleepOriginalIMP", address);
+                NNPPhase4BDisplayModeSet(@"PrepareForSleepOriginalImage", image);
+            }
+        }
     } else {
         NNPPhase4BDisplayModeSet(@"SleepActionClassFound", @NO);
     }
