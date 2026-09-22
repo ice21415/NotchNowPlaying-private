@@ -712,3 +712,27 @@ lock-transition value: NOT RETRIEVED
 ```
 
 No physical display-state label is assigned from this incomplete observation.
+
+## Phase 4A completed read-only observation
+
+After the user performed one ordinary physical side-button lock transition,
+the diagnostic preference domain was retrieved successfully. The callback and
+single read were both recorded:
+
+```text
+BuildIdentity: 6b0c5ca
+LockCallbackEntered: true
+StateSelectorFound: true
+SharedBacklightFound: true
+LockBacklightState: 0
+AwakeBacklightState: 2
+```
+
+```text
+awake: OBSERVED = 2
+lock-transition: OBSERVED = 0
+comparison: different
+```
+
+This is a read-only provider-state correlation. It does not by itself assign
+universal physical labels to either integer.
