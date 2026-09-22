@@ -479,4 +479,18 @@ Spotify UI: NOT APPLICABLE
 Crash/Jetsam: none observed in the bounded check
 Delayed CFPreferences: runtime PASS; preference persistence UNVERIFIED
 ```
+
+Test 4 restored the normal delayed `NNPController` installation with all
+Phase4A/BLS paths disabled. After deployment and reload, Spotify playback
+showed the NotchNowPlaying UI, so the controller-only path passed.
+
+```text
+workflow: 35672120956
+commit: c690713ba5bc6988ba530638b44258d2fc5d9418
+artifact SHA256: 76121796A1ACA4F4779A9E7C705EDAB76EA3E336E5D48C6295543D8F93B8CDB5
+install: PASS
+reload: PASS
+Spotify UI: PASS
+controller-only: PASS
+```
 ```
