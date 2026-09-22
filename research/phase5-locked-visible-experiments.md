@@ -61,16 +61,22 @@ side-button blanking.
 
 ### Actual runtime observations
 
-Not run on the target device in this workspace. Source-level inspection shows
-the existing observers and cleanup path remain intact. Device validation must
-separately record compilation, SpringBoard injection, UI rendering, logical
-lock-state correctness, and physical display visibility.
+GitHub Actions run `35723934048` compiled the normal arm64e RootHide package.
+The package was installed on the target and SpringBoard was resprung. During
+manual playback testing, the UI rendered correctly while the display was
+awake: artwork, metadata, and media-driven UI behavior were visible. After
+the physical side-button lock, the display still followed normal iOS blanking
+and the UI was no longer visible.
+
+This confirms SpringBoard injection, awake-screen UI functionality, and the
+expected normal blanking behavior. It does not establish locked-visible
+behavior.
 
 ### Result
 
-`PASS` for the safe, awake-screen architecture by inspection.  `NOT VERIFIED`
-for target-device UI behavior until the existing RootHide deployment workflow
-is run.
+`PASS` for the safe awake-screen prototype and `UNSUPPORTED` for continuous
+locked-visible presentation. The physical display visibility result is
+consistent with the Phase 4 zero-factor boundary finding.
 
 ### Known limitations
 
