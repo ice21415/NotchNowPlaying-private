@@ -482,6 +482,40 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
     } else {
         NNPPhase4BDisplayModeSet(@"SleepActionClassFound", @NO);
     }
+    Class systemSleepMonitorClass = NSClassFromString(@"SWSystemSleepMonitor");
+    if (systemSleepMonitorClass) {
+        unsigned int monitorCount = 0;
+        Method *monitorMethods = class_copyMethodList(systemSleepMonitorClass, &monitorCount);
+        NSMutableArray *monitorNames = [NSMutableArray array];
+        NSString *monitorImage = nil;
+        for (unsigned int index = 0; monitorMethods && index < monitorCount; index++) {
+            SEL selector = method_getName(monitorMethods[index]);
+            const char *name = sel_getName(selector);
+            if (!name) continue;
+            NSString *selectorName = [NSString stringWithUTF8String:name];
+            NSString *lower = selectorName.lowercaseString;
+            if (![lower containsString:@"sleep"] && ![lower containsString:@"prepare"] &&
+                ![lower containsString:@"request"] && ![lower containsString:@"display"] &&
+                ![lower containsString:@"power"] && ![lower containsString:@"blank"]) continue;
+            const char *types = method_getTypeEncoding(monitorMethods[index]);
+            [monitorNames addObject:[NSString stringWithFormat:@"%@[%@]", selectorName,
+                                     types ? [NSString stringWithUTF8String:types] : @"?"]];
+            if (!monitorImage) {
+                IMP imp = method_getImplementation(monitorMethods[index]);
+                Dl_info info = {0};
+                if (imp && dladdr((const void *)imp, &info) && info.dli_fname) {
+                    monitorImage = [NSString stringWithUTF8String:info.dli_fname];
+                }
+            }
+        }
+        if (monitorMethods) free(monitorMethods);
+        NNPPhase4BDisplayModeSet(@"SystemSleepMonitorClassFound", @YES);
+        NNPPhase4BDisplayModeSet(@"SystemSleepMonitorMethods",
+                                 [monitorNames componentsJoinedByString:@"|"]);
+        if (monitorImage) NNPPhase4BDisplayModeSet(@"SystemSleepMonitorImage", monitorImage);
+    } else {
+        NNPPhase4BDisplayModeSet(@"SystemSleepMonitorClassFound", @NO);
+    }
     Class displayStateClass = NSClassFromString(@"BLSHBacklightDisplayStateMachine");
     SEL displayModeSelector = NSSelectorFromString(@"setDisplayMode:withRampDuration:");
     NNPPhase4BDisplayModeSet(@"DisplayModeClassFound", @(displayStateClass != Nil));
