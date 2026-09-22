@@ -11,6 +11,8 @@ FOUNDATION_EXPORT NSString * const NNPPreferencesDidChangeNotification;
 @property(nonatomic, readonly) BOOL showArtist;
 @property(nonatomic, readonly) BOOL showProgress;
 @property(nonatomic, readonly) BOOL hideWhenPaused;
+@property(nonatomic, readonly) BOOL experimentalLockedVisible;
+@property(nonatomic, readonly) NSTimeInterval experimentalMaxDuration;
 @property(nonatomic, readonly) NSTimeInterval progressUpdateInterval;
 @property(nonatomic, readonly) CGFloat artworkSize;
 @property(nonatomic, readonly) CGFloat cornerRadius;

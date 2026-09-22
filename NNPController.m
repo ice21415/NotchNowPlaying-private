@@ -61,10 +61,14 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 }
 - (void)applyLockedBackground { self.window.backgroundColor = self.locked ? UIColor.blackColor : UIColor.clearColor; self.window.rootViewController.view.backgroundColor = self.locked ? UIColor.blackColor : UIColor.clearColor; }
 - (void)applyViewPreferences { self.view.showArtwork = self.preferences.showArtwork; self.view.showArtist = self.preferences.showArtist; self.view.showProgress = self.preferences.showProgress; self.view.artworkSize = self.preferences.artworkSize; self.view.cornerRadius = self.preferences.cornerRadius; self.view.textSize = self.preferences.textSize; self.view.progressHeight = self.preferences.progressHeight; [self.view setNeedsLayout]; }
-- (void)reconcile { dispatch_async(dispatch_get_main_queue(), ^{ BOOL show = [self shouldShow]; NNPDiagnosticSetBool(@"UIVisible", show); if (!show) { [self hide]; return; } [self makeWindow]; [self applyLockedBackground]; [self applyViewPreferences]; [self.view updateState:self.state];
+- (void)reconcile { dispatch_async(dispatch_get_main_queue(), ^{ BOOL show = [self shouldShow]; NNPDiagnosticSetBool(@"UIVisible", show);
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
-        if (self.locked) { [self.display startLockedVisibleMode]; } else { [self.display stopLockedVisibleMode]; }
+        self.display.deviceLocked = self.locked;
+        self.display.maximumDuration = self.preferences.experimentalMaxDuration;
+        BOOL experimentEligible = self.preferences.experimentalLockedVisible && self.preferences.enabled && self.state.hasTrack && self.state.playing && [self isAllowedMedia:self.state] && (self.locked ? self.preferences.showOnLockScreen : self.preferences.showWhileUnlocked);
+        if (experimentEligible) { [self.display startLockedVisibleMode]; } else { [self.display stopLockedVisibleMode]; }
 #endif
+        if (!show) { [self hide]; return; } [self makeWindow]; [self applyLockedBackground]; [self applyViewPreferences]; [self.view updateState:self.state];
         if (self.window.hidden) { self.window.hidden = NO; NSLog(@"%@ overlay shown", NNPLog); } [self startProgressTimer]; [self updateProgress]; }); }
 - (void)hide {
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE

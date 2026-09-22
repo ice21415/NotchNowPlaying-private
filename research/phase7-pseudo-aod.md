@@ -4,21 +4,20 @@ Date: 2026-09-22
 Target: iPhone 12 mini / iPhone13,1, iOS 17.1.2, RootHide  
 Baseline: `main` commit `a9d7f1e`
 
-## Final status
+## Current status
 
 ```text
-Milestone A — display-path feasibility: UNSUPPORTED
+Milestone A — display-path feasibility: EXPERIMENTAL CANDIDATE
 Milestone B — minimal visibility prototype: NOT TESTED
 Milestone C — Now Playing integration: NOT TESTED
 Milestone D — reliability: NOT TESTED
-Overall pseudo-AOD objective: UNSUPPORTED
+Overall pseudo-AOD objective: NOT TESTED
 ```
 
-The Phase 5 awake-screen implementation remains the stable result. No Phase 7
-runtime display modification was deployed because no candidate had all of the
-required properties: identifiable ownership, understood input contract,
-reversible lifecycle, and evidence that it preserves actual OLED visibility
-after the normal lock-side blanking transition.
+The Phase 5 awake-screen implementation remains the stable result. Phase 7
+now contains an isolated, opt-in candidate for device testing; it has not yet
+been installed or validated on the target. It is intentionally not claimed as
+pseudo-AOD until the manual side-button test produces evidence.
 
 The device remains securely locked throughout the existing validation. No
 passcode, Face ID, authentication, or lock-state enforcement behavior was
@@ -94,7 +93,8 @@ tweak can enable them. No ambient controller or AOD assertion was acquired.
 
 ### `useAlwaysOnBrightnessCurve:withRampDuration:`
 
-Result: `INSUFFICIENT EVIDENCE` → `UNSUPPORTED` for implementation.
+Result: `INSUFFICIENT EVIDENCE` as a general mechanism; `EXPERIMENTAL CANDIDATE`
+for a bounded proof-of-concept only.
 
 Phase 4B identified this selector on the platform-provider side and treated it
 as brightness-policy work. The existing passive trace recorded the provider
@@ -102,7 +102,9 @@ and selector metadata, but did not establish a lock-side runtime call with a
 known input/output effect. Even if called, a brightness curve does not prove
 panel power or compositing after blanking.
 
-No hook or synthetic invocation was added.
+The Phase 7 candidate does not invoke the brightness-curve selector. It uses
+the already receiver-proven BLS provider method as a bounded mode-substitution
+experiment described below. This does not establish panel power in advance.
 
 ### BLS assertions (`currentDisplayStateAssertion`, `disableAODAssertion`)
 
@@ -140,15 +142,38 @@ The recovered BKS callers are owned by `SBExternalDisplayCoverSheetController`.
 That path is for external displays and is not a built-in iPhone pseudo-AOD
 mechanism.
 
-## Milestones B–D decision
+## Milestone B — minimal visibility prototype
 
-No candidate passed Milestone A. Consequently:
+Implementation: `NNPPhase7PseudoAOD.xm` is compiled only when
+`NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE=1`. It passively records the live
+`BLSHBacklightOSInterfaceProvider` receiver and, only while the user preference
+`ExperimentalLockedVisible` is enabled, substitutes a lock-side
+`transitionToDisplayMode:0` call with mode `4`. Mode `4` is the previously
+observed awake-side target mode; this is a test input, not a semantic claim
+that mode `4` means “panel on”.
+
+The controller arms while eligible playback is active so the hook is armed
+before the physical side-button transition. It has a 5–60 second configurable
+maximum duration (default 30 seconds). On stop, unlock, playback stop,
+preference disable or timeout it disarms and requests the normal mode `0`
+transition when the device is logically locked. All calls are diagnostic and
+fail closed when the provider/selector is unavailable.
+
+Status: `NOT TESTED` on device.
+
+Known risk: mode `4` may represent a normal brightness/policy state rather
+than an ambient state. Battery, heat and OLED retention may increase during
+the bounded experiment. Do not leave the experiment enabled unattended.
+
+## Milestones C–D decision
+
+The minimal candidate is not yet validated. Consequently:
 
 - no minimal visible test element was implemented;
 - no media integration changes were made;
 - no repeated lock/unlock or notification reliability experiment was run;
-- no private display hook was enabled in a package;
-- `NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE` remains `0`;
+- the experimental package is separate from production and is not installed;
+- production `NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE` remains `0`;
 - `NNPDisplayController -isLockedVisibleSupported` remains `NO`.
 
 This is an intentional stop at the evidence boundary, not a compilation-based
@@ -163,13 +188,11 @@ baseline workflow and explicitly builds with:
 NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE=0
 ```
 
-No experimental Phase 7 package was built or installed because no experimental
-controller implementation was justified. The production baseline rebuild
-completed successfully in GitHub Actions run `35726881401` (34 seconds), with
-the experimental flag still disabled. The previously validated baseline run
-`35723934048` remains the package/injection reference. Any future
-candidate must receive a separate workflow and artifact identity before device
-deployment.
+The production baseline rebuild completed successfully in GitHub Actions run
+`35726881401` (34 seconds), with the experimental flag disabled. The separate
+`.github/workflows/build-phase7-experimental.yml` workflow is the only allowed
+build path for the candidate. It must produce a distinct artifact before any
+device deployment. No experimental package has yet been built or installed.
 
 Validation separation:
 
@@ -185,11 +208,12 @@ Validation separation:
 
 ## Risks and recovery
 
-No Phase 7 display modification was deployed, so there is no new low-level
-rollback state. The stable recovery path is to keep the experimental flag at
-`0`, disable the tweak through preferences, or remove the Phase 5 package and
-respring. No thermal protection, panel-power policy, authentication state or
-system file was changed.
+The experimental package has not yet been deployed. After deployment, the
+recovery path is: disable `Experimental Locked Visible`, stop playback, unlock
+the device, wait for the configured maximum duration if needed, and respring
+if the display does not return to normal. Reinstall the production artifact
+with the flag at `0` as the final rollback. No thermal protection,
+authentication state or system file is intentionally changed.
 
 A future experiment would require, at minimum, a bounded duration, an explicit
 user setting, conservative brightness, lock/unlock and SpringBoard-reload

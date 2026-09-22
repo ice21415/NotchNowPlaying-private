@@ -15,8 +15,9 @@
         { Type = PSGroupSpecifier; Title = "Behavior"; },
         { Type = PSSwitchSpecifier; Title = "Hide When Paused"; Key = HideWhenPaused; DefaultValue = YES; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
         { Type = PSSliderSpecifier; Title = "Progress Update Interval"; Key = ProgressUpdateInterval; DefaultValue = 1; MinimumValue = 0.5; MaximumValue = 5; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { Type = PSGroupSpecifier; Title = "Locked Display"; FooterText = "Locked-visible display mode is currently disabled because the iOS 17.1.2 BackBoard display argument contract is still under verification."; },
-        { Type = PSSwitchSpecifier; Title = "Keep Visible When Locked"; Key = KeepVisibleWhenLocked; DefaultValue = NO; Disabled = YES; },
+        { Type = PSGroupSpecifier; Title = "Locked Display"; FooterText = "Experimental only. May keep the display visible for a short period after lock. Disable immediately if the display does not recover normally."; },
+        { Type = PSSwitchSpecifier; Title = "Experimental Locked Visible"; Key = ExperimentalLockedVisible; DefaultValue = NO; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { Type = PSSliderSpecifier; Title = "Experimental Maximum Duration"; Key = ExperimentalMaxDuration; DefaultValue = 30; MinimumValue = 5; MaximumValue = 60; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
         { Type = PSGroupSpecifier; Title = "Diagnostics"; FooterText = "Runtime diagnostics are stored separately and do not include account information, song history, or credentials."; }
     );
 }

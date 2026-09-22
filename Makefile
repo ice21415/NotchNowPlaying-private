@@ -86,5 +86,9 @@ ifeq ($(NNP_ENABLE_PHASE4B_DISPLAY_MODE_TRACE),1)
 NotchNowPlaying_FILES += NNPPhase4BDisplayModeTrace.xm
 endif
 
+ifeq ($(NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE),1)
+NotchNowPlaying_FILES += NNPPhase7PseudoAOD.xm
+endif
+
 
 include $(THEOS_MAKE_PATH)/tweak.mk
