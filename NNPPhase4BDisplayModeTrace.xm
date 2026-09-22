@@ -171,6 +171,21 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
 
 %end
 
+%hook CBDisplayStateClient
+
+- (BOOL)transitionToDisplayMode:(long long)mode
+               withDuration:(double)duration
+                       error:(NSError **)error {
+    NNPPhase4BDisplayModeSet(@"DisplayClientCallCount", @1);
+    NNPPhase4BDisplayModeSet(@"DisplayClientLastMode", @(mode));
+    NNPPhase4BDisplayModeSet(@"DisplayClientLastDuration", @(duration));
+    NNPPhase4BDisplayModeSet(@"DisplayClientReceiverClass",
+                             NSStringFromClass(object_getClass(self)));
+    return %orig;
+}
+
+%end
+
 %ctor {
     NNPPhase4BDisplayModeSet(@"DisplayModeHookBuildIdentity",
                              @"phase4b-display-mode");
