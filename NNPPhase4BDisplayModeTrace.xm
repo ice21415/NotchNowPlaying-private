@@ -8,6 +8,7 @@ static CFStringRef const NNPPhase4BDisplayModeDomain =
     CFSTR("com.user.notchnowplaying.phase4b");
 static long long gNNPPhase4BDisplayModeSequence;
 static BOOL gNNPPhase4BStateMachineIvarsRecorded;
+static BOOL gNNPPhase4BProviderIvarsRecorded;
 
 static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
     if (!key.length || !value) return;
@@ -175,6 +176,30 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
 %hook BLSHBacklightOSInterfaceProvider
 
 - (void)transitionToDisplayMode:(long long)mode withDuration:(double)duration {
+    if (!gNNPPhase4BProviderIvarsRecorded) {
+        gNNPPhase4BProviderIvarsRecorded = YES;
+        unsigned int count = 0;
+        Ivar *ivars = class_copyIvarList(object_getClass(self), &count);
+        NSMutableArray *objects = [NSMutableArray array];
+        for (unsigned int index = 0; ivars && index < count; index++) {
+            Ivar ivar = ivars[index];
+            const char *encoding = ivar_getTypeEncoding(ivar);
+            if (!encoding || encoding[0] != '@') continue;
+            id __unsafe_unretained value = nil;
+            memcpy(&value,
+                   (const void *)((uintptr_t)(__bridge void *)self + ivar_getOffset(ivar)),
+                   sizeof(value));
+            NSString *name = [NSString stringWithUTF8String:ivar_getName(ivar)];
+            NSString *className = value ? NSStringFromClass(object_getClass(value)) : @"<nil>";
+            [objects addObject:[NSString stringWithFormat:@"%@=%@", name, className]];
+        }
+        if (ivars) free(ivars);
+        NNPPhase4BDisplayModeSet(@"ProviderObjectIvars",
+                                 [objects componentsJoinedByString:@"|"]);
+    }
+    NNPPhase4BDisplayModeSet(@"ProviderTransitionCallCount", @1);
+    NNPPhase4BDisplayModeSet(@"ProviderTransitionMode", @(mode));
+    NNPPhase4BDisplayModeSet(@"ProviderTransitionDuration", @(duration));
     id __unsafe_unretained field08 = nil;
     memcpy(&field08,
            (const void *)((uintptr_t)(__bridge void *)self + 0x08),
