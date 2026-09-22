@@ -1237,5 +1237,90 @@ classification:
   applied/current state: unresolved
   display-service handoff: unresolved
   physical blanking/power boundary: unresolved
+
+## Phase 4B-11  CoreBrightness display-client boundary check
+
+### Question
+
+The first target-mode consumer is the existing
+`BLSHBacklightDisplayStateMachine`, which calls
+`-[BLSHBacklightOSInterfaceProvider transitionToDisplayMode:withDuration:]`.
+The provider implementation then loads its `_displayStateClient` ivar at
+offset `+0x38` and sends
+`transitionToDisplayMode:withDuration:error:` to that object.  The next
+bounded question was whether that lower receiver exists and is reached during
+the naturally occurring transition.
+
+### Static evidence
+
+Runtime metadata resolves the lower class and method without invoking it:
+
+```text
+class: CBDisplayStateClient
+framework: /System/Library/PrivateFrameworks/CoreBrightness.framework/CoreBrightness
+selector: transitionToDisplayMode:withDuration:error:
+runtime IMP: 0x1d5c7bc34
+runtime image base: 0x1d5b18000
+static image base: 0x1b80c8000
+static IMP: 0x1b822bc34
+```
+
+The provider metadata is receiver-proven:
+
+```text
+provider class: BLSHBacklightOSInterfaceProvider
+ivar: _displayStateClient
+offset: +0x38
+type: CBDisplayStateClient
+```
+
+The CoreBrightness implementation has a nontrivial display-mode transition
+routine and returns a boolean/error-style result.  This makes it a strong
+display-service/physical-boundary candidate if a live receiver is present,
+but static class ownership alone does not prove that the observed transition
+reaches it.
+
+### Runtime evidence
+
+The passive display-mode hook observed the normal mode calls:
+
+```text
+awake: provider=2, displayMode=4
+lock baseline: provider=0, displayMode=0
+display-mode receiver: BLSHBacklightDisplayStateMachine
+downstream receiver: BLSHBacklightOSInterfaceProvider
+_displayStateClient pointer before call: 0x0
+_displayStateClient pointer after call: 0x0
+```
+
+The class-level passive hook on
+`CBDisplayStateClient -transitionToDisplayMode:withDuration:error:` recorded
+no call during the post-reload observations.  No arguments were changed and
+no display operation was invoked by the diagnostic code.
+
+### Classification
+
+```text
+target state: confirmed
+logical display-state transition: confirmed
+BacklightServicesHost -> CoreBrightness object: candidate only
+CoreBrightness method reached by observed transition: not observed
+physical boundary: unresolved
+```
+
+The nil `_displayStateClient` is significant: the observed
+`BLSHBacklightOSInterfaceProvider` instance does not currently provide a live
+CoreBrightness receiver for this path.  Therefore it would be incorrect to
+declare `CBDisplayStateClient` as the physical boundary yet.  The next bounded
+observation is one ordinary manual side-button lock transition with the
+class-level passive hook still installed; a nonzero call count would confirm
+the handoff, while zero would rule out this provider-to-CoreBrightness path
+for the tested instance and require pivoting to the provider's other state or
+service path.
+
+```text
+next semantic target: natural lock transition with CBDisplayStateClient hook
+next runtime hook: none beyond the existing class-level passive hook
+```
 ```
 ```
