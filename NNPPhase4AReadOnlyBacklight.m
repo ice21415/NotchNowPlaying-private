@@ -16,6 +16,7 @@
 #define NNP_PHASE4A_TRACE_MICRO_TEST 0
 #endif
 
+__attribute__((visibility("hidden"), noinline))
 void NNPPhase4ANoop(void) {
 }
 
