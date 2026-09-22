@@ -20,6 +20,16 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
 
 %hook BLSHBacklightDisplayStateMachine
 
+- (void)displayState:(id)displayState didUpdateToMode:(long long)mode {
+    NNPPhase4BDisplayModeSet(@"DisplayStateModeCallbackCount", @1);
+    NNPPhase4BDisplayModeSet(@"DisplayStateModeCallbackMode", @(mode));
+    NNPPhase4BDisplayModeSet(@"DisplayStateModeCallbackClass",
+                             displayState ? NSStringFromClass(object_getClass(displayState)) : @"<nil>");
+    NNPPhase4BDisplayModeSet(@"DisplayStateModeCallbackReceiverClass",
+                             NSStringFromClass(object_getClass(self)));
+    %orig;
+}
+
 - (void)setDisplayMode:(long long)mode withRampDuration:(double)duration {
     if (gNNPPhase4BDisplayModeSequence < 2) {
         id __unsafe_unretained downstreamBefore = nil;
