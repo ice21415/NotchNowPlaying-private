@@ -1,23 +1,25 @@
 {
-    PreferenceSpecifiers = (
-        { Type = PSGroupSpecifier; Title = "General"; },
-        { Type = PSSwitchSpecifier; Title = "Enabled"; Key = Enabled; DefaultValue = YES; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { Type = PSSwitchSpecifier; Title = "Spotify Only"; Key = SpotifyOnly; DefaultValue = YES; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { Type = PSSwitchSpecifier; Title = "Show While Unlocked"; Key = ShowWhileUnlocked; DefaultValue = YES; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { Type = PSSwitchSpecifier; Title = "Show On Lock Screen"; Key = ShowOnLockScreen; DefaultValue = YES; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { Type = PSGroupSpecifier; Title = "Appearance"; },
-        { Type = PSSwitchSpecifier; Title = "Show Artwork"; Key = ShowArtwork; DefaultValue = YES; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { Type = PSSwitchSpecifier; Title = "Show Artist"; Key = ShowArtist; DefaultValue = YES; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { Type = PSSwitchSpecifier; Title = "Show Progress"; Key = ShowProgress; DefaultValue = YES; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { Type = PSSliderSpecifier; Title = "Artwork Size"; Key = ArtworkSize; DefaultValue = 40; MinimumValue = 28; MaximumValue = 56; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { Type = PSSliderSpecifier; Title = "Corner Radius"; Key = CornerRadius; DefaultValue = 9; MinimumValue = 4; MaximumValue = 16; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { Type = PSSliderSpecifier; Title = "Text Size"; Key = TextSize; DefaultValue = 14; MinimumValue = 10; MaximumValue = 20; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { Type = PSGroupSpecifier; Title = "Behavior"; },
-        { Type = PSSwitchSpecifier; Title = "Hide When Paused"; Key = HideWhenPaused; DefaultValue = YES; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { Type = PSSliderSpecifier; Title = "Progress Update Interval"; Key = ProgressUpdateInterval; DefaultValue = 1; MinimumValue = 0.5; MaximumValue = 5; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { Type = PSGroupSpecifier; Title = "Locked Display"; FooterText = "Experimental only. May keep the display visible for a short period after lock. Disable immediately if the display does not recover normally."; },
-        { Type = PSSwitchSpecifier; Title = "Experimental Locked Visible"; Key = ExperimentalLockedVisible; DefaultValue = NO; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { Type = PSSliderSpecifier; Title = "Experimental Maximum Duration"; Key = ExperimentalMaxDuration; DefaultValue = 30; MinimumValue = 5; MaximumValue = 60; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { Type = PSGroupSpecifier; Title = "Diagnostics"; FooterText = "Runtime diagnostics are stored separately and do not include account information, song history, or credentials."; }
+    entry = { cell = PSLinkCell; label = "NotchNowPlaying"; };
+    title = "NotchNowPlaying";
+    items = (
+        { cell = PSGroupCell; label = "General"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = Enabled; label = "Enabled"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = SpotifyOnly; label = "Spotify Only"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowWhileUnlocked; label = "Show While Unlocked"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowOnLockScreen; label = "Show On Lock Screen"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSGroupCell; label = "Appearance"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowArtwork; label = "Show Artwork"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowArtist; label = "Show Artist"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowProgress; label = "Show Progress"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ArtworkSize; label = "Artwork Size"; default = 40; min = 28; max = 56; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = CornerRadius; label = "Corner Radius"; default = 9; min = 4; max = 16; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = TextSize; label = "Text Size"; default = 14; min = 10; max = 20; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSGroupCell; label = "Behavior"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = HideWhenPaused; label = "Hide When Paused"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ProgressUpdateInterval; label = "Progress Update Interval"; default = 1; min = 0.5; max = 5; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSGroupCell; label = "Locked Display"; footerText = "Experimental only. May keep the display visible for a short period after lock. Disable immediately if the display does not recover normally."; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ExperimentalLockedVisible; label = "Experimental Locked Visible"; default = 0; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ExperimentalMaxDuration; label = "Experimental Maximum Duration"; default = 30; min = 5; max = 60; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSGroupCell; label = "Diagnostics"; footerText = "Runtime diagnostics are stored separately and do not include account information, song history, or credentials."; }
     );
 }
