@@ -165,3 +165,18 @@ The absence of a runtime setter event means the environment hook cannot yet be
 used to establish ordering. The next safe action is one bounded static
 resolution of the operation execution selector/process ownership, not another
 runtime hook or any display operation.
+
+## Unlock retry
+
+One ordinary user unlock was performed after the zero-event lock observation,
+followed by one persistent-diagnostics read. The fresh hook-owned fields were
+unchanged:
+
+```text
+EnvSetPresentationCount: 0
+Sequence: 0
+```
+
+Therefore the missing setter event is not explained merely by reading too
+early after the lock transition. The older target/provider fields remain
+excluded from this hook result because this build did not write them.
