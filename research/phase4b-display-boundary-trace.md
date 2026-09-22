@@ -108,3 +108,60 @@ identify a first hardware boundary. The next bounded static target, if
 continued, is the exact implementation/call chain of
 `setPresentation:withTargetBacklightState:` toward its environment operation;
 no display mutation is justified.
+
+## Phase 4B-2 environment operation trace
+
+Static candidate:
+
+```text
+environment selector:
+  setPresentation:withTargetBacklightState:
+implementation:
+  BLSHBacklightEnvironmentStateMachine, IMP 0x200e074d8
+operation:
+  BLSSetPresentationOperation
+initializer:
+  initWithBacklightState:additions:
+```
+
+The recovered implementation stores the presentation and q-valued target
+state, constructs/replaces the operation, and enters the environment update
+path. The operation inherits its q storage from `BLSHEnvironmentOperation`.
+No direct BKS/display-service call has been proven in the bounded static slice.
+
+For Phase 4B-2, a passive hook called the original setter unchanged and
+persisted a fresh build identity plus zeroed sequence counter. After reload,
+awake Spotify playback, and one ordinary manual side-button transition:
+
+```text
+environment hook: NO EVENT OBSERVED
+EnvSetPresentationCount: 0
+Sequence: 0
+```
+
+The pre-existing provider/target fields visible in the preference file were
+not used as new Phase 4B-2 evidence because they were not written by this
+environment-hook build. No operation or BackBoard hook was added after this
+negative result.
+
+## External handoff
+
+```text
+caller: BLSHBacklightEnvironmentStateMachine setPresentation... path
+callee: BLSSetPresentationOperation initializer / environment operation path
+framework: BacklightServicesHost
+receiver: environment-state-machine-owned operation state
+arguments: q target state plus additions/presentation context
+```
+
+```text
+BackBoard handoff: UNRESOLVED
+BKS relationship: UNRESOLVED
+first display-service boundary: UNRESOLVED
+first physical-boundary candidate: UNRESOLVED
+```
+
+The absence of a runtime setter event means the environment hook cannot yet be
+used to establish ordering. The next safe action is one bounded static
+resolution of the operation execution selector/process ownership, not another
+runtime hook or any display operation.
