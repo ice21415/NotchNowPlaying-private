@@ -554,3 +554,42 @@ First failing sub-operation: trace helper call/linkage or diagnostic object pres
 
 No BLS class lookup, `sharedBacklight`, or `backlightState` operation was run
 in this branch.
+
+## Cross-translation-unit call isolation
+
+Test 5A1 kept the normal controller install and added only a same-file,
+`static`, `noinline` empty function call. Spotify UI remained functional.
+Test 5A2 kept the same controller path and replaced that call with a
+cross-file, no-argument `NNPPhase4ANoop(void)` declared in the Phase4A header
+and defined in its implementation file. Spotify UI did not appear.
+
+```text
+5A1 same-file local noop: PASS
+5A2 cross-file void noop: FAIL
+5A3 hidden cross-file noop: NOT RUN
+5A4 cross-file constant: NOT RUN
+5A5 object argument: NOT RUN
+
+5A1 workflow: 35673665275
+5A1 artifact SHA256: 51B4A032F20B4D52BFD0BF4EE9F00B6A7EAB0E84DEA8314D079E10B7821896E8
+5A2 workflow: 35673941392
+5A2 commit: 7f712c18fdf0c8b09be4aed198e092ebe79e6e6d
+5A2 artifact SHA256: F080A250AA7E23B67AF634D994F6A9CC1D4414849A7BCC65A84C1D096242E254
+5A2 install: PASS
+5A2 reload: PASS
+Spotify UI: FAIL
+SpringBoard PID: 15199, stable across bounded check
+Crash/Jetsam: not observed
+```
+
+The first useful distinction is therefore:
+
+```text
+same-file local call: PASS
+cross-translation-unit void call: FAIL
+```
+
+This makes cross-file symbol linkage/binding the primary suspect. No BLS
+operation was executed. Detailed Mach-O binding inspection was not used to
+override this runtime distinction and should be done only if this branch is
+reopened.
