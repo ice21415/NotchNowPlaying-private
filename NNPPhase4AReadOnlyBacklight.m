@@ -17,8 +17,9 @@
 #endif
 
 #if NNP_PHASE4A_CROSS_FILE_NOOP_TEST
-__attribute__((visibility("hidden"), noinline))
+__attribute__((used, visibility("hidden"), noinline))
 void NNPPhase4ANoop(void) {
+    __asm__ volatile("" ::: "memory");
 }
 #endif
 
