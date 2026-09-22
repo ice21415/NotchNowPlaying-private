@@ -171,6 +171,46 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
 
 %end
 
+%hook BLSHBacklightOSInterfaceProvider
+
+- (void)transitionToDisplayMode:(long long)mode withDuration:(double)duration {
+    id __unsafe_unretained field08 = nil;
+    memcpy(&field08,
+           (const void *)((uintptr_t)(__bridge void *)self + 0x08),
+           sizeof(field08));
+    if (field08) {
+        NNPPhase4BDisplayModeSet(@"ProviderField08Class",
+                                 NSStringFromClass(object_getClass(field08)));
+        NNPPhase4BDisplayModeSet(@"ProviderField08Pointer",
+                                 [NSString stringWithFormat:@"0x%llx",
+                                  (unsigned long long)(uintptr_t)field08]);
+        SEL curveSelector = NSSelectorFromString(@"useAlwaysOnBrightnessCurve:withRampDuration:");
+        Method curveMethod = class_getInstanceMethod(object_getClass(field08), curveSelector);
+        NNPPhase4BDisplayModeSet(@"ProviderField08CurveSelectorFound",
+                                 @(curveMethod != NULL));
+        if (curveMethod) {
+            IMP curveIMP = method_getImplementation(curveMethod);
+            Dl_info curveInfo = {0};
+            if (curveIMP && dladdr((const void *)curveIMP, &curveInfo)) {
+                void *strippedCurveIMP = ptrauth_strip((void *)curveIMP,
+                                                       ptrauth_key_function_pointer);
+                NNPPhase4BDisplayModeSet(@"ProviderField08CurveIMP",
+                                         [NSString stringWithFormat:@"0x%llx",
+                                          (unsigned long long)(uintptr_t)strippedCurveIMP]);
+                if (curveInfo.dli_fname) {
+                    NNPPhase4BDisplayModeSet(@"ProviderField08CurveImage",
+                                             [NSString stringWithUTF8String:curveInfo.dli_fname]);
+                }
+            }
+        }
+    } else {
+        NNPPhase4BDisplayModeSet(@"ProviderField08Class", @"<nil>");
+    }
+    %orig;
+}
+
+%end
+
 %hook CBDisplayStateClient
 
 - (BOOL)transitionToDisplayMode:(long long)mode
