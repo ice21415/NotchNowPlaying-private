@@ -1,0 +1,33 @@
+name: Build Phase 4A Test 5A2 cross file noop
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install RootHide build tools
+        run: |
+          set -euo pipefail
+          brew install ldid dpkg
+          git clone --recursive https://github.com/roothide/theos.git "$HOME/roothide-theos"
+          export THEOS="$HOME/roothide-theos"
+          export GITHUB_TOKEN="${{ github.token }}"
+          "$THEOS/bin/install-sdk" latest
+      - name: Build Test 5A2
+        run: |
+          set -o pipefail
+          export THEOS="$HOME/roothide-theos"
+          make clean package THEOS_PACKAGE_SCHEME=roothide FINALPACKAGE=1 DEBUG=0 STRIP=1 NNP_SAFE_BOOT_TEST=0 NNP_PHASE4A_CROSS_FILE_NOOP_TEST=1 NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG=0 NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT=0 NNP_PHASE2E_ARM_AT_START=0 NNP_PHASE2G_OBSERVER=0 NNP_PHASE2G_ARM_AT_START=0 NNP_PHASE2D2_DIAGNOSTIC=0 NNP_PHASE2J_READONLY_RUNTIME=0 NNP_PHASE2J_CALL_GETTERS=0 2>&1 | tee build.log
+      - name: Upload package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notchnowplaying-phase4a-test5a2-cross-noop-package
+          path: build-packages/*.deb
+          if-no-files-found: error

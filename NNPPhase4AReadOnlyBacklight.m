@@ -16,6 +16,9 @@
 #define NNP_PHASE4A_TRACE_MICRO_TEST 0
 #endif
 
+void NNPPhase4ANoop(void) {
+}
+
 static BOOL gNNPPhase4AAwakeLogged;
 static BOOL gNNPPhase4ALockLogged;
 static BOOL gNNPPhase4AObjectLogged;
