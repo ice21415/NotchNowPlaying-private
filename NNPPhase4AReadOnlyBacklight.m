@@ -21,6 +21,9 @@
 #ifndef NNP_PHASE4A_BLS_CLASS_LOOKUP_ONLY
 #define NNP_PHASE4A_BLS_CLASS_LOOKUP_ONLY 0
 #endif
+#ifndef NNP_PHASE4A_BLS_SELECTOR_LOOKUP_ONLY
+#define NNP_PHASE4A_BLS_SELECTOR_LOOKUP_ONLY 0
+#endif
 
 #if NNP_PHASE4A_CROSS_FILE_NOOP_TEST
 __attribute__((used, visibility("hidden"), noinline))
@@ -209,6 +212,13 @@ void NNPPhase4AStartReadOnlyBacklightObservation(void) {
     Class blsClass = NSClassFromString(@"BLSBacklight");
     NNPPhase4ASetDiagnosticBoolean(@"BLSClassFound", blsClass != Nil);
     NNPPhase4ATrace(blsClass ? @"BLS_CLASS_FOUND" : @"FAIL_BLS_CLASS_MISSING");
+    return;
+#endif
+#if NNP_PHASE4A_BLS_SELECTOR_LOOKUP_ONLY
+    Class blsClass = NSClassFromString(@"BLSBacklight");
+    BOOL found = blsClass != Nil && [blsClass respondsToSelector:@selector(sharedBacklight)];
+    NNPPhase4ASetDiagnosticBoolean(@"BLSSharedSelectorFound", found);
+    NNPPhase4ATrace(found ? @"BLS_SHARED_SELECTOR_FOUND" : @"FAIL_SHARED_SELECTOR_MISSING");
     return;
 #endif
     if (!gNNPPhase4AAwakeLogged) {
