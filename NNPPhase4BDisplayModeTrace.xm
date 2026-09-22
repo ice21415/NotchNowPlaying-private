@@ -216,6 +216,20 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
 
 %hook SBBacklightPlatformProvider
 
+- (void)showBlankingWindow:(BOOL)visible withFadeDuration:(double)duration {
+    NNPPhase4BDisplayModeSet(@"BlankingWindowShowCallCount", @1);
+    NNPPhase4BDisplayModeSet(@"BlankingWindowShowVisible", @(visible));
+    NNPPhase4BDisplayModeSet(@"BlankingWindowShowDuration", @(duration));
+    %orig;
+}
+
+- (void)_setBlankingWindowVisible:(BOOL)visible fadeDuration:(double)duration {
+    NNPPhase4BDisplayModeSet(@"BlankingWindowSetCallCount", @1);
+    NNPPhase4BDisplayModeSet(@"BlankingWindowSetVisible", @(visible));
+    NNPPhase4BDisplayModeSet(@"BlankingWindowSetDuration", @(duration));
+    %orig;
+}
+
 - (void)useAlwaysOnBrightnessCurve:(BOOL)enabled withRampDuration:(double)duration {
     NNPPhase4BDisplayModeSet(@"AlwaysOnCurveCallCount", @1);
     NNPPhase4BDisplayModeSet(@"AlwaysOnCurveEnabled", @(enabled));
