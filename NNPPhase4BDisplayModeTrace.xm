@@ -19,6 +19,45 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
 %hook BLSHBacklightDisplayStateMachine
 
 - (void)setDisplayMode:(long long)mode withRampDuration:(double)duration {
+    if (gNNPPhase4BDisplayModeSequence == 0) {
+        id __unsafe_unretained downstreamBefore = nil;
+        memcpy(&downstreamBefore,
+               (const void *)((uintptr_t)(__bridge void *)self + 0x18),
+               sizeof(downstreamBefore));
+        if (downstreamBefore) {
+            id __unsafe_unretained lowerBefore = nil;
+            memcpy(&lowerBefore,
+                   (const void *)((uintptr_t)(__bridge void *)downstreamBefore + 0x38),
+                   sizeof(lowerBefore));
+            if (lowerBefore) {
+                SEL lowerSelector = NSSelectorFromString(@"transitionToDisplayMode:withDuration:error:");
+                Method lowerMethod = class_getInstanceMethod(object_getClass(lowerBefore),
+                                                              lowerSelector);
+                IMP lowerIMP = lowerMethod ? method_getImplementation(lowerMethod) : NULL;
+                NNPPhase4BDisplayModeSet(@"LowerReceiverClassBefore",
+                                         NSStringFromClass(object_getClass(lowerBefore)));
+                NNPPhase4BDisplayModeSet(@"LowerSelectorFoundBefore",
+                                         @(lowerMethod != NULL));
+                if (lowerIMP) {
+                    void *strippedLowerIMP = ptrauth_strip((void *)lowerIMP,
+                                                           ptrauth_key_function_pointer);
+                    NNPPhase4BDisplayModeSet(@"LowerIMPBefore",
+                                             [NSString stringWithFormat:@"0x%llx",
+                                              (unsigned long long)(uintptr_t)strippedLowerIMP]);
+                    Dl_info lowerInfo = {0};
+                    if (dladdr((const void *)lowerIMP, &lowerInfo)) {
+                        NNPPhase4BDisplayModeSet(@"LowerImageBefore",
+                                                 lowerInfo.dli_fname
+                                                     ? [NSString stringWithUTF8String:lowerInfo.dli_fname]
+                                                     : @"unknown");
+                        NNPPhase4BDisplayModeSet(@"LowerImageBaseBefore",
+                                                 [NSString stringWithFormat:@"0x%llx",
+                                                  (unsigned long long)(uintptr_t)lowerInfo.dli_fbase]);
+                    }
+                }
+            }
+        }
+    }
     %orig;
 
     gNNPPhase4BDisplayModeSequence++;
