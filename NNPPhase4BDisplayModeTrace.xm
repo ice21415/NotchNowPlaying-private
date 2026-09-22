@@ -266,6 +266,17 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
 
 %end
 
+%hook BLSHBacklightStateMachine
+
+- (id)performChangeRequest:(id)request {
+    NNPPhase4BDisplayModeSet(@"ProviderStateMachineRequestCallCount", @1);
+    NNPPhase4BDisplayModeSet(@"ProviderStateMachineRequestClass",
+                             request ? NSStringFromClass(object_getClass(request)) : @"<nil>");
+    return %orig;
+}
+
+%end
+
 %hook BSServiceConnection
 
 - (id)performChangeRequest:(id)request {
