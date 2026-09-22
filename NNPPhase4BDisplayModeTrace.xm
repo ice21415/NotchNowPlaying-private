@@ -397,6 +397,29 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
         NNPPhase4BDisplayModeSet(@"PlatformProviderMethods",
                                  [platformNames componentsJoinedByString:@"|"]);
     }
+    Class sleepActionClass = NSClassFromString(@"BLSHOnSystemSleepAction");
+    if (sleepActionClass) {
+        unsigned int sleepCount = 0;
+        Method *sleepMethods = class_copyMethodList(sleepActionClass, &sleepCount);
+        NSMutableArray *sleepNames = [NSMutableArray array];
+        for (unsigned int index = 0; sleepMethods && index < sleepCount; index++) {
+            const char *name = sel_getName(method_getName(sleepMethods[index]));
+            if (!name) continue;
+            NSString *selectorName = [NSString stringWithUTF8String:name];
+            NSString *lower = selectorName.lowercaseString;
+            if ([lower containsString:@"sleep"] || [lower containsString:@"display"] ||
+                [lower containsString:@"blank"] || [lower containsString:@"perform"] ||
+                [lower containsString:@"execute"] || [lower containsString:@"action"]) {
+                [sleepNames addObject:selectorName];
+            }
+        }
+        if (sleepMethods) free(sleepMethods);
+        NNPPhase4BDisplayModeSet(@"SleepActionClassFound", @YES);
+        NNPPhase4BDisplayModeSet(@"SleepActionMethods",
+                                 [sleepNames componentsJoinedByString:@"|"]);
+    } else {
+        NNPPhase4BDisplayModeSet(@"SleepActionClassFound", @NO);
+    }
     Class displayStateClass = NSClassFromString(@"BLSHBacklightDisplayStateMachine");
     SEL displayModeSelector = NSSelectorFromString(@"setDisplayMode:withRampDuration:");
     NNPPhase4BDisplayModeSet(@"DisplayModeClassFound", @(displayStateClass != Nil));
