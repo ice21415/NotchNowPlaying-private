@@ -376,3 +376,24 @@ mapped Mach-O images: `launchctl procinfo` returned `Could not print Mach info
 for pid 11613: 0x5`, and `/proc/11613/maps` did not expose the mapping. The
 exact mapped path and loaded-image hash consequently remain unproven, although
 no stale disk copy was found.
+
+## Runtime isolation update
+
+GitHub-built isolation results:
+
+UI-only identity marker: PASS
+Phase4A object linked but inactive: PASS
+constructor CFPreferences-only probe: PASS
+delayed trace-only probe: FAIL — UI disappeared
+one-read BLS UI probe without immediate UI refresh: FAIL — UI disappeared
+
+The one-read probe used only the recovered read-only BLS path:
+sharedBacklight followed by backlightState.
+
+No BLS request, assertion, setter, brightness call, lock/authentication call,
+or display mutation was executed. No valid awake or lock-transition integer was
+obtained. The deployed package was rolled back to the verified UI-only build.
+
+This is runtime instability evidence for the combined BLS lookup/read path in
+the current SpringBoard/Relaxin environment, not a semantic mapping and not a
+physical display-state result.
