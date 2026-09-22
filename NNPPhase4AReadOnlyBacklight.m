@@ -18,6 +18,9 @@
 #ifndef NNP_PHASE4A_ENTRY_NOOP_TEST
 #define NNP_PHASE4A_ENTRY_NOOP_TEST 0
 #endif
+#ifndef NNP_PHASE4A_BLS_CLASS_LOOKUP_ONLY
+#define NNP_PHASE4A_BLS_CLASS_LOOKUP_ONLY 0
+#endif
 
 #if NNP_PHASE4A_CROSS_FILE_NOOP_TEST
 __attribute__((used, visibility("hidden"), noinline))
@@ -202,6 +205,12 @@ void NNPPhase4AStartReadOnlyBacklightObservation(void) {
     long applicationState = (long)UIApplication.sharedApplication.applicationState;
     NNPPhase4ASetDiagnosticInteger(@"UIApplicationState", applicationState);
     NNPPhase4ATrace([NSString stringWithFormat:@"UIApplicationState=%ld", applicationState]);
+#if NNP_PHASE4A_BLS_CLASS_LOOKUP_ONLY
+    Class blsClass = NSClassFromString(@"BLSBacklight");
+    NNPPhase4ASetDiagnosticBoolean(@"BLSClassFound", blsClass != Nil);
+    NNPPhase4ATrace(blsClass ? @"BLS_CLASS_FOUND" : @"FAIL_BLS_CLASS_MISSING");
+    return;
+#endif
     if (!gNNPPhase4AAwakeLogged) {
         gNNPPhase4AAwakeLogged = YES;
         NNPPhase4ATrace(@"AWAKE_BRANCH_DIRECT");
