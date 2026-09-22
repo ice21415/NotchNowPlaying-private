@@ -946,3 +946,127 @@ next trace target:
   one bounded caller/producer of transition slot +0x40, if needed;
   no runtime hook is justified at this point
 ```
+
+## Phase 4B-9  Transition-slot +0x40 consumer
+
+### +0x40 object
+
+The slot is not a transition-state object.  Its concrete class is:
+
+```text
+class: BLSAssertion
+slot:  BLSHBacklightTransitionStateMachine +0x40
+```
+
+The class identity is supported by the decoded global class pointer at
+`0x22ed5b0d0`, which is `BLSAssertion`, and by the two selectors sent to the
+stored object:
+
+```text
+0x200e8bd60  isActive
+0x200e8bc00  invalidate
+```
+
+### Creator
+
+`0x200e2cfec` is the creator/replacement path.  Its bounded object flow is:
+
+```text
+old = [self +0x40]
+if (old != nil && [old isActive])
+    return
+
+touchLock = [BLSTouchLockAttribute touchLock]
+inactive = [BLSValidWhenBacklightInactiveAttribute
+             ignoreWhenBacklightInactivates]
+attributes = [NSArray arrayWithObjects:... count:2]
+newAssertion = [BLSAssertion acquireWithExplanation:observer:attributes:]
+self +0x40 = newAssertion
+```
+
+The exact explanation/observer arguments are prepared by the surrounding
+constant/object data, but no display state is modified by this helper.  The
+meaningful operation is assertion acquisition and storage, not transition
+state publication.
+
+### Clear path
+
+`0x200e2e6a0` is the clear/invalidate path:
+
+```text
+old = self +0x40
+self +0x40 = nil
+[old invalidate]
+```
+
+The old object is retained/lifetime-managed around the clear.  The helper is
+selected by the post-bookkeeping state predicate; it is not a current-state
+or target-state replacement.
+
+### Meaningful readers
+
+Receiver provenance restricts the relevant `+0x40` accesses to this pair:
+
+| address | containing helper | read/use | classification |
+|---|---|---|---|
+| `0x200e2d02c` | `0x200e2cfec` | load `self+0x40`, send `isActive` | predicate / assertion lifecycle |
+| `0x200e2e6c8` | `0x200e2e6a0` | load old object before clearing slot | invalidation / lifetime |
+| `0x200e2d0dc` | `0x200e2cfec` | reload slot immediately before store | replacement/lifetime, not a downstream consumer |
+| `0x200e2e6cc` | `0x200e2e6a0` | store zero to slot | state cleanup |
+```
+
+Image-wide raw `+0x40` matches include unrelated classes and scalar/stack
+fields.  They are not attributed to this slot without receiver provenance.
+No additional transition-machine reader was established.
+
+### Consumer graph
+
+```text
+performEvent: state predicate
+  ├─ active assertion → [BLSAssertion isActive]
+  │                    └─ keep existing +0x40 assertion
+  ├─ inactive/missing assertion
+  │    └─ acquire BLSAssertion → store +0x40
+  └─ clear branch
+       └─ clear +0x40 → [BLSAssertion invalidate]
+
+post-bookkeeping
+  └─ +0x38 watchdog invalidate/schedule
+```
+
+### Watchdog relationship
+
+`+0x38` is a separate lifecycle/watchdog slot.  The post-bookkeeping path sends
+`invalidate` to the old `+0x38` object, then schedules a new watchdog with
+`self` as delegate and stores the returned object back at `+0x38`.  No direct
+read of `+0x40` by that watchdog path was proven.  The two slots are therefore
+coordinated lifecycle guards, not a proven watchdog-to-assertion callback.
+
+```text
+watchdog role: invalidate/rearm transition lifecycle monitoring
+callback/delegate: transition-state-machine self
+reads +0x40: NO evidence in the bounded path
+```
+
+### Target/current bridge and downstream state
+
+```text
+target/current bridge: NOT FOUND
+current aggregate commit: NOT FOUND
+downstream state/object: BLSAssertion lifecycle state
+external handoff: NONE proven
+BackBoard/BKS: NOT REACHED
+IPC/XPC/MIG/Mach: NONE proven
+```
+
+The first semantic consumer is `[BLSAssertion isActive]`; the first semantic
+mutation is acquisition/replacement or invalidation of the assertion object.
+This remains a transition-lifecycle layer.  It does not explain the physical
+display boundary and does not provide a justified runtime hook for the next
+stage.
+
+```text
+runtime-hook candidate: NONE
+next safe trace target: one exact completion receiver outside +0x40, only if
+                         a new static xref identifies it
+```
