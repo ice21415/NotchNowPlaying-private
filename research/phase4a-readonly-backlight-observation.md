@@ -555,6 +555,66 @@ First failing sub-operation: trace helper call/linkage or diagnostic object pres
 No BLS class lookup, `sharedBacklight`, or `backlightState` operation was run
 in this branch.
 
+## Hidden cross-file symbol isolation
+
+5A3 used the same cross-file noop with an explicit
+`visibility("hidden")`/`noinline` definition. It still failed, so hidden
+visibility alone does not repair the call. 5A4 then used a hidden cross-file
+function returning an integer constant; it also failed.
+
+```text
+5A1 same-file: PASS
+5A2 cross-file normal: FAIL
+5A3 cross-file hidden: FAIL
+5A4 cross-file hidden constant: FAIL
+5A5 object argument: NOT RUN
+
+5A3 workflow: 35674572907
+5A3 commit: 6c091ac4127c25399d9b7475229f60ec3bf04209
+5A3 artifact SHA256: D92FEC5EAC88C3414B50355044B7EBE5A4FF8A9952FE7E9ADCF22E8BDC582CBA
+5A4 workflow: 35674856505
+5A4 commit: f0554dd0122803df56816eab73fead95fd703891
+5A4 artifact SHA256: FD24EA59B2A85138AF84B1704A8B91383D30E69E7B3AD3782520F1E7491184E4
+Spotify UI: FAIL for 5A3 and 5A4
+```
+
+The GitHub macOS Mach-O inspection of the corresponding raw build found the
+following decisive symbol evidence:
+
+```text
+NNPPhase4ANoop:
+  undefined external __Z14NNPPhase4ANoopv
+  dynamically looked up
+
+NNPPhase4AConstant:
+  undefined external __Z18NNPPhase4AConstantv
+  dynamically looked up
+
+call sites:
+  BL to auth-stub 0xc100 for __Z14NNPPhase4ANoopv
+  BL to auth-stub 0xc110 for __Z18NNPPhase4AConstantv
+```
+
+The implementation definitions are in the `.m` translation unit as C symbols
+(`NNPPhase4ANoop` and `NNPPhase4AConstant`), while `Tweak.xm` is Objective-C++
+and the header declarations are not wrapped in `extern "C"`. The caller thus
+requests C++-mangled names that are absent from the image. The project's
+`-undefined,dynamic_lookup` setting leaves these unresolved as runtime lookup
+symbols instead of failing the link.
+
+```text
+raw inspected dylib SHA256: 9A8F9437A95B74F4F3CDC42038684DA5B26E2938D048A2E49A8A61D356770CEC
+inspection workflow: 35675236747
+installed 5A4 dylib path: /var/jb/usr/lib/TweakInject/NotchNowPlaying.dylib
+installed 5A4 dylib SHA256: CCC4AE3CC94AAD428A3096B0BEC2A306D1A8730E7A3B44774C204DB56B83E49E
+installed image Mach-O symbol inspection: not available on-device
+```
+
+The first meaningful binary distinction is therefore C/C++ linkage-name
+mismatch, not visibility. No BLS API was executed. The minimal source-level
+repair is to give cross-file declarations C linkage (for example an
+`extern "C"` guard in the shared header) and then retest only the noop path.
+
 ## Cross-translation-unit call isolation
 
 Test 5A1 kept the normal controller install and added only a same-file,
