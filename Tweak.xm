@@ -33,6 +33,9 @@ static NNPBackBoardReadOnlyDiagnostics *gNNPBackBoardReadOnlyDiagnostics;
 #ifndef NNP_PHASE4A_DELAYED_NOOP_TEST
 #define NNP_PHASE4A_DELAYED_NOOP_TEST 0
 #endif
+#ifndef NNP_PHASE4A_DELAYED_STATIC_BOOL_TEST
+#define NNP_PHASE4A_DELAYED_STATIC_BOOL_TEST 0
+#endif
 #if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG || NNP_PHASE4A_CTOR_PREFERENCES_PROBE || NNP_PHASE4A_DELAYED_TRACE_PROBE || NNP_PHASE4A_UI_STATE_PROBE
 #import "NNPPhase4AReadOnlyBacklight.h"
 #endif
@@ -55,7 +58,13 @@ static NNPBackBoardReadOnlyDiagnostics *gNNPBackBoardReadOnlyDiagnostics;
     NNPDiagnosticRecordStartup([NSString stringWithFormat:@"TWEAK_LOADED pid=%d process=%@ bundle=%@", getpid(), NSProcessInfo.processInfo.processName ?: @"unknown", NSBundle.mainBundle.bundleIdentifier ?: @"unknown"]);
 #endif
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-#if !NNP_PHASE4A_DELAYED_NOOP_TEST
+#if NNP_PHASE4A_DELAYED_NOOP_TEST
+        return;
+#elif NNP_PHASE4A_DELAYED_STATIC_BOOL_TEST
+        static volatile BOOL reached = YES;
+        (void)reached;
+        return;
+#else
 #if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG
         NNPPhase4ASetDiagnosticBoolean(@"PostStartupEntered", YES);
         NNPPhase4ATrace(@"POST_STARTUP_BLOCK_ENTER");
