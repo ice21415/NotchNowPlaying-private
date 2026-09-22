@@ -476,6 +476,31 @@ static void NNPPhase4BRecordSystemWakeClassMetadata(Class cls, NSString *prefix)
                              [ivarNames componentsJoinedByString:@"|"]);
 }
 
+%hook SWSystemSleepMonitorProvider
+
+- (void)registerForSystemPowerOnQueue:(id)queue withDelegate:(id)delegate {
+    NNPPhase4BDisplayModeSet(@"SystemPowerRegisterDelegateClass",
+                             delegate ? NSStringFromClass(object_getClass(delegate)) : @"<nil>");
+    NNPPhase4BDisplayModeSet(@"SystemPowerRegisterQueueClass",
+                             queue ? NSStringFromClass(object_getClass(queue)) : @"<nil>");
+    NNPPhase4BDisplayModeSet(@"SystemPowerRegisterCount", @1);
+    %orig;
+}
+
+- (void)allowPowerChange:(long long)messageID {
+    NNPPhase4BDisplayModeSet(@"SystemPowerAllowChangeCount", @1);
+    NNPPhase4BDisplayModeSet(@"SystemPowerAllowChangeID", @(messageID));
+    %orig;
+}
+
+- (void)cancelPowerChange:(long long)messageID {
+    NNPPhase4BDisplayModeSet(@"SystemPowerCancelChangeCount", @1);
+    NNPPhase4BDisplayModeSet(@"SystemPowerCancelChangeID", @(messageID));
+    %orig;
+}
+
+%end
+
 %hook BSServiceConnection
 
 - (id)performChangeRequest:(id)request {
