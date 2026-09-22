@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <dlfcn.h>
+#import <ptrauth.h>
 #import <objc/runtime.h>
 
 static CFStringRef const NNPPhase4BDisplayModeDomain =
@@ -54,9 +55,19 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
         NNPPhase4BDisplayModeSet(@"DisplayModeIMP",
                                  [NSString stringWithFormat:@"0x%llx",
                                   (unsigned long long)(uintptr_t)displayModeIMP]);
+        void *strippedIMP = ptrauth_strip((void *)displayModeIMP,
+                                          ptrauth_key_function_pointer);
+        NNPPhase4BDisplayModeSet(@"DisplayModeStrippedIMP",
+                                 [NSString stringWithFormat:@"0x%llx",
+                                  (unsigned long long)(uintptr_t)strippedIMP]);
         NNPPhase4BDisplayModeSet(@"DisplayModeImageBase",
                                  [NSString stringWithFormat:@"0x%llx",
                                   (unsigned long long)(uintptr_t)displayModeInfo.dli_fbase]);
+        if (displayModeInfo.dli_saddr) {
+            NNPPhase4BDisplayModeSet(@"DisplayModeSymbolAddress",
+                                     [NSString stringWithFormat:@"0x%llx",
+                                      (unsigned long long)(uintptr_t)displayModeInfo.dli_saddr]);
+        }
         if (displayModeInfo.dli_fname) {
             NNPPhase4BDisplayModeSet(@"DisplayModeImage",
                                      [NSString stringWithUTF8String:displayModeInfo.dli_fname]);
