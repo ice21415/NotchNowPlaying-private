@@ -34,6 +34,13 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
 %ctor {
     NNPPhase4BDisplayModeSet(@"DisplayModeHookBuildIdentity",
                              @"phase4b-display-mode");
+    Class displayStateClass = NSClassFromString(@"BLSHBacklightDisplayStateMachine");
+    SEL displayModeSelector = NSSelectorFromString(@"setDisplayMode:withRampDuration:");
+    NNPPhase4BDisplayModeSet(@"DisplayModeClassFound", @(displayStateClass != Nil));
+    NNPPhase4BDisplayModeSet(@"DisplayModeSelectorFound",
+                             @(displayStateClass &&
+                               class_getInstanceMethod(displayStateClass,
+                                                       displayModeSelector) != NULL));
     NNPPhase4BDisplayModeSet(@"DisplayModeCallCount", @0);
     NNPPhase4BDisplayModeSet(@"DisplayModeSequence", @0);
 }
