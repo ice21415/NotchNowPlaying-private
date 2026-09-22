@@ -65,7 +65,6 @@ static NNPBackBoardReadOnlyDiagnostics *gNNPBackBoardReadOnlyDiagnostics;
         long long phase4AState = 0;
         BOOL phase4AReadOK = NNPPhase4AReadBacklightState(&phase4AState);
         NNPPhase4ASetUIState(phase4AReadOK, phase4AState);
-        [[NNPController sharedController] refreshDiagnosticUI];
 #endif
 #if NNP_PHASE4A_DELAYED_TRACE_PROBE
         NNPPhase4ATrace(@"DELAYED_TRACE_PROBE");
