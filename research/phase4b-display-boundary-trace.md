@@ -1480,3 +1480,94 @@ semantic handoff.
 ```
 ```
 ```
+
+## Phase 4B-14  Provider transition branch reduction
+
+### Question
+
+The next bounded layer was the implementation of
+`BLSHBacklightOSInterfaceProvider -transitionToDisplayMode:withDuration:` at
+`0x200de3c8c`.  The purpose was to separate its internal provider-state work
+from the one possible lower display-state call.
+
+### Static receiver/data-flow evidence
+
+The method preserves the incoming mode in `x20` and duration in `d8`.  Its
+relevant non-trace operations are:
+
+```text
+mode/duration
+  -> internal helper 0x200de319c
+       receiver: provider self
+       input: x1 = retained provider object/context, x2 = 0
+       writes provider ivars at +0x78 and +0x80
+       classification: provider transition bookkeeping/state
+
+provider +0x38
+  -> objc message stub 0x200e8f9a0
+       arguments: mode in x2, duration in d0, error storage in x3
+       selector reference: transitionToDisplayMode:withDuration:error:
+       classification: CoreBrightness display-state candidate
+
+provider +0x08
+  -> additional provider/platform-policy helper path
+       mode/duration-dependent
+       classification: platform brightness/policy path; exact selector not
+       recovered from the optimized direct-selector stub
+```
+
+The call through `0x200e8f9a0` is receiver-proven statically as the object
+loaded from provider offset `+0x38`; prior runtime object inspection identifies
+that ivar as `_displayStateClient` with type `CBDisplayStateClient`.
+
+The call is therefore a genuine semantic display-state candidate, but it is
+guarded by the live receiver value.  In the observed device instance the
+receiver pointer was zero before and after the mode transition.
+
+### Runtime evidence
+
+The natural mode sequence remained:
+
+```text
+awake: provider state=2, target displayMode=4
+lock:  provider state=0, target displayMode=0
+```
+
+The provider method was reached, as shown by the existing provider hook's
+receiver provenance.  The same observation recorded:
+
+```text
+provider +0x38 (_displayStateClient): nil
+CBDisplayStateClient transition call count: 0
+SBBacklightPlatformProvider blanking/curve hook count: 0
+```
+
+Thus the CoreBrightness call is a statically reachable but runtime-unreached
+candidate for this iPhone 12 mini instance.  Sending a synthetic receiver or
+calling the method would violate the observation boundary and is not justified.
+
+### Internal helper result
+
+`0x200de319c` is not a generic trace helper.  It reads and replaces provider
+internal state at offsets `+0x78` and `+0x80`, retains the old value, and
+constructs an internal transition/context object.  It does not directly call
+BackBoard, BKS, CoreBrightness, IOKit, XPC, MIG, or a display setter in the
+bounded body.  It is classified as provider transition state, not the physical
+boundary.
+
+### Classification
+
+```text
+provider mode transition:              runtime confirmed
+provider internal state update:         statically confirmed
+CBDisplayStateClient handoff:           statically reachable, runtime absent
+SpringBoard platform blanking call:     runtime absent
+BackBoard/BKS handoff:                  not reached
+physical OLED/power boundary:           unresolved
+```
+
+The next safe observation is limited to one-time enumeration of the live
+provider object's object-valued ivars and mode/duration call record.  This is
+needed to determine whether an additional receiver, distinct from `+0x08` and
+`+0x38`, is the actual display-service owner.  It does not invoke a new
+private API or alter any argument.
