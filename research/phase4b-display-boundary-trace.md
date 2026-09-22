@@ -1069,6 +1069,7 @@ stage.
 runtime-hook candidate: NONE
 next safe trace target: one exact completion receiver outside +0x40, only if
                          a new static xref identifies it
+```
 
 ## Phase 4B-10  Focused target-to-display-state consumer
 
