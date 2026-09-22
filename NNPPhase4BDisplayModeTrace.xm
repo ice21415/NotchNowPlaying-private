@@ -9,6 +9,7 @@ static CFStringRef const NNPPhase4BDisplayModeDomain =
 static long long gNNPPhase4BDisplayModeSequence;
 static BOOL gNNPPhase4BStateMachineIvarsRecorded;
 static BOOL gNNPPhase4BProviderIvarsRecorded;
+static BOOL gNNPPhase4BSleepMonitorIvarsRecorded;
 
 static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
     if (!key.length || !value) return;
@@ -346,6 +347,64 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
                                  [objects componentsJoinedByString:@"|"]);
     }
     return %orig;
+}
+
+%end
+
+%hook BLSHOnSystemSleepAction
+
+- (void)systemSleepMonitor:(id)monitor sleepRequestedWithResult:(id)completion {
+    if (!gNNPPhase4BSleepMonitorIvarsRecorded && monitor) {
+        gNNPPhase4BSleepMonitorIvarsRecorded = YES;
+        unsigned int count = 0;
+        Ivar *ivars = class_copyIvarList(object_getClass(monitor), &count);
+        NSMutableArray *objects = [NSMutableArray array];
+        for (unsigned int index = 0; ivars && index < count; index++) {
+            Ivar ivar = ivars[index];
+            const char *encoding = ivar_getTypeEncoding(ivar);
+            if (!encoding || encoding[0] != '@') continue;
+            id __unsafe_unretained value = nil;
+            memcpy(&value,
+                   (const void *)((uintptr_t)(__bridge void *)monitor + ivar_getOffset(ivar)),
+                   sizeof(value));
+            NSString *name = [NSString stringWithUTF8String:ivar_getName(ivar)];
+            NSString *className = value ? NSStringFromClass(object_getClass(value)) : @"<nil>";
+            [objects addObject:[NSString stringWithFormat:@"%@=%@", name, className]];
+        }
+        if (ivars) free(ivars);
+        NNPPhase4BDisplayModeSet(@"SystemSleepMonitorObjectIvars",
+                                 [objects componentsJoinedByString:@"|"]);
+        NNPPhase4BDisplayModeSet(@"SystemSleepMonitorRuntimeClass",
+                                 NSStringFromClass(object_getClass(monitor)));
+    }
+    %orig;
+}
+
+- (void)systemSleepMonitor:(id)monitor prepareForSleepWithCompletion:(id)completion {
+    if (!gNNPPhase4BSleepMonitorIvarsRecorded && monitor) {
+        gNNPPhase4BSleepMonitorIvarsRecorded = YES;
+        unsigned int count = 0;
+        Ivar *ivars = class_copyIvarList(object_getClass(monitor), &count);
+        NSMutableArray *objects = [NSMutableArray array];
+        for (unsigned int index = 0; ivars && index < count; index++) {
+            Ivar ivar = ivars[index];
+            const char *encoding = ivar_getTypeEncoding(ivar);
+            if (!encoding || encoding[0] != '@') continue;
+            id __unsafe_unretained value = nil;
+            memcpy(&value,
+                   (const void *)((uintptr_t)(__bridge void *)monitor + ivar_getOffset(ivar)),
+                   sizeof(value));
+            NSString *name = [NSString stringWithUTF8String:ivar_getName(ivar)];
+            NSString *className = value ? NSStringFromClass(object_getClass(value)) : @"<nil>";
+            [objects addObject:[NSString stringWithFormat:@"%@=%@", name, className]];
+        }
+        if (ivars) free(ivars);
+        NNPPhase4BDisplayModeSet(@"SystemSleepMonitorObjectIvars",
+                                 [objects componentsJoinedByString:@"|"]);
+        NNPPhase4BDisplayModeSet(@"SystemSleepMonitorRuntimeClass",
+                                 NSStringFromClass(object_getClass(monitor)));
+    }
+    %orig;
 }
 
 %end
