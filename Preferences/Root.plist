@@ -1,25 +1,25 @@
 {
-    entry = { cell = PSLinkCell; label = "NotchNowPlaying"; };
-    title = "NotchNowPlaying";
+    entry = { cell = PSLinkCell; label = "凹槽音樂資訊"; };
+    title = "凹槽音樂資訊";
     items = (
-        { cell = PSGroupCell; label = "General"; },
-        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = Enabled; label = "Enabled"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = SpotifyOnly; label = "Spotify Only"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowWhileUnlocked; label = "Show While Unlocked"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowOnLockScreen; label = "Show On Lock Screen"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSGroupCell; label = "Appearance"; },
-        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowArtwork; label = "Show Artwork"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowArtist; label = "Show Artist"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowProgress; label = "Show Progress"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ArtworkSize; label = "Artwork Size"; default = 40; min = 28; max = 56; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = CornerRadius; label = "Corner Radius"; default = 9; min = 4; max = 16; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = TextSize; label = "Text Size"; default = 14; min = 10; max = 20; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSGroupCell; label = "Behavior"; },
-        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = HideWhenPaused; label = "Hide When Paused"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ProgressUpdateInterval; label = "Progress Update Interval"; default = 1; min = 0.5; max = 5; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSGroupCell; label = "Locked Display"; footerText = "Experimental only. May keep the display visible for a short period after lock. Disable immediately if the display does not recover normally."; },
-        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ExperimentalLockedVisible; label = "Experimental Locked Visible"; default = 0; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ExperimentalMaxDuration; label = "Experimental Maximum Duration"; default = 30; min = 5; max = 60; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSGroupCell; label = "Diagnostics"; footerText = "Runtime diagnostics are stored separately and do not include account information, song history, or credentials."; }
+        { cell = PSGroupCell; label = "一般"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = Enabled; label = "啟用"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = SpotifyOnly; label = "僅限 Spotify"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowWhileUnlocked; label = "解鎖時顯示"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowOnLockScreen; label = "鎖定畫面顯示"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSGroupCell; label = "外觀"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowArtwork; label = "顯示專輯封面"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowArtist; label = "顯示歌手"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowProgress; label = "顯示播放進度"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ArtworkSize; label = "封面大小"; default = 40; min = 28; max = 56; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = CornerRadius; label = "圓角大小"; default = 9; min = 4; max = 16; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = TextSize; label = "文字大小"; default = 14; min = 10; max = 20; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSGroupCell; label = "行為"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = HideWhenPaused; label = "暫停時隱藏"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ProgressUpdateInterval; label = "進度更新間隔"; default = 1; min = 0.5; max = 5; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSGroupCell; label = "鎖定顯示"; footerText = "實驗功能。鎖定後可能在短時間內保持螢幕顯示；若螢幕未正常恢復，請立即關閉。"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ExperimentalLockedVisible; label = "實驗性鎖定顯示"; default = 0; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ExperimentalMaxDuration; label = "實驗最長時間"; default = 30; min = 5; max = 60; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSGroupCell; label = "診斷"; footerText = "執行期診斷資料會另外儲存，不包含帳戶資訊、歌曲紀錄或憑證。"; }
     );
 }
