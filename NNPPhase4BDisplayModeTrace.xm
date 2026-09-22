@@ -410,7 +410,10 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
             if ([lower containsString:@"sleep"] || [lower containsString:@"display"] ||
                 [lower containsString:@"blank"] || [lower containsString:@"perform"] ||
                 [lower containsString:@"execute"] || [lower containsString:@"action"]) {
-                [sleepNames addObject:selectorName];
+                const char *types = method_getTypeEncoding(sleepMethods[index]);
+                [sleepNames addObject:[NSString stringWithFormat:@"%@[%@]",
+                                       selectorName,
+                                       types ? [NSString stringWithUTF8String:types] : @"?"]];
             }
         }
         if (sleepMethods) free(sleepMethods);
