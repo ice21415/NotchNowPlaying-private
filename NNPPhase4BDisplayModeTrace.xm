@@ -201,11 +201,27 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
                     NNPPhase4BDisplayModeSet(@"ProviderField08CurveImage",
                                              [NSString stringWithUTF8String:curveInfo.dli_fname]);
                 }
+                NNPPhase4BDisplayModeSet(@"ProviderField08CurveImageBase",
+                                         [NSString stringWithFormat:@"0x%llx",
+                                          (unsigned long long)(uintptr_t)curveInfo.dli_fbase]);
             }
         }
     } else {
         NNPPhase4BDisplayModeSet(@"ProviderField08Class", @"<nil>");
     }
+    %orig;
+}
+
+%end
+
+%hook SBBacklightPlatformProvider
+
+- (void)useAlwaysOnBrightnessCurve:(BOOL)enabled withRampDuration:(double)duration {
+    NNPPhase4BDisplayModeSet(@"AlwaysOnCurveCallCount", @1);
+    NNPPhase4BDisplayModeSet(@"AlwaysOnCurveEnabled", @(enabled));
+    NNPPhase4BDisplayModeSet(@"AlwaysOnCurveDuration", @(duration));
+    NNPPhase4BDisplayModeSet(@"AlwaysOnCurveReceiverClass",
+                             NSStringFromClass(object_getClass(self)));
     %orig;
 }
 
