@@ -4,6 +4,8 @@ Date: 2026-09-22
 Target: iPhone 12 mini / iPhone13,1, iOS 17.1.2, RootHide  
 Baseline: `main` commit `a9d7f1e`
 
+> **Latest status (user-reported device test, 2026-09-22):** The Phase 7 experimental build compiled and installed successfully. On a normal side-button press, the phone remained logically locked while the display stayed visible; album artwork and song information continued updating on track changes, and the progress bar continued moving. Unlock/recovery was normal. The display retained the pre-lock screen content rather than transitioning to an AOD-only black scene. The configured 30-second timeout was **NOT TESTED**. See [Phase 7 device-test addendum](#phase-7-device-test-addendum--user-reported-results-2026-09-22). Earlier `NOT TESTED` / `UNSUPPORTED` statements below describe the state **before** this device test and are superseded for observed visibility, not for timeout, privacy, or panel-power details.
+
 ## Current status
 
 ```text
@@ -228,3 +230,47 @@ and panel-visibility contract that can survive the normal lock-side transition
 while leaving the device securely locked. Finding that contract would require
 new evidence below or within the BackBoard display-policy boundary. Generic
 driver or panel-power reverse engineering is outside this phase's scope.
+
+## Phase 7 device-test addendum — user-reported results (2026-09-22)
+
+This section records the tester's direct report after the earlier research snapshot. It is **user-reported runtime evidence**, not a fresh CI log, device diagnostic capture, or independent verification of panel power. Historical statuses earlier in the report reflect the pre-deployment state; this addendum supersedes them where directly tested.
+
+### Test environment and observations
+
+Target as defined by this report: iPhone 12 mini (iPhone13,1), iOS 17.1.2, RootHide. The user reported the following for the Phase 7 experimental build:
+
+| Test | Result | User observation / limitation |
+| --- | --- | --- |
+| Experimental build and installation | `PASS (USER REPORTED)` | Compiled and installed successfully; workflow/run ID not supplied. |
+| Ordinary side-button lock | `PASS (USER REPORTED)` | Phone remained logically locked while the display stayed visibly on. |
+| Album artwork and song information visible | `PASS (USER REPORTED)` | Artwork and song details remained visible after locking. |
+| Track change while locked | `PASS (USER REPORTED)` | Artwork and title updated to the new track. |
+| Playback progress while locked | `PASS (USER REPORTED)` | Progress bar continued moving. |
+| Return to normal behavior | `PASS (USER REPORTED)` | User reported normal recovery. Pressing again brought up the normal lock screen. |
+| Configured 30-second timeout | `NOT TESTED` | User has not yet checked whether the display blanks and normal mode is restored at timeout. |
+| Privacy-safe AOD-only scene | `FAIL / NOT IMPLEMENTED` | Immediately after locking, the display retained the pre-lock screen content instead of switching to a dedicated black-background AOD scene. |
+| Panel power-rail state, thermal behavior, long-run reliability | `NOT VERIFIED` | No measurement or prolonged test was supplied. |
+
+### Interpretation
+
+This is **not merely a frozen final frame**: track metadata/artwork and the playback progress continued updating while the phone was reported locked. It is evidence of a working *experimental locked-visible, live-updating presentation* on the tested device. It does **not** establish genuine native AOD, panel-power behavior, or safe all-day operation.
+
+The principal functional/privacy gap is that normal pre-lock screen content remains visible after the first side-button press. A subsequent press shows the ordinary lock screen according to the user. Treat this as a privacy concern rather than a completed AOD presentation: do not enable it over sensitive content while this behavior remains.
+
+### Updated milestone status
+
+```text
+Milestone A — display-path feasibility:  PASS for experimental visibility on target (user report)
+Milestone B — visible, live-updating prototype: PASS (user report)
+Milestone C — Now Playing rendering/updates: PASS with existing UI (user report)
+Milestone D — privacy-safe scene, timeout and reliability: INCOMPLETE
+Overall pseudo-AOD experiment: PARTIAL PASS; not production-ready
+```
+
+### Next bounded validation
+
+1. Verify the configured 30-second timeout and normal display restoration, without leaving the display unattended.
+2. Resolve the retained pre-lock content before treating this as a privacy-safe AOD-like interface. The desired post-lock scene contains only the black background and NotchNowPlaying elements.
+3. Separately verify normal lock-screen access, playback-stop cleanup, repeated lock/unlock, and crash/recovery behavior. Record build/run identity and device diagnostics with future results.
+
+Do not relabel this result as native AOD or claim that the physical OLED panel's power state is known.
