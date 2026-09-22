@@ -808,3 +808,141 @@ next semantic trace target:
 
 No runtime hook is recommended for this helper. A hook here would only repeat
 record/diagnostic activity and would not answer where mode 0 propagates next.
+
+## Phase 4B-8 — `performEvent:` post-bookkeeping commit path
+
+### `0x200e30044` call site
+
+```text
+call address:   0x200e2fe80
+callee:         0x200e30044
+return address: 0x200e2fe84
+```
+
+Immediately after return, the code compares the already-held old/new reported
+state values:
+
+```text
+0x200e2fe84: cmp x25, x21
+0x200e2fe88: b.eq 0x200e2feac
+```
+
+The return register `x0` from `0x200e30044` is not consumed as a result. It is
+overwritten by the subsequent branch helper/predicate calls.
+
+### Post-call CFG
+
+```text
+0x200e2fe84
+  ├─ oldState == newState
+  │    → 0x200e2feac
+  │
+  └─ oldState != newState
+       → predicate 0x2068bffb0(newState)
+          ├─ true  → helper 0x200e2e6a0(self)
+          └─ false → helper 0x200e2cfec(self)
+       → 0x200e2feac
+
+0x200e2feac
+  → [self +0x38 invalidate:]
+  → [self +0x20 scheduleWatchdogWithDelegate:explanation:timeout:]
+  → store returned object to self +0x38
+  → helper 0x200e2d454(self)
+  → cleanup and return
+```
+
+The two branch helpers are the first non-trace calls after bookkeeping. Their
+bounded bodies show transition-slot mutation:
+
+```text
+0x200e2e6a0:
+  clears self +0x40
+
+0x200e2cfec:
+  computes a transition object and stores it to self +0x40
+```
+
+These are transition-state updates, not writes to `_currentState (+0x98)` or
+`_lock_targetState (+0xa0)`.
+
+### Current-state usage
+
+```text
+reads after 0x200e30044: NONE
+writes after 0x200e30044: NONE
+replacement: NONE
+```
+
+The post-call code does not load `self +0x98`, construct a new aggregate
+state, or invoke an aggregate-state setter.
+
+### Target-state usage
+
+```text
+reads after 0x200e30044: NONE
+writes after 0x200e30044: NONE
+consumed by: NONE proven
+target escapes performEvent after the call: NO
+```
+
+The target object is supplied to `0x200e30044` in `x3`, but that helper does
+not retain or read the original argument. After the call, the saved target
+register is not used again before `performEvent:` returns.
+
+### First post-bookkeeping semantic mutation
+
+```text
+address:       0x200e2fe98 or 0x200e2fea4 call site
+operation:     state-dependent transition helper
+object:        BLSHBacklightTransitionStateMachine self
+offset:        +0x40 transition slot
+value source:  event-state predicate and helper-produced transition object
+classification: TRANSITION STATE MACHINE update
+```
+
+The direct aggregate/current-state commit is absent. The later `+0x38`
+sequence is a separate invalidation/watchdog lifecycle update:
+
+```text
+0x200e2feac: receiver [self +0x38], selector invalidate:
+0x200e2fef4: scheduleWatchdogWithDelegate:explanation:timeout:
+0x200e2ff00: self +0x38 = returned watchdog/operation object
+```
+
+The exact ivar declaration names for `+0x38` and `+0x40` are not needed to
+establish that they are transition-machine lifecycle slots; neither is the
+known aggregate or mutable target state field.
+
+### Caller-layer check
+
+The known caller invokes `performEvent:` at `0x200e12958`. After the call,
+its return value is not read; the caller performs only cleanup/lifetime work
+before returning. No current/target aggregate commit is visible in this one
+caller layer.
+
+### Callback and external handoff
+
+```text
+callback/event propagation:
+  internal transition helpers 0x200e2e6a0 / 0x200e2cfec
+  watchdog invalidation/scheduling through +0x38
+
+external framework handoff: NONE proven
+BackBoard/BKS relationship: NOT REACHED
+XPC/MIG/Mach/QuartzCore/IOKit: NONE proven in this bounded post-call path
+```
+
+This establishes a logical transition-state/lifecycle update, not a display
+service handoff or physical blanking operation. The resolved target mode does
+not escape `performEvent:` through the post-bookkeeping code.
+
+```text
+semantic commit classification:
+  LOGICAL TRANSITION-STATE UPDATE
+  not aggregate current-state commit
+  not display-service or physical boundary
+
+next trace target:
+  one bounded caller/producer of transition slot +0x40, if needed;
+  no runtime hook is justified at this point
+```
