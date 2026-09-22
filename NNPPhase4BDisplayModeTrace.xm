@@ -409,6 +409,31 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
 
 %end
 
+%hook SWSystemSleepMonitor
+
+- (id)initWithIdentifier:(id)identifier
+                    queue:(id)queue
+     allowsInvalidation:(BOOL)allowsInvalidation
+         monitorProvider:(id)monitorProvider
+   sleepAssertionProvider:(id)sleepAssertionProvider {
+    NNPPhase4BDisplayModeSet(@"SleepMonitorInitMonitorProviderClass",
+                             monitorProvider
+                                 ? NSStringFromClass(object_getClass(monitorProvider))
+                                 : @"<nil>");
+    NNPPhase4BDisplayModeSet(@"SleepMonitorInitSleepAssertionProviderClass",
+                             sleepAssertionProvider
+                                 ? NSStringFromClass(object_getClass(sleepAssertionProvider))
+                                 : @"<nil>");
+    NNPPhase4BDisplayModeSet(@"SleepMonitorInitQueueClass",
+                             queue ? NSStringFromClass(object_getClass(queue)) : @"<nil>");
+    id result = %orig;
+    NNPPhase4BDisplayModeSet(@"SleepMonitorInitResultClass",
+                             result ? NSStringFromClass(object_getClass(result)) : @"<nil>");
+    return result;
+}
+
+%end
+
 %hook BSServiceConnection
 
 - (id)performChangeRequest:(id)request {
