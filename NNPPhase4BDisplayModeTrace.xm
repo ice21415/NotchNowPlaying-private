@@ -244,6 +244,34 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
     NNPPhase4BDisplayModeSet(@"BLSPerformRequestCallCount", @1);
     NNPPhase4BDisplayModeSet(@"BLSPerformRequestClass",
                              request ? NSStringFromClass(object_getClass(request)) : @"<nil>");
+    id __unsafe_unretained proxy = nil;
+    memcpy(&proxy,
+           (const void *)((uintptr_t)(__bridge void *)self + 0x08),
+           sizeof(proxy));
+    NNPPhase4BDisplayModeSet(@"BLSProxyClass",
+                             proxy ? NSStringFromClass(object_getClass(proxy)) : @"<nil>");
+    return %orig;
+}
+
+%end
+
+%hook BLSXPCBacklightProxy
+
+- (id)performChangeRequest:(id)request {
+    NNPPhase4BDisplayModeSet(@"BLSXPCProxyCallCount", @1);
+    NNPPhase4BDisplayModeSet(@"BLSXPCProxyRequestClass",
+                             request ? NSStringFromClass(object_getClass(request)) : @"<nil>");
+    return %orig;
+}
+
+%end
+
+%hook BSServiceConnection
+
+- (id)performChangeRequest:(id)request {
+    NNPPhase4BDisplayModeSet(@"BSServiceConnectionCallCount", @1);
+    NNPPhase4BDisplayModeSet(@"BSServiceConnectionRequestClass",
+                             request ? NSStringFromClass(object_getClass(request)) : @"<nil>");
     return %orig;
 }
 
