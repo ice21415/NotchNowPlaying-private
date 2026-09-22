@@ -493,4 +493,29 @@ reload: PASS
 Spotify UI: PASS
 controller-only: PASS
 ```
+
+Test 5 preserved the passing controller install and added exactly one delayed
+trace-helper call. Spotify UI did not appear after Spotify playback. A bounded
+post-reload check showed SpringBoard running at PID 14993, and a second check
+five seconds later retained PID 14993; no crash/Jetsam record was found in the
+narrow check. Thus the first reproducible functional divergence is the trace
+helper call, but a SpringBoard crash/restart is not proven.
+
+```text
+workflow: 35672437479
+commit: bf959516593a2124c04962695b5564b318be3ade
+artifact SHA256: 31B6E4F8D136D02533271ECC1846480ECF0E08A45CEBEA7ADD6DEEE500ED9AA0
+install: PASS
+reload: PASS
+Spotify UI: FAIL
+SpringBoard PID after reload: 14993
+SpringBoard PID after stability interval: 14993
+Crash/Jetsam: not observed
+Trace helper: FIRST REPRODUCIBLE FAILING OPERATION (functional UI criterion)
+```
+
+Per the isolation stop rule, Test 6 and later BLS stages are not run. The
+current evidence points to the trace helper or its file-write path, not to
+`sharedBacklight` or `backlightState`, which have not been invoked in this
+matrix branch.
 ```
