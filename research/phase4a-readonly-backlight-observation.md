@@ -397,3 +397,42 @@ obtained. The deployed package was rolled back to the verified UI-only build.
 This is runtime instability evidence for the combined BLS lookup/read path in
 the current SpringBoard/Relaxin environment, not a semantic mapping and not a
 physical display-state result.
+
+## Runtime binary-search isolation
+
+Test 1 (`dispatch_after` delayed no-op) was built and deployed without
+installing `NNPController`, so Spotify UI was intentionally not applicable.
+
+```text
+workflow: 35671280332
+commit: 37abe26ce8870a16aba5f89c82f59238a5c9a26a
+artifact SHA256: 6CED92AA8D51FDC56A640E35342BE95376CA093BCD4DD2EE1D839BEBCC0F6BB9
+remote SHA256:  6CED92AA8D51FDC56A640E35342BE95376CA093BCD4DD2EE1D839BEBCC0F6BB9
+install: PASS
+reload: PASS
+SpringBoard PID before reload: 14653
+SpringBoard PID after reload: 14725
+SpringBoard PID after additional stability interval: 14725
+Spotify UI: NOT APPLICABLE
+Crash/Jetsam: none observed in the bounded check
+Delayed no-op: PASS
+```
+
+The PID change from 14653 to 14725 is the expected `/usr/bin/sbreload`
+deployment reload, not an additional runtime restart. The unchanged PID during
+the follow-up interval supports that the delayed no-op itself did not restart
+SpringBoard.
+
+```text
+Test 1 delayed no-op: PASS
+Test 2 delayed static bool: NOT RUN
+Test 3 delayed CFPreferences: NOT RUN
+Test 4 controller install: NOT RUN in this matrix step
+Test 5 diagnostic helper: NOT RUN in this matrix step
+Test 6 BLS class: NOT RUN
+Test 7 selector: NOT RUN
+Test 8 sharedBacklight: NOT RUN
+Test 9 backlightState: NOT RUN
+Test 10 lock callback: NOT RUN
+Test 11 lock BLS read: NOT RUN
+```
