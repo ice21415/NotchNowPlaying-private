@@ -352,3 +352,106 @@ Sequence: 0
 Therefore the missing setter event is not explained merely by reading too
 early after the lock transition. The older target/provider fields remain
 excluded from this hook result because this build did not write them.
+
+## Phase 4B-4 — Confirmed `performEvent:` mode-0 branch
+
+### `performEvent:` CFG
+
+```text
+-[BLSHBacklightTransitionStateMachine performEvent:]
+  → read event state
+  → compare/store self->_backlightState (+0x50)
+  → prepare/retrieve self->_lock_targetState (+0xa0)
+  → mode helper 0x200e2d338(self, newReportedState, ...)
+  → [targetState setDisplayMode:mode]
+  → helper 0x200e30044(self, event/context, currentState,
+                       targetState, oldEqualsNew, pendingEvent)
+  → subsequent transition/notification machinery
+```
+
+The call at `0x200e2fe80` is the first downstream continuation after the
+target display-mode store. Its receiver is the transition-state-machine
+object; the target-state object is supplied as an explicit argument. This
+helper is internal to `BacklightServicesHost`, not a proven display-service
+boundary.
+
+### Mode-0 branch condition
+
+```text
+inputs:       new reported event state
+comparison:   newState == 0
+taken target: mode helper 0x200e2d338 returns
+              [policyObject isAlwaysOnSuppressed]
+```
+
+The mode-selection helper handles state `3`, then state `1`, and reaches the
+zero-state path only when `newState == 0`. The returned q value is the
+suppression/policy result, which is the already-observed target mode `0` for
+the manual lock transition. This does not give mode `0` a physical panel
+meaning.
+
+```text
+mode-0 first helper:  0x200e2d338
+mode-0 second helper: 0x200e30044
+```
+
+### Helper ABI and provenance
+
+```text
+0x200e2d338:
+  x0 = BLSHBacklightTransitionStateMachine self
+  x1 = new reported backlight state
+  return = q display-mode value
+  reads = policy object derived from self +0x48; suppression getter
+  writes = none proven in the bounded slice
+
+0x200e30044:
+  x0 = transition-state-machine self
+  x1 = retained event/context object
+  x2 = current aggregate state self +0x98
+  x3 = mutable target state self +0xa0
+  x4 = old/new equality flag
+  x5 = pending/prewarmed event context
+  return = internal transition/update result
+```
+
+The second helper is the first mode-independent continuation after
+`setDisplayMode:`. Its inspected bounded slice contains internal
+BacklightServicesHost calls, but no proven direct BKS, BackBoardServices,
+QuartzCore display-transaction, IOKit, or panel-power call.
+
+### Runtime branch observation
+
+The existing passive `performEvent:` observation called the original method
+unchanged and recorded the resulting target state:
+
+```text
+awake:       provider state 2 → target displayMode 4
+manual lock: provider state 0 → target displayMode 0
+```
+
+Thus the mode-0 outcome is runtime-confirmed at the target-state boundary. No
+additional internal-function hook was added because it would add risk without
+exposing a new physical-boundary fact at this stage.
+
+```text
+runtime mode-0 branch: PASS
+awake branch: state 2 → mode 4 → generic continuation 0x200e30044
+lock branch: state 0 → mode 0 → generic continuation 0x200e30044
+```
+
+### External handoff and physical boundary
+
+```text
+external handoff: not proven in the bounded mode-0 continuation
+framework: BacklightServicesHost internal
+BackBoard/BKS relationship: NOT REACHED in the inspected slice
+first display-service boundary: UNRESOLVED
+first physical-boundary candidate: UNRESOLVED
+```
+
+The mode-0 branch is resolved through the first internal helper and
+runtime-confirmed at the target-state boundary, but the inspected continuation
+does not establish a display-service or physical blanking boundary. If more
+work is authorized, inspect exactly one bounded downstream helper layer from
+`0x200e30044`; no display mutation is justified.
