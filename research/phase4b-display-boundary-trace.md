@@ -1321,6 +1321,59 @@ service path.
 ```text
 next semantic target: natural lock transition with CBDisplayStateClient hook
 next runtime hook: none beyond the existing class-level passive hook
+
+## Phase 4B-12  Provider field receiver pivot
+
+### Question
+
+Because the provider's `_displayStateClient` was nil and the
+`CBDisplayStateClient` class-level hook saw no calls, the next receiver inside
+the same provider implementation was inspected.  The provider uses its
+`+0x08` object for the selector
+`useAlwaysOnBrightnessCurve:withRampDuration:`.
+
+### Runtime evidence
+
+The exact object supplied by the live
+`BLSHBacklightOSInterfaceProvider` instance was:
+
+```text
+provider: BLSHBacklightOSInterfaceProvider
+field: +0x08
+class: SBBacklightPlatformProvider
+image: /System/Library/PrivateFrameworks/SpringBoard.framework/SpringBoard
+selector present: useAlwaysOnBrightnessCurve:withRampDuration:
+```
+
+The class-level passive hook for
+`CBDisplayStateClient -transitionToDisplayMode:withDuration:error:` remained
+at zero calls during the observed mode-4/mode-0 sequence.  The provider's
+`_displayStateClient` remained nil.  The new `SBBacklightPlatformProvider`
+curve hook did not produce a call record in the captured transition window.
+
+The image/IMP fields for the downstream selector were affected by the
+diagnostic method interposition itself and are not treated as original IMP
+evidence.  The class and receiver provenance are unaffected.
+
+### Classification
+
+```text
+SBBacklightOSInterfaceProvider: provider/display-state layer
+SBBacklightPlatformProvider: SpringBoard policy/curve receiver
+useAlwaysOnBrightnessCurve: presentation/brightness-policy side effect
+CBDisplayStateClient: CoreBrightness physical-boundary candidate, not reached
+```
+
+This pivot does not establish a physical boundary.  It rules out the live
+provider instance's direct CoreBrightness-client call for the observed
+transition and identifies the next high-value owner as the existing
+SpringBoard backlight request path rather than another generic
+BacklightServicesHost helper.
+
+```text
+next semantic target: passive observation of the existing
+SBBacklightController request handoff and BLSBacklight execution call
+```
 ```
 ```
 ```

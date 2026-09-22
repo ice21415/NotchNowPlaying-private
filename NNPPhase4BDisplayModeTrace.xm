@@ -227,6 +227,28 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
 
 %end
 
+%hook SBBacklightController
+
+- (void)_performBacklightChangeRequest:(id)request completion:(id)completion {
+    NNPPhase4BDisplayModeSet(@"ControllerRequestCallCount", @1);
+    NNPPhase4BDisplayModeSet(@"ControllerRequestClass",
+                             request ? NSStringFromClass(object_getClass(request)) : @"<nil>");
+    %orig;
+}
+
+%end
+
+%hook BLSBacklight
+
+- (id)performChangeRequest:(id)request {
+    NNPPhase4BDisplayModeSet(@"BLSPerformRequestCallCount", @1);
+    NNPPhase4BDisplayModeSet(@"BLSPerformRequestClass",
+                             request ? NSStringFromClass(object_getClass(request)) : @"<nil>");
+    return %orig;
+}
+
+%end
+
 %hook CBDisplayStateClient
 
 - (BOOL)transitionToDisplayMode:(long long)mode
