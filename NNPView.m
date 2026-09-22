@@ -81,7 +81,7 @@
 #elif NNP_DIAGNOSTIC_UI_MARKER
     title = [NSString stringWithFormat:@"[DIAG-%@] %@", @NNP_DIAGNOSTIC_BUILD_ID, title];
 #elif NNP_PHASE4A_UI_STATE_PROBE
-    title = [NSString stringWithFormat:@"[P4A-%@ %@] %@", @NNP_PHASE4A_BUILD_ID, NNPPhase4AUIStateMarker(), title];
+    title = [NSString stringWithFormat:@"[%@] %@", NNPPhase4AUIStateMarker(), title];
 #endif
     self.title.text = title;
     self.artist.text = state.artist.length ? state.artist : (state.album ?: @"");
