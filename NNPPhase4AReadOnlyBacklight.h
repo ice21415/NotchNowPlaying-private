@@ -11,3 +11,4 @@ BOOL NNPPhase4AReadBacklightState(long long *state);
 void NNPPhase4ASetUIState(BOOL succeeded, long long state);
 NSString *NNPPhase4AUIStateMarker(void);
 void NNPPhase4ANoop(void);
+int NNPPhase4AConstant(void);

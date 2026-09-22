@@ -45,6 +45,9 @@ static NNPBackBoardReadOnlyDiagnostics *gNNPBackBoardReadOnlyDiagnostics;
 #ifndef NNP_PHASE4A_CROSS_FILE_NOOP_TEST
 #define NNP_PHASE4A_CROSS_FILE_NOOP_TEST 0
 #endif
+#ifndef NNP_PHASE4A_CROSS_FILE_CONSTANT_TEST
+#define NNP_PHASE4A_CROSS_FILE_CONSTANT_TEST 0
+#endif
 #if NNP_PHASE4A_LOCAL_NOOP_TEST
 static __attribute__((noinline)) void NNPLocalNoop(void) {
 }
@@ -95,6 +98,10 @@ static __attribute__((noinline)) void NNPLocalNoop(void) {
 #endif
 #if NNP_PHASE4A_CROSS_FILE_NOOP_TEST
         NNPPhase4ANoop();
+#endif
+#if NNP_PHASE4A_CROSS_FILE_CONSTANT_TEST
+        volatile int value = NNPPhase4AConstant();
+        (void)value;
 #endif
 #if NNP_PHASE4A_UI_STATE_PROBE
         long long phase4AState = 0;

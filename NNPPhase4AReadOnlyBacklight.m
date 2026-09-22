@@ -16,8 +16,15 @@
 #define NNP_PHASE4A_TRACE_MICRO_TEST 0
 #endif
 
+#if NNP_PHASE4A_CROSS_FILE_NOOP_TEST
 __attribute__((visibility("hidden"), noinline))
 void NNPPhase4ANoop(void) {
+}
+#endif
+
+__attribute__((visibility("hidden"), noinline))
+int NNPPhase4AConstant(void) {
+    return 0x4A;
 }
 
 static BOOL gNNPPhase4AAwakeLogged;
