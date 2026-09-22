@@ -166,6 +166,178 @@ used to establish ordering. The next safe action is one bounded static
 resolution of the operation execution selector/process ownership, not another
 runtime hook or any display operation.
 
+## Phase 4B-3 — BLSSetPresentationOperation static resolution
+
+### Class hierarchy
+
+```text
+BLSSetPresentationOperation (class_t 0x22fdf7c60, instance size 0x18)
+  → BLSHEnvironmentOperation (class_t 0x22fdf7698, instance size 0x10)
+    → NSObject
+```
+
+The class-data records identify the two classes and the superclass link. No
+additional superclass or protocol-bearing execution layer was found in this
+chain.
+
+`BLSSetPresentationOperation` has one subclass ivar:
+
+```text
++0x10  _additions       object/operation-detail collection
+```
+
+The inherited storage is:
+
+```text
++0x08  _backlightState  q / int64_t
+```
+
+The object therefore occupies 0x18 bytes including the object header. The q
+value is carried unchanged; this class contains no comparison or translation
+of values 0, 1, 2, 3, or 4.
+
+### Initializer
+
+```text
+selector: -initWithBacklightState:additions:
+IMP:      0x200e0ba60
+type:     @32@0:8q16@24
+```
+
+The initializer first invokes the superclass initializer with the q argument,
+then stores the additions object at `+0x10`. The base initializer and getter
+are:
+
+```text
+-initWithBacklightState:  0x200e0b8fc  @24@0:8q16
+-backlightState           0x200e0b9d8  q16@0:8
+```
+
+The subclass methods are:
+
+```text
+-additions                0x200e0bba4  @16@0:8
+-description              0x200e0bae4  @16@0:8
+```
+
+### Candidate execution methods
+
+No operation execution selector was found. The complete relevant method sets
+are data/diagnostic methods only:
+
+| Class | Selector | IMP | reads q-state | reads additions | execution candidate |
+| --- | --- | ---: | --- | --- | --- |
+| BLSSetPresentationOperation | `initWithBacklightState:additions:` | `0x200e0ba60` | stores | stores | NO |
+| BLSSetPresentationOperation | `additions` | `0x200e0bba4` | NO | returns | NO |
+| BLSSetPresentationOperation | `description` | `0x200e0bae4` | diagnostic formatting | diagnostic formatting | NO |
+| BLSHEnvironmentOperation | `initWithBacklightState:` | `0x200e0b8fc` | stores | NO | NO |
+| BLSHEnvironmentOperation | `backlightState` | `0x200e0b9d8` | returns | NO | NO |
+| BLSHEnvironmentOperation | `description` | `0x200e0b948` | diagnostic formatting | NO | NO |
+
+Consequently, `BLSSetPresentationOperation` is not an `NSOperation`-like
+active object in this image. There is no `execute`, `perform`, `run`, `apply`,
+`start`, or `main` method to hook.
+
+### Owner and processor
+
+The owner is the environment state machine:
+
+```text
+owner class: BLSHBacklightEnvironmentStateMachine
+owner ivar: +0x60 _lock_setPresentationOperation
+```
+
+The operation is created/replaced in the `setPresentation:withTargetBacklightState:`
+continuation and is consumed by the internal helper:
+
+```text
+processor/helper: 0x200e087b8
+input:            environment-state-machine self plus continuation context
+operation read:   self +0x60
+```
+
+The helper is reached by direct branches from the environment update blocks at
+`0x200e07e38`, `0x200e07e80`, `0x200e09940`, `0x200e0a844`,
+`0x200e0a868`, and `0x200e0b078`. Within that helper, the operation slot is
+read and the base `backlightState`/subclass `additions` data is consumed through
+the internal object-processing path. A small follow-on helper at
+`0x200e0ab14` handles the operation-related comparison/update step.
+
+```text
+BLSHBacklightEnvironmentStateMachine
+  +0x60 _lock_setPresentationOperation
+      ↓
+internal update helper 0x200e087b8
+      ↓
+operation data getters / helper 0x200e0ab14
+```
+
+The scheduling context is block-based and serialized with the environment
+state-machine update path. The exact dispatch queue label is not present in
+the bounded static slice, so the queue is reported as `UNRESOLVED`; no
+independent operation queue or `NSOperationQueue` consumer was found.
+
+### Downstream calls and external boundary
+
+The direct callees reached from the operation-consuming helper remain inside
+the BacklightServicesHost image or its runtime/object-management support:
+
+```text
+0x200e087b8 → 0x200e0ab14
+0x200e087b8 → internal presentation/update helpers
+operation getters → object-processing/runtime helpers
+```
+
+No direct call from this bounded operation path to a `BKSDisplayServicesSet*`
+symbol, BackBoardServices display setter, QuartzCore display transaction, IOKit
+display function, or panel-power API was proven. The known BKS landmarks are
+therefore `NOT REACHED` in this slice, rather than direct or wrapper calls.
+
+```text
+BackBoard handoff: UNRESOLVED
+BKS relationship: NOT REACHED in the bounded operation path
+first physical boundary: UNRESOLVED
+```
+
+This is a negative scope result, not evidence that no deeper display path
+exists anywhere in the system.
+
+### Previous environment setter relevance
+
+The setter remains statically valid as an operation-construction/update path,
+but its passive runtime hook produced no events for the observed lock/unlock
+transition (`EnvSetPresentationCount = 0`, `Sequence = 0`). Therefore its
+relevance to the observed side-button path is:
+
+```text
+UNLIKELY for the observed runtime transition
+```
+
+It may still serve an alternate environment/session path. The zero-event
+result does not justify calling it globally dead, but it does exclude it as a
+proven runtime boundary for this experiment.
+
+### Exact bounded graph
+
+```text
+BLSHBacklightEnvironmentStateMachine
+  setPresentation:withTargetBacklightState:
+    creates/replaces BLSSetPresentationOperation
+      initWithBacklightState:additions:
+    stores at +0x60
+
+environment update block
+    → helper 0x200e087b8
+    → BLSHEnvironmentOperation backlightState / additions data
+    → helper 0x200e0ab14 and internal presentation/update work
+    → no proven BackBoard/BKS handoff in this bounded slice
+```
+
+No new runtime hook is justified by this static result. A hook on
+`0x200e087b8` would be a function-level internal hook rather than an exact
+Objective-C execution selector and would need a separate authorization/repair
+phase; it is not added here.
+
 ## Unlock retry
 
 One ordinary user unlock was performed after the zero-event lock observation,
