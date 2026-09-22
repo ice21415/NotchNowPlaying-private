@@ -1374,6 +1374,109 @@ BacklightServicesHost helper.
 next semantic target: passive observation of the existing
 SBBacklightController request handoff and BLSBacklight execution call
 ```
+
+## Phase 4B-13  Request execution and sleep-action ownership
+
+### Question
+
+The previous provider/display-state observations needed to be separated into
+three layers: the SpringBoard-originated request, the BacklightServicesHost
+state-machine execution, and any lower display-service handoff.  This pass
+used the exact `performChangeRequest:` implementation and the live object
+ownership recorded during the natural mode-4 to mode-0 transition.
+
+### Static request path
+
+The bounded provider path is:
+
+```text
+SBBacklightController
+  -_performBacklightChangeRequest:completion:
+  -> BLSBacklightChangeRequest
+  -> BLSBacklight -performChangeRequest:
+  -> BLSHBacklightStateMachine -performChangeRequest:
+  -> BLSBacklightChangeEvent construction
+  -> BLSHBacklightTransitionStateMachine -performEvent:
+```
+
+At `0x200e120e8`, the request implementation creates the asynchronous
+continuation and reads `requestedActivityState` from the request.  The
+derived event state is produced by the previously recovered helper, stored
+as the event's `state`, and passed to `performEvent:`.  This is a logical
+state-machine transition, not evidence of a display-server call.
+
+The implementation also performs lifecycle/transition bookkeeping and
+dispatches the event continuation.  The bounded disassembly did not show a
+direct call to a BKS setter, CoreBrightness client, IOKit display path, or an
+XPC/MIG send at this entry point.
+
+### Runtime request evidence
+
+The installed passive observer recorded one naturally occurring request:
+
+```text
+SBBacklightController request count: 1
+request class: BLSBacklightChangeRequest
+BLSBacklight performChangeRequest count: 1
+BLSHBacklightStateMachine performChangeRequest count: 1
+```
+
+The `BLSBacklight` +0x08 object was receiver-proven as:
+
+```text
+BLSHBacklightStateMachine
+```
+
+The live state-machine object contained:
+
+```text
+_osInterfaceProvider = BLSHBacklightOSInterfaceProvider
+_sleepAction         = BLSHOnSystemSleepAction
+_lock_observers      = NSConcreteHashTable
+_eventPerformer      = BLSHBacklightTransitionStateMachine
+```
+
+This supersedes the earlier assumption that the observed path necessarily
+uses `BLSXPCBacklightProxy` or `BSServiceConnection`; neither passive hook
+recorded a call in this transition.
+
+### Sleep-action ownership
+
+The runtime class `BLSHOnSystemSleepAction` exposes these relevant callbacks:
+
+```text
+systemSleepMonitor:sleepRequestedWithResult:
+systemSleepMonitor:prepareForSleepWithCompletion:
+systemSleepMonitorSleepRequestAborted:
+systemSleepMonitorWillWakeFromSleep:
+actionCompleted
+```
+
+The passive hooks for the two sleep-request callbacks recorded no invocation
+during the captured side-button transition.  Therefore the object is a
+lifecycle/sleep-action owner, but it is not a runtime-confirmed continuation
+of this particular mode-4 to mode-0 sample.
+
+### Boundary classification
+
+```text
+request construction:             upstream input
+BLSHBacklightStateMachine:        logical state-machine execution
+TransitionStateMachine:           logical target/display-state resolution
+BLSHBacklightOSInterfaceProvider: provider/display-state layer
+BLSHOnSystemSleepAction:          lifecycle owner, not reached in sample
+CoreBrightness CBDisplayStateClient: physical-boundary candidate, not reached
+BackBoard/BKS setter:             not reached
+physical panel boundary:          unresolved
+```
+
+The next bounded static target is the exact implementation of
+`BLSHBacklightOSInterfaceProvider -transitionToDisplayMode:withDuration:`
+and its non-trace branches.  The live `_displayStateClient` is nil and the
+SpringBoard platform-provider curve/blanking hooks did not record calls, so
+no physical boundary can be claimed from those objects yet.  No additional
+runtime hook is justified until that provider branch is reduced to one exact
+semantic handoff.
 ```
 ```
 ```
