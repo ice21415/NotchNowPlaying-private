@@ -489,6 +489,7 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
         NSMutableArray *monitorNames = [NSMutableArray array];
         NSMutableArray *monitorIMPs = [NSMutableArray array];
         NSString *monitorImage = nil;
+        NSString *monitorImageBase = nil;
         for (unsigned int index = 0; monitorMethods && index < monitorCount; index++) {
             SEL selector = method_getName(monitorMethods[index]);
             const char *name = sel_getName(selector);
@@ -515,6 +516,8 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
                 Dl_info info = {0};
                 if (imp && dladdr((const void *)imp, &info) && info.dli_fname) {
                     monitorImage = [NSString stringWithUTF8String:info.dli_fname];
+                    monitorImageBase = [NSString stringWithFormat:@"0x%llx",
+                                        (unsigned long long)(uintptr_t)info.dli_fbase];
                 }
             }
         }
@@ -525,6 +528,7 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
         NNPPhase4BDisplayModeSet(@"SystemSleepMonitorMethodIMPs",
                                  [monitorIMPs componentsJoinedByString:@"|"]);
         if (monitorImage) NNPPhase4BDisplayModeSet(@"SystemSleepMonitorImage", monitorImage);
+        if (monitorImageBase) NNPPhase4BDisplayModeSet(@"SystemSleepMonitorImageBase", monitorImageBase);
     } else {
         NNPPhase4BDisplayModeSet(@"SystemSleepMonitorClassFound", @NO);
     }
