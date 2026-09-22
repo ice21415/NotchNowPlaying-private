@@ -1640,3 +1640,74 @@ The next bounded static target is the implementation of the two
 `BLSHOnSystemSleepAction` callbacks, using their exact class/method ownership,
 or the single callback/completion receiver that they invoke.  Generic sleep
 monitor internals will not be expanded.  No display mutation is justified.
+
+## Phase 4B-16  SystemWake monitor handoff
+
+### Question
+
+The sleep callbacks receive a live `SWSystemSleepMonitor`.  Its runtime image
+and method implementations were resolved so that the next process/service
+boundary could be distinguished from the BacklightServicesHost lifecycle
+callback itself.
+
+### Runtime and static identity
+
+```text
+class: SWSystemSleepMonitor
+image: /System/Library/PrivateFrameworks/SystemWake.framework/SystemWake
+runtime image base: 0x211dbe000
+static image base:  0x1f436e000
+
+systemPowerChanged:notificationID:
+runtime IMP: 0x211dc0044
+static IMP:  0x1f4370044
+
+hasSleepBeenRequested:
+static IMP: 0x1f436fa34
+
+isSleepImminent:
+static IMP: 0x1f436fa78
+```
+
+### Static behavior of `systemPowerChanged:`
+
+The recovered implementation has an input-dependent jump table over the power
+notification value.  Its mode-specific branches call an internal helper with
+the monitor object, a state value (including 3/4 in the observed sleep
+family), notification data, and a completion/context pointer.  It updates
+SystemWake monitor state and constructs callback blocks.  The bounded method
+contains no direct reference to:
+
+```text
+BKSDisplayServices
+CBDisplayStateClient
+IOMobileFramebuffer / IOKit display
+XPC/MIG display request
+```
+
+`hasSleepBeenRequested` and `isSleepImminent` are read-only predicates over
+the monitor's own state/lock fields; neither is a panel operation.
+
+### Classification
+
+```text
+BLS state/target:          provider input
+BLSHOnSystemSleepAction:   lifecycle callback owner
+SWSystemSleepMonitor:      SystemWake service/monitor handoff
+display service:           not directly reached in bounded method
+physical panel boundary:   unresolved
+```
+
+This is stronger than a name-only inference: the monitor receiver was observed
+in both sleep callbacks, and its implementation image is independently
+resolved.  It is nevertheless not the physical boundary because the method
+updates monitor state and invokes callbacks rather than issuing a display
+blank/power operation.
+
+### Next semantic target
+
+The next bounded target is the monitor's existing provider/notification owner
+created by `initWithIdentifier:queue:allowsInvalidation:monitorProvider:sleepAssertionProvider:`.
+Only the receiver/protocol object that supplies `systemPowerChanged:` should
+be followed.  Generic SystemWake internals and power assertions remain out of
+scope; no assertion is to be acquired or modified.
