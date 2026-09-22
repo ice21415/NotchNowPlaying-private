@@ -19,7 +19,7 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
 %hook BLSHBacklightDisplayStateMachine
 
 - (void)setDisplayMode:(long long)mode withRampDuration:(double)duration {
-    if (gNNPPhase4BDisplayModeSequence == 0) {
+    if (gNNPPhase4BDisplayModeSequence < 2) {
         id __unsafe_unretained downstreamBefore = nil;
         memcpy(&downstreamBefore,
                (const void *)((uintptr_t)(__bridge void *)self + 0x18),
@@ -29,6 +29,9 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
             memcpy(&lowerBefore,
                    (const void *)((uintptr_t)(__bridge void *)downstreamBefore + 0x38),
                    sizeof(lowerBefore));
+            NNPPhase4BDisplayModeSet(@"LowerReceiverPointerBefore",
+                                     [NSString stringWithFormat:@"0x%llx",
+                                      (unsigned long long)(uintptr_t)lowerBefore]);
             if (lowerBefore) {
                 SEL lowerSelector = NSSelectorFromString(@"transitionToDisplayMode:withDuration:error:");
                 Method lowerMethod = class_getInstanceMethod(object_getClass(lowerBefore),
