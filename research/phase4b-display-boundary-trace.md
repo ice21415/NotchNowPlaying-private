@@ -1959,6 +1959,84 @@ process without a separately authorized passive backboardd observation or
 additional static IPC reconstruction.  No active display mutation is
 justified.
 
+## Phase 4B-20  BackBoard blanking-context implementation
+
+### Question
+
+Does the server-side blanking candidate perform a concrete display transaction,
+rather than merely expose a name or header declaration?
+
+### Static evidence
+
+The extracted `backboardd` image's Objective-C metadata resolves:
+
+```text
+class: _BKDisplayBlankingContext
+  _display          +0x08  CAWindowServerDisplay *
+  _blankingContext  +0x10  CAContext *
+
+-blank:              0x10001b8c0
+-clear:              0x10001b744
+-_wrapInCATransaction: 0x10001b624
+```
+
+The bounded disassembly of `-blank` shows:
+
+```text
+load self +0x10 (_blankingContext)
+if already present, take the existing-context error path
+otherwise construct a block
+call -_wrapInCATransaction: with the block
+```
+
+The bounded disassembly of `-_wrapInCATransaction:` shows the exact
+transaction boundary:
+
+```text
+[CATransaction begin]
+invoke the supplied block through its authenticated block call target
+[CATransaction commit]
+```
+
+The `-blank` implementation's non-trace log format is:
+
+```text
+"%@ - blanking display: %@"
+```
+
+The inverse `-clear` path logs:
+
+```text
+"%@ - clearing blanked display: %@"
+```
+
+This is now direct implementation evidence that BackBoard's blanking context
+creates/updates a `CAWindowServerDisplay`/`CAContext` transaction.  It is not
+merely an API-name or class-header inference.
+
+### Physical-boundary classification
+
+The server's separate operations remain distinct:
+
+```text
+BKDisplaySetDisplayBlanked       visual/display blanking request
+_BKDisplayBlankingContext -blank CAWindowServerDisplay/CAContext transaction
+BKDisplaySetBlankingRemovesPower panel-power policy dimension
+```
+
+Therefore the strongest defensible classification is:
+
+```text
+first display-service boundary:       com.apple.backboard.display.services
+first concrete blanking boundary:     _BKDisplayBlankingContext -blank
+panel-power boundary:                  BKDisplaySetBlankingRemovesPower policy
+hardware/panel execution:              below this server-side boundary
+```
+
+The disassembly proves what the server-side context does, but it does not
+prove that the specific BLS transition observed in SpringBoard invoked this
+server operation.  That causal association remains the only missing link.
+
 ## Phase 4B-19  Static resolution of the SystemWake power handoff
 
 ### Question
