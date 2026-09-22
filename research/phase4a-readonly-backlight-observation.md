@@ -457,4 +457,26 @@ Spotify UI: NOT APPLICABLE
 Crash/Jetsam: none observed in the bounded check
 Delayed static bool: PASS
 ```
+
+Test 3 (`dispatch_after` plus one `CFPreferencesSetAppValue`/
+`CFPreferencesAppSynchronize` write of `DelayedEntered`) also returned to a
+running SpringBoard after reload. No controller or Spotify UI path was part of
+this test. The write call completed in the test code, but no separate
+`com.user.notchnowplaying.phase4a.plist` was exposed by the bounded preference
+file check, so persistence was not independently verified.
+
+```text
+workflow: 35671827601
+commit: 2a9b40a35735fe8ce243dc0f4215bed2bf881882
+artifact SHA256: CF1D7F9EB3F404BC08D15D6E921257D63DC4FE7F002F1589775FFA7BA00E012A
+remote SHA256:  CF1D7F9EB3F404BC08D15D6E921257D63DC4FE7F002F1589775FFA7BA00E012A
+install: PASS
+reload: PASS
+SpringBoard PID before reload: 14794
+SpringBoard PID after reload: 14857
+SpringBoard PID after additional stability interval: not separately captured
+Spotify UI: NOT APPLICABLE
+Crash/Jetsam: none observed in the bounded check
+Delayed CFPreferences: runtime PASS; preference persistence UNVERIFIED
+```
 ```
