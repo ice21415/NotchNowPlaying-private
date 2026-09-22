@@ -315,6 +315,26 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
 
 %end
 
+%hook BLSHOnSystemSleepAction
+
+- (void)systemSleepMonitor:(id)monitor sleepRequestedWithResult:(id)completion {
+    NNPPhase4BDisplayModeSet(@"SleepRequestedCallCount", @1);
+    NNPPhase4BDisplayModeSet(@"SleepRequestedMonitorClass",
+                             monitor ? NSStringFromClass(object_getClass(monitor)) : @"<nil>");
+    NNPPhase4BDisplayModeSet(@"SleepRequestedCompletionClass",
+                             completion ? NSStringFromClass(object_getClass(completion)) : @"<nil>");
+    %orig;
+}
+
+- (void)systemSleepMonitor:(id)monitor prepareForSleepWithCompletion:(id)completion {
+    NNPPhase4BDisplayModeSet(@"PrepareForSleepCallCount", @1);
+    NNPPhase4BDisplayModeSet(@"PrepareForSleepMonitorClass",
+                             monitor ? NSStringFromClass(object_getClass(monitor)) : @"<nil>");
+    %orig;
+}
+
+%end
+
 %hook BSServiceConnection
 
 - (id)performChangeRequest:(id)request {
