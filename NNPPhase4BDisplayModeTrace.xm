@@ -33,6 +33,42 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
                              NSStringFromClass(object_getClass(self)));
     NNPPhase4BDisplayModeSet(@"DisplayModeSequence",
                              @(gNNPPhase4BDisplayModeSequence));
+
+    if (gNNPPhase4BDisplayModeSequence == 1) {
+        id downstream = *(id *)((uint8_t *)(__bridge void *)self + 0x18);
+        if (downstream) {
+            SEL transitionSelector = NSSelectorFromString(@"transitionToDisplayMode:withDuration:");
+            Method transitionMethod = class_getInstanceMethod(object_getClass(downstream),
+                                                               transitionSelector);
+            IMP transitionIMP = transitionMethod ? method_getImplementation(transitionMethod) : NULL;
+            NNPPhase4BDisplayModeSet(@"DownstreamReceiverClass",
+                                     NSStringFromClass(object_getClass(downstream)));
+            NNPPhase4BDisplayModeSet(@"DownstreamSelectorFound",
+                                     @(transitionMethod != NULL));
+            if (transitionIMP) {
+                Dl_info transitionInfo = {0};
+                void *strippedTransitionIMP = ptrauth_strip((void *)transitionIMP,
+                                                            ptrauth_key_function_pointer);
+                NNPPhase4BDisplayModeSet(@"DownstreamIMP",
+                                         [NSString stringWithFormat:@"0x%llx",
+                                          (unsigned long long)(uintptr_t)strippedTransitionIMP]);
+                if (dladdr((const void *)transitionIMP, &transitionInfo)) {
+                    NNPPhase4BDisplayModeSet(@"DownstreamImageBase",
+                                             [NSString stringWithFormat:@"0x%llx",
+                                              (unsigned long long)(uintptr_t)transitionInfo.dli_fbase]);
+                    if (transitionInfo.dli_fname) {
+                        NNPPhase4BDisplayModeSet(@"DownstreamImage",
+                                                 [NSString stringWithUTF8String:transitionInfo.dli_fname]);
+                    }
+                    if (transitionInfo.dli_saddr) {
+                        NNPPhase4BDisplayModeSet(@"DownstreamSymbolAddress",
+                                                 [NSString stringWithFormat:@"0x%llx",
+                                                  (unsigned long long)(uintptr_t)transitionInfo.dli_saddr]);
+                    }
+                }
+            }
+        }
+    }
 }
 
 %end
