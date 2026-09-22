@@ -455,3 +455,123 @@ runtime-confirmed at the target-state boundary, but the inspected continuation
 does not establish a display-service or physical blanking boundary. If more
 work is authorized, inspect exactly one bounded downstream helper layer from
 `0x200e30044`; no display mutation is justified.
+
+## Phase 4B-5 — First downstream layer from `0x200e30044`
+
+### `0x200e30044` CFG
+
+The bounded implementation spans `0x200e30044`–`0x200e306a4`. Its entry
+arguments are preserved as follows:
+
+```text
+x0 → x23   transition-state-machine self
+x2 → x22   current aggregate/state input
+x3 → x21   target-state argument at entry
+x4 → x26   old/new equality flag
+x5 → x20   pending/prewarmed event context
+```
+
+The entry copy of `x3` is overwritten at `0x200e300c8` before any target-state
+getter or target-state field load is performed. No later instruction in this
+bounded function reloads the original target-state argument from a saved stack
+slot or another register.
+
+The direct-call/branch structure is:
+
+```text
+0x200e3008c–0x200e300a8  internal state/context acquisition
+0x200e300b0               branch on old/new equality flag
+0x200e300b4–0x200e300cc  internal context/presentation preparation
+0x200e300d8–0x200e3010c  presentation, presentationEntries, count processing
+0x200e30110               compare an entry/count-derived value with 2
+0x200e301d8               differenceFromPresentation: on derived presentations
+0x200e30208–0x200e30218  count calls on derived collection objects
+0x200e30220–0x200e30318  event/context and derived-object field preparation
+0x200e30320–0x200e30478  identity/presence branches and internal collection work
+0x200e30480–0x200e30548  construct a 0x98-byte internal record
+0x200e3056c               pass that record to shared/internal helper 0x2068c02c0
+0x200e30570–0x200e30668  cleanup/release paths
+```
+
+### State-dependent call sites
+
+| Call site | Callee/operation | Target-state dependency | DisplayMode dependency | Condition |
+| --- | --- | --- | --- | --- |
+| `0x200e300b0` | internal preparation | NO | NO | `oldEqualsNew` |
+| `0x200e300d8` | `presentation` on derived `x22` | NO direct target proof | NO | `self/context` valid |
+| `0x200e300ec` | `presentation` on stack-derived object | NO direct target proof | NO | same preparation path |
+| `0x200e300f8` | `presentationEntries` | NO direct target proof | NO | derived presentation exists |
+| `0x200e30104` | `count` | NO | NO | derived entries path |
+| `0x200e30110` | integer comparison | NO | NO | entry/count-derived value `>= 2` |
+| `0x200e301d8` | `differenceFromPresentation:` | NO direct target proof | NO | derived presentation identity/path |
+| `0x200e30208` | `count` | NO | NO | derived collection |
+| `0x200e30214` | `count` | NO | NO | derived collection |
+| `0x200e302f0` | `displayMode` getter | NO direct target proof | YES, derived receiver | unconditional on active path |
+| `0x200e30308` | `displayMode` getter | NO direct target proof | YES, derived receiver | unconditional on active path |
+| `0x200e3056c` | internal/shared helper `0x2068c02c0` | NO direct target proof | YES, receives record containing getter results | record complete |
+
+The two `displayMode` calls are the earliest displayMode-related operations,
+but their receivers are derived objects already produced inside this helper;
+they are not the `x3` target-state object. Their returned q values are copied
+into the record assembled at `0x200e30480`–`0x200e30548`. The record is then
+passed to `0x2068c02c0` with size `0x98` at `0x200e3056c`.
+
+### First target/mode-dependent call
+
+```text
+exact targetState.displayMode consumer: NOT PRESENT in this layer
+earliest derived displayMode getters: 0x200e302f0 and 0x200e30308
+first call receiving their propagated record: 0x200e3056c → 0x2068c02c0
+```
+
+```text
+receiver provenance:
+  0x200e302f0/0x200e30308 use derived collection/presentation objects;
+  neither receiver is proven to be x3 at the call site.
+
+arguments at 0x200e3056c:
+  x0 = internal record/type context
+  x1 = previously prepared object/context
+  x2 = equality-derived size/flag
+  x3 = internal descriptor/context
+  x4 = pointer to the 0x98-byte record
+  x5 = 0x98
+```
+
+Because the original target-state argument is dead within this helper, a
+mode-4 versus mode-0 branch split cannot be assigned to `0x200e30044`.
+
+```text
+MODE 4: no target-mode branch in this helper; same internal path
+MODE 0: no target-mode branch in this helper; same internal path
+```
+
+### Callee classification and external-boundary check
+
+```text
+0x200e302f0 / 0x200e30308:
+  BacklightServicesHost internal/derived-object getter calls
+
+0x200e3056c → 0x2068c02c0:
+  shared/internal record-construction or handoff helper;
+  no Objective-C selector or external display-service symbol is proven here
+```
+
+Expanding the shared thunk target one level identifies internal runtime/helper
+code, not a direct `BKS*`, BackBoardServices, QuartzCore display transaction,
+IOKit, blanking, screen-disabled, or power-removal call. Therefore:
+
+```text
+BackBoard handoff: NO in this bounded layer
+BKS relationship: NOT REACHED
+first display-service boundary: UNRESOLVED
+```
+
+### Next safe runtime hook
+
+No new hook is justified by this layer. A hook on `0x200e3056c` would observe
+an internal record after the mode getters but would not prove that the record
+came from the mutable target state or that it crosses to display services.
+The next bounded static target, if continued, is the single helper receiving
+the `0x98`-byte record at `0x2068c02c0`/its resolved target, without recursive
+fan-out.
