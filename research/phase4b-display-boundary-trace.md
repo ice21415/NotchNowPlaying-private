@@ -1069,4 +1069,172 @@ stage.
 runtime-hook candidate: NONE
 next safe trace target: one exact completion receiver outside +0x40, only if
                          a new static xref identifies it
+
+## Phase 4B-10  Focused target-to-display-state consumer
+
+### Question
+
+The `+0x98`/`+0xa0` fields do not get replaced in the post-bookkeeping tail of
+`performEvent:`.  The next focused question was where the target mode escapes
+into the transition machinery that applies a display-state operation.
+
+### Target-state operation factory
+
+The helper at `0x200e308ec` is a receiver-proven operation factory.  Its
+relevant data flow is:
+
+```text
+self +0x98                         -> [currentAggregate displayMode]
+argument x1                         -> target displayMode
+self +0x88                         -> pending/current operation context
+argument x2                         -> null-operation policy flag
+
+BLSHPendingUpdateDisplayMode
+  operationForUpdateFromCurrentDisplayMode:
+      current mode
+  toTargetDisplayMode:
+      target mode
+  withPendingOperation:
+      self +0x88
+  isNullOperationAllowed:
+      x2
+```
+
+The returned operation is then queried for `rampOperation`; when the ramp
+duration is zero, the operation's duration is filled from the transition
+machine's `+0xf0` fade-out duration.  This is not a trace-only path: it
+constructs the current-to-target display-mode operation used by the transition
+machinery.
+
+### First exact display-mode consumer
+
+The strongest bounded execution path is helper `0x200e32170`.  Its relevant
+receiver and argument provenance are exact:
+
+```text
+x21 = transition-state-machine self
+x19 = pending/transition operation produced by the surrounding path
+
+x23 = [x19 targetDisplayMode]
+x0  = [x21 + 0xf8]
+x2  = x23
+d0  = saved ramp duration
+
+0x200e32370:
+    [x21 + 0xf8 setDisplayMode:x23 withRampDuration:d0]
+```
+
+The selector dispatch is the authenticated/optimized selector stub resolved
+as `setDisplayMode:withRampDuration:`.  Therefore this is the first exact
+non-trace call in the recovered path whose argument is the target display mode
+and whose receiver is an existing object owned by the transition state
+machine.  It is downstream of the pending-operation construction and is not a
+guessed receiver.
+
+Immediately afterward the same helper loads `x21 + 0x30`, derives a boolean
+from the target operation, and sends `setOnStandby:`.  That adjacent call is
+classified as presentation/standby lifecycle state, not as proof of panel
+power control.
+
+### Receiver classification
+
+The exact concrete class of `self + 0xf8` is not independently recovered from
+validated Objective-C method metadata in this pass.  The aggregate-state
+metadata declares its display-mode source as:
+
+```text
+BLSHBacklightDisplayStateMachine
+```
+
+and the `+0xf8` object is used through the matching display-mode operation
+selector.  This supports the following conservative classification:
+
+```text
+receiver storage: exact — transition-machine +0xf8
+receiver role: display-state-machine/display-mode consumer
+concrete class: likely BLSHBacklightDisplayStateMachine; metadata proof pending
+```
+
+The class name is not promoted to exact solely from selector similarity.
+
+### Mode paths
+
+The already-confirmed runtime target values feed this same consumer path:
+
+```text
+awake:
+  provider state 2
+  target displayMode 4
+  targetDisplayMode argument -> 4
+
+manual lock:
+  provider state 0
+  target displayMode 0
+  targetDisplayMode argument -> 0
+```
+
+Static evidence shows one selector with different numeric arguments, rather
+than two independently named physical-display branches.  This establishes a
+target-to-display-state-machine handoff, not yet a panel-power operation.
+
+### One-layer external-boundary check
+
+Within `0x200e32170` and the bounded target-operation factory:
+
+```text
+BackBoardServices/BKS direct call: none proven
+XPC/MIG/Mach call: none proven
+QuartzCore/CoreDisplay/IOKit call: none proven
+trace calls: present elsewhere and excluded
+```
+
+The call at `0x200e32370` is therefore classified as:
+
+```text
+TARGET STATE -> DISPLAY-STATE-MACHINE / LOGICAL TRANSITION
+```
+
+It is not yet a display-service or physical-boundary proof.
+
+### Target/current bridge status
+
+There is no direct `self +0xa0 -> self +0x98` replacement in the analyzed
+`performEvent:` tail.  The bridge is instead operation-based:
+
+```text
+current aggregate +0x98
+  + target mode from mutable target/transition operation
+  -> BLSHPendingUpdateDisplayMode operation
+  -> targetDisplayMode
+  -> [self +0xf8 setDisplayMode:withRampDuration:]
+```
+
+The applied/current aggregate replacement and any later provider publication
+remain unresolved.
+
+### Next safe observation
+
+One passive runtime hook is justified at the exact selector:
+
+```text
+setDisplayMode:withRampDuration:
+```
+
+The hook must preserve receiver, mode, duration, return behavior, and all
+other arguments.  It should log only sequence, receiver class, mode, and
+duration, then call the original implementation unchanged.  No BLS request,
+BKS setter, assertion, brightness, wake, or lock operation is involved.
+
+The next static layer, if the hook confirms the call, is the implementation of
+that receiver's `setDisplayMode:withRampDuration:` method.  That single layer
+must be checked for a current-state commit, provider publication, IPC, or an
+external display-service call before any deeper tracing is considered.
+
+```text
+classification:
+  A — first target-mode-dependent downstream consumer resolved
+  applied/current state: unresolved
+  display-service handoff: unresolved
+  physical blanking/power boundary: unresolved
+```
 ```
