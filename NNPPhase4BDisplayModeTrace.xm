@@ -118,6 +118,22 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
             memcpy(&lowerReceiver,
                    (const void *)((uintptr_t)(__bridge void *)downstream + 0x38),
                    sizeof(lowerReceiver));
+            NNPPhase4BDisplayModeSet(@"LowerReceiverPointerAfter",
+                                     [NSString stringWithFormat:@"0x%llx",
+                                      (unsigned long long)(uintptr_t)lowerReceiver]);
+            unsigned int ivarCount = 0;
+            Ivar *ivars = class_copyIvarList(object_getClass(downstream), &ivarCount);
+            for (unsigned int index = 0; ivars && index < ivarCount; index++) {
+                Ivar ivar = ivars[index];
+                if (ivar_getOffset(ivar) == 0x38) {
+                    NNPPhase4BDisplayModeSet(@"DownstreamIvar38Name",
+                                             [NSString stringWithUTF8String:ivar_getName(ivar)]);
+                    NNPPhase4BDisplayModeSet(@"DownstreamIvar38Type",
+                                             [NSString stringWithUTF8String:ivar_getTypeEncoding(ivar)]);
+                    break;
+                }
+            }
+            if (ivars) free(ivars);
             if (lowerReceiver) {
                 SEL lowerSelector = NSSelectorFromString(@"transitionToDisplayMode:withDuration:error:");
                 Method lowerMethod = class_getInstanceMethod(object_getClass(lowerReceiver),
