@@ -575,3 +575,103 @@ came from the mutable target state or that it crosses to display services.
 The next bounded static target, if continued, is the single helper receiving
 the `0x98`-byte record at `0x2068c02c0`/its resolved target, without recursive
 fan-out.
+
+## Phase 4B-6 — `0x2068c02c0` record handoff
+
+### Resolution
+
+```text
+original address:  0x2068c02c0
+type:              shared-cache branch thunk
+resolved target:   0x1a1377b18
+image/framework:   /usr/lib/system/libsystem_trace.dylib
+symbol:            internal/unresolved; no Objective-C selector
+```
+
+The thunk is:
+
+```text
+0x2068c02c0:
+  adrp x16, 0x1a1377000
+  add  x16, x16, #0xb18
+  br   x16
+```
+
+It is therefore not an Objective-C message wrapper, PLT/GOT display call, or
+BackBoard entry point.
+
+### ABI and record handling
+
+The call-site ABI is preserved by the resolved implementation:
+
+```text
+ARG0: context/type pointer; retained into the temporary record
+ARG1: prepared object/context; forwarded to the trace helper
+ARG2: flags/status word; masked and used to form trace metadata
+ARG3: descriptor/format context; forwarded into the temporary record
+ARG4: pointer to the 0x98-byte record
+ARG5: record length, 0x98
+RETURN: void-like internal trace dispatch; no useful value returned to the caller
+```
+
+At `0x1a1377b18`, the implementation first copies `x4` to `x20` and `x5` to
+`x19`, builds a small stack record, derives metadata from `x2`, and calls the
+next internal routine:
+
+```text
+0x1a1377bcc:
+  x0 = address of newly built trace metadata on the stack
+  x1 = prepared context
+  x2 = flags/status
+  x4 = original 0x98-byte record pointer
+  x5 = original 0x98-byte record length
+  x6 = 0
+  bl  0x1a1377be8
+```
+
+```text
+record first use:  copied from x4 to callee-saved x20; x5 copied to x19
+record second use: passed unchanged as x4/x5 to 0x1a1377be8
+record escapes function: YES
+```
+
+No field-level display-mode comparison occurs in this helper. The `0x98`
+bytes are treated as an opaque trace/log payload at this boundary.
+
+### Destination and ownership
+
+```text
+record destination: libsystem_trace internal helper 0x1a1377be8
+semantic owner:     system trace/log infrastructure
+framework class:    generic system runtime, not BacklightServices semantic state
+```
+
+The first layer therefore dispatches/copies the record into generic tracing
+infrastructure. It does not identify the display consumer that semantically
+owns the record.
+
+### IPC and display-boundary checks
+
+Within the resolved thunk and its immediate implementation layer:
+
+```text
+IPC present:              NO direct xpc_connection/mach_msg/MIG/NSXPC call
+IPC destination:          UNRESOLVED beyond this generic trace layer
+display-service references: none
+BackBoard handoff:        NO
+BKS relationship:         NOT REACHED
+```
+
+The inner trace routine contains an authenticated indirect runtime call and
+continues into system tracing code, but expanding that generic transport would
+not be a display-semantic continuation. Accordingly, `0x2068c02c0` is
+classified as:
+
+```text
+A — generic runtime helper only
+```
+
+The next semantic display boundary is not the trace helper. No runtime hook is
+recommended for `0x2068c02c0`; the next useful target would be the semantic
+producer/caller that constructs the `0x98`-byte payload, not the generic trace
+transport.
