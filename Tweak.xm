@@ -39,6 +39,11 @@ static NNPBackBoardReadOnlyDiagnostics *gNNPBackBoardReadOnlyDiagnostics;
 #ifndef NNP_PHASE4A_DELAYED_CFPREFERENCES_TEST
 #define NNP_PHASE4A_DELAYED_CFPREFERENCES_TEST 0
 #endif
+#ifndef NNP_PHASE4A_LOCAL_NOOP_TEST
+#define NNP_PHASE4A_LOCAL_NOOP_TEST 0
+#endif
+static __attribute__((noinline)) void NNPLocalNoop(void) {
+}
 #if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG || NNP_PHASE4A_CTOR_PREFERENCES_PROBE || NNP_PHASE4A_DELAYED_TRACE_PROBE || NNP_PHASE4A_UI_STATE_PROBE || NNP_PHASE4A_DELAYED_CFPREFERENCES_TEST
 #import "NNPPhase4AReadOnlyBacklight.h"
 #endif
@@ -80,6 +85,9 @@ static NNPBackBoardReadOnlyDiagnostics *gNNPBackBoardReadOnlyDiagnostics;
         [gNNPBackBoardReadOnlyDiagnostics start];
 #endif
         [[NNPController sharedController] install];
+#if NNP_PHASE4A_LOCAL_NOOP_TEST
+        NNPLocalNoop();
+#endif
 #if NNP_PHASE4A_UI_STATE_PROBE
         long long phase4AState = 0;
         BOOL phase4AReadOK = NNPPhase4AReadBacklightState(&phase4AState);
