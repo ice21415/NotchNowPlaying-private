@@ -487,6 +487,7 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
         unsigned int monitorCount = 0;
         Method *monitorMethods = class_copyMethodList(systemSleepMonitorClass, &monitorCount);
         NSMutableArray *monitorNames = [NSMutableArray array];
+        NSMutableArray *monitorIMPs = [NSMutableArray array];
         NSString *monitorImage = nil;
         for (unsigned int index = 0; monitorMethods && index < monitorCount; index++) {
             SEL selector = method_getName(monitorMethods[index]);
@@ -500,6 +501,15 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
             const char *types = method_getTypeEncoding(monitorMethods[index]);
             [monitorNames addObject:[NSString stringWithFormat:@"%@[%@]", selectorName,
                                      types ? [NSString stringWithUTF8String:types] : @"?"]];
+            IMP methodIMP = method_getImplementation(monitorMethods[index]);
+            Dl_info methodInfo = {0};
+            if (methodIMP && dladdr((const void *)methodIMP, &methodInfo)) {
+                void *strippedIMP = ptrauth_strip((void *)methodIMP, ptrauth_key_function_pointer);
+                NSString *impText = [NSString stringWithFormat:@"%@=0x%llx",
+                                     selectorName,
+                                     (unsigned long long)(uintptr_t)strippedIMP];
+                [monitorIMPs addObject:impText];
+            }
             if (!monitorImage) {
                 IMP imp = method_getImplementation(monitorMethods[index]);
                 Dl_info info = {0};
@@ -512,6 +522,8 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
         NNPPhase4BDisplayModeSet(@"SystemSleepMonitorClassFound", @YES);
         NNPPhase4BDisplayModeSet(@"SystemSleepMonitorMethods",
                                  [monitorNames componentsJoinedByString:@"|"]);
+        NNPPhase4BDisplayModeSet(@"SystemSleepMonitorMethodIMPs",
+                                 [monitorIMPs componentsJoinedByString:@"|"]);
         if (monitorImage) NNPPhase4BDisplayModeSet(@"SystemSleepMonitorImage", monitorImage);
     } else {
         NNPPhase4BDisplayModeSet(@"SystemSleepMonitorClassFound", @NO);
