@@ -653,3 +653,62 @@ This makes cross-file symbol linkage/binding the primary suspect. No BLS
 operation was executed. Detailed Mach-O binding inspection was not used to
 override this runtime distinction and should be done only if this branch is
 reopened.
+
+## C/C++ linkage repair and staged read-only resume
+
+The shared Phase4A header was repaired with an `extern "C"` guard because
+`Tweak.xm` is Objective-C++ while `NNPPhase4AReadOnlyBacklight.m` defines C
+symbols. After the repair, the cross-file noop, minimal trace helper, and real
+trace helper all passed without BLS calls.
+
+```text
+linkage repair: PASS
+cross-file noop after repair: PASS
+minimal trace after repair: PASS
+real trace after repair: PASS
+```
+
+The staged entry and BLS operations then passed individually:
+
+```text
+entry immediate-return: PASS
+BLS class lookup: PASS
+sharedBacklight selector lookup: PASS
+sharedBacklight call: PASS
+single backlightState read: PASS
+```
+
+Relevant validation runs:
+
+```text
+entry no-op: 35676392902
+BLS class: 35676583826
+BLS selector: 35676753897
+BLS sharedBacklight: 35676941279
+BLS state read: 35677146679
+```
+
+The single awake read was recovered from the dedicated CFPreferences domain:
+
+```text
+CtorEntered: true
+Phase4AStartEntered: true
+BLSClassFound: true
+SharedBacklightFound: true
+TraceOpenErrno: 0
+AwakeBacklightState: 2
+```
+
+The full observer build was deployed for one ordinary manual side-button
+transition. After the button press, SSH became unreachable and two bounded
+reconnect attempts timed out, so the lock callback/value could not be
+retrieved. No additional BLS read was attempted.
+
+```text
+full observer run: 35677411185
+awake: OBSERVED = 2
+lock-transition callback: UNRESOLVED
+lock-transition value: NOT RETRIEVED
+```
+
+No physical display-state label is assigned from this incomplete observation.
