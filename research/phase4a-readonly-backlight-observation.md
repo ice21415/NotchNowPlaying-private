@@ -425,7 +425,7 @@ SpringBoard.
 
 ```text
 Test 1 delayed no-op: PASS
-Test 2 delayed static bool: NOT RUN
+Test 2 delayed static bool: PASS
 Test 3 delayed CFPreferences: NOT RUN
 Test 4 controller install: NOT RUN in this matrix step
 Test 5 diagnostic helper: NOT RUN in this matrix step
@@ -435,4 +435,26 @@ Test 8 sharedBacklight: NOT RUN
 Test 9 backlightState: NOT RUN
 Test 10 lock callback: NOT RUN
 Test 11 lock BLS read: NOT RUN
+
+Test 2 (`dispatch_after` plus only `static volatile BOOL reached = YES`) was
+also deployed without installing `NNPController`, so Spotify UI remained not
+applicable. The package and remote checksum matched; the first post-reload
+SSH attempt timed out while SpringBoard was returning, but a bounded retry
+showed SpringBoard running at PID 14794 and a second stability check retained
+PID 14794.
+
+```text
+workflow: 35671563406
+commit: 833733a1167b464aeef55c89feffd04dad2680cb
+artifact SHA256: 88B0CF3CA753F5DC6B85DBEEEFB12DE54DB3080B411277F54A1D1A1C50F79E5A
+remote SHA256:  88B0CF3CA753F5DC6B85DBEEEFB12DE54DB3080B411277F54A1D1A1C50F79E5A
+install: PASS
+reload: PASS
+SpringBoard PID before reload: 14725
+SpringBoard PID after reload: 14794
+SpringBoard PID after additional stability interval: 14794
+Spotify UI: NOT APPLICABLE
+Crash/Jetsam: none observed in the bounded check
+Delayed static bool: PASS
+```
 ```
