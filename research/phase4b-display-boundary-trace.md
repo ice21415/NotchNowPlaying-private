@@ -2472,3 +2472,93 @@ server entry is outside the current safe SpringBoard-only observation scope.
 No additional SpringBoard runtime hook is needed to establish the first
 external handoff; a server-side passive hook would only be justified if the
 remaining panel-power distinction is required.
+
+## Phase 4B-23 — Final boundary assessment and safe cutoff
+
+### Final confirmed chain
+
+```text
+awake:
+  BLSBacklight.backlightState = 2
+  target displayMode = 4
+
+manual side-button lock:
+  BLSBacklight.backlightState = 0
+  target displayMode = 0
+
+target/current bridge:
+  BLSHBacklightTransitionStateMachine
+    lock_displayOperationForTarget:isNullOperationAllowed:
+  → BLSHPendingUpdateDisplayMode
+
+applied/current display transition:
+  BLSHBacklightDisplayStateMachine
+    setDisplayMode:withRampDuration:
+  → BLSHBacklightOSInterfaceProvider
+    transitionToDisplayMode:withDuration:
+
+external display-service handoff:
+  _BKSHIDServicesSetBacklightFactorWithFadeDurationAsync
+  → com.apple.backboard.hid.services
+  → __BKSHIDSetBacklightFactorWithFadeDurationAsync
+  → backboardd
+    _BKHIDXXSetBacklightFactorWithFadeDurationAsync
+```
+
+For the observed `4 → 0` transition, the provider's resolved off-side table
+state supplies a backlight factor of `0.0` and the transition duration. This
+is the first direct display-service boundary found on the active built-in
+path. It is a strong causal correlation with the visual OLED-black/blank
+response, but it does not by itself prove panel power-rail removal.
+
+### Evidence classification
+
+```text
+provider state transition:       RUNTIME OBSERVED
+target displayMode 4 → 0:        RUNTIME OBSERVED
+target/current operation bridge: STATIC RESOLVED
+display transition application:  STATIC RESOLVED
+BackBoard HID handoff:           STATIC RESOLVED
+backboardd service operation:    STATIC SYMBOL/SERVICE CORRELATED
+zero-factor input:               STATIC PROVEN FOR MODE 0
+panel blanking/visual response:  STRONGLY CORRELATED
+panel power removal:             UNRESOLVED
+```
+
+The local `backboardd` image is stripped at the relevant server implementation
+level. Its symbol/string inventory contains the matching
+`_BKHIDXXSetBacklightFactorWithFadeDurationAsync` operation and the separate
+display blanking/power operations, but it does not provide a bounded causal
+xref proving that the zero-factor HID operation calls
+`BKDisplaySetBlankingRemovesPower`. The recovered built-in SpringBoard callers
+of the explicit BKS power-removal setter are external-display paths, not the
+observed internal lock transition.
+
+### Safe cutoff
+
+```text
+first confirmed display-service boundary:
+  _BKSHIDServicesSetBacklightFactorWithFadeDurationAsync
+
+strongest physical-boundary candidate:
+  backboardd _BKHIDXXSetBacklightFactorWithFadeDurationAsync
+  applying factor 0.0
+
+panel-power boundary:
+  NOT PROVEN
+```
+
+Further progress would require a passive observation or a narrowly decoded
+server-side backboardd/driver path. That would broaden beyond the current
+SpringBoard/BacklightServicesHost scope and risks turning into generic
+display-driver analysis. No active display mutation is justified or needed.
+
+### Final recommendation
+
+The observational chain is sufficient to identify the first external
+display-service handoff and the zero-factor transition responsible for the
+visual blanking correlation. Stop static analysis at this boundary unless the
+specific research question is changed to panel power-rail removal. Any future
+work for that narrower question should be a separately scoped, read-only
+backboardd observation; it must not call BKS setters, construct BLS requests,
+or alter display state.
