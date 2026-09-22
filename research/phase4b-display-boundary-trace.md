@@ -675,3 +675,136 @@ The next semantic display boundary is not the trace helper. No runtime hook is
 recommended for `0x2068c02c0`; the next useful target would be the semantic
 producer/caller that constructs the `0x98`-byte payload, not the generic trace
 transport.
+
+## Phase 4B-7 — Non-trace semantic side effects of `0x200e30044`
+
+### Call classification
+
+The complete bounded call inventory falls into these groups:
+
+```text
+OBJECT LIFETIME:
+  0x2068c04c0, 0x2068c05c0, 0x2068c05d0, 0x2068c05e0,
+  0x2068c0610, 0x2068c0630, 0x2068c0640, 0x2068c0650,
+  0x2068c0670, 0x2068c0690 and related shared retain/release helpers
+
+READ-ONLY GETTER / PRESENTATION DIFF:
+  presentation
+  presentationEntries
+  count
+  firstObject
+  flipbookContext
+  differenceFromPresentation:
+  insertions / removals
+  eventID / previousState / state / sourceEvent / changeRequest
+
+OBJECT CONSTRUCTION:
+  initWithPresentationEntries:flipbookContext:expirationDate:
+
+TRACE/LOGGING:
+  string/short logging-description helpers and
+  0x200e3056c → 0x2068c02c0
+
+INTERNAL RECORD/STACK PREPARATION:
+  0x200e30480–0x200e30548 stack stores
+
+UNKNOWN SHARED RUNTIME HELPERS:
+  0x2068c01d0, 0x2068c01e0, 0x2068c02c0, 0x2068c0270,
+  and the other non-ARC shared thunks; none is proven here to be a
+  display-service or state-commit call
+```
+
+No direct BKS, BackBoardServices, QuartzCore, IOKit, XPC, MIG, or Mach call is
+reachable in this function after trace calls are excluded.
+
+### Reduced non-trace CFG
+
+```text
+current/context objects
+  → presentation / entries / collection getters
+  → presentation difference calculation
+  → derived presentation/object construction
+  → event/context getters and collection-derived values
+  → two derived displayMode getters
+  → stack-only record assembly
+  → trace/log helper (excluded from semantic graph)
+  → lifetime cleanup
+```
+
+There is no direct setter on `_currentState`, `_lock_targetState`, a provider,
+an environment session, or a display controller in this bounded function.
+
+### Derived displayMode receiver provenance
+
+```text
+getter 0x200e302f0:
+  receiver: x22, an object derived from the current/context input through the
+            preceding internal preparation calls
+  semantic role: derived current/presentation-side object; exact concrete
+                 class is not recoverable from this call site alone
+
+getter 0x200e30308:
+  receiver: object loaded from the earlier stack-derived context slot
+  semantic role: second derived presentation/context-side object; it is not
+                 the original x3 mutable target-state argument
+```
+
+The original `x3` target-state argument is copied to `x21` at entry and then
+overwritten at `0x200e300c8`. No target getter or target ivar load occurs in
+the remainder of the function.
+
+### DisplayMode semantic usage
+
+The two getter results are stored at stack offsets `+0x80` and `+0x78`, then
+copied into the 0x98-byte record assembled at `0x200e30480`–`0x200e30548`.
+They are not compared, used as branch conditions, passed to a setter, or used
+to select a state-machine transition in this function.
+
+```text
+displayMode used outside trace: NO
+```
+
+This is a statement about this helper: it does not exclude use by the upstream
+producer or by a later semantic consumer elsewhere.
+
+### State writes and callbacks
+
+```text
+direct object ivar writes: NONE proven
+direct target/presentation setter calls: NONE
+collection mutation: NONE proven; diff/collection values are read/constructed
+block scheduling: NONE proven
+notifications/delegates/completions: NONE proven
+transaction commit: NONE proven
+```
+
+The apparent writes between `0x200e30480` and `0x200e30548` are stores to a
+stack-local serialized/trace record, not writes to a system object or display
+state.
+
+### First semantic side effect after mode reads
+
+```text
+NO SEMANTIC SIDE EFFECT AFTER MODE READS
+```
+
+The first operation after the two mode getters that consumes their values is
+record construction, followed by the already-resolved generic trace helper.
+There is no state mutation or callback after those reads in this function.
+
+### Semantic role and next target
+
+```text
+0x200e30044 semantic role:
+  presentation-difference / transition bookkeeping with diagnostic record
+  generation; not the target-state commit or display-control boundary
+
+external handoff: NO in this helper
+BackBoard/BKS relationship: NOT REACHED
+next semantic trace target:
+  the upstream caller/commit path that invokes 0x200e30044 and then performs
+  the actual target/current state application; do not trace libsystem_trace
+```
+
+No runtime hook is recommended for this helper. A hook here would only repeat
+record/diagnostic activity and would not answer where mode 0 propagates next.
