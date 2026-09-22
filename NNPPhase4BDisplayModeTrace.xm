@@ -71,6 +71,42 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
                     }
                 }
             }
+
+            id __unsafe_unretained lowerReceiver = nil;
+            memcpy(&lowerReceiver,
+                   (const void *)((uintptr_t)(__bridge void *)downstream + 0x38),
+                   sizeof(lowerReceiver));
+            if (lowerReceiver) {
+                SEL lowerSelector = NSSelectorFromString(@"transitionToDisplayMode:withDuration:error:");
+                Method lowerMethod = class_getInstanceMethod(object_getClass(lowerReceiver),
+                                                              lowerSelector);
+                IMP lowerIMP = lowerMethod ? method_getImplementation(lowerMethod) : NULL;
+                NNPPhase4BDisplayModeSet(@"LowerReceiverClass",
+                                         NSStringFromClass(object_getClass(lowerReceiver)));
+                NNPPhase4BDisplayModeSet(@"LowerSelectorFound", @(lowerMethod != NULL));
+                if (lowerIMP) {
+                    Dl_info lowerInfo = {0};
+                    void *strippedLowerIMP = ptrauth_strip((void *)lowerIMP,
+                                                           ptrauth_key_function_pointer);
+                    NNPPhase4BDisplayModeSet(@"LowerIMP",
+                                             [NSString stringWithFormat:@"0x%llx",
+                                              (unsigned long long)(uintptr_t)strippedLowerIMP]);
+                    if (dladdr((const void *)lowerIMP, &lowerInfo)) {
+                        NNPPhase4BDisplayModeSet(@"LowerImageBase",
+                                                 [NSString stringWithFormat:@"0x%llx",
+                                                  (unsigned long long)(uintptr_t)lowerInfo.dli_fbase]);
+                        if (lowerInfo.dli_fname) {
+                            NNPPhase4BDisplayModeSet(@"LowerImage",
+                                                     [NSString stringWithUTF8String:lowerInfo.dli_fname]);
+                        }
+                        if (lowerInfo.dli_saddr) {
+                            NNPPhase4BDisplayModeSet(@"LowerSymbolAddress",
+                                                     [NSString stringWithFormat:@"0x%llx",
+                                                      (unsigned long long)(uintptr_t)lowerInfo.dli_saddr]);
+                        }
+                    }
+                }
+            }
         }
     }
 }
