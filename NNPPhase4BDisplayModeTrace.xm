@@ -440,6 +440,7 @@ static void NNPPhase4BRecordSystemWakeClassMetadata(Class cls, NSString *prefix)
     unsigned int methodCount = 0;
     Method *methods = class_copyMethodList(cls, &methodCount);
     NSMutableArray *methodNames = [NSMutableArray array];
+    NSMutableArray *methodIMPs = [NSMutableArray array];
     for (unsigned int index = 0; methods && index < methodCount; index++) {
         SEL selector = method_getName(methods[index]);
         const char *name = sel_getName(selector);
@@ -453,6 +454,10 @@ static void NNPPhase4BRecordSystemWakeClassMetadata(Class cls, NSString *prefix)
         const char *types = method_getTypeEncoding(methods[index]);
         [methodNames addObject:[NSString stringWithFormat:@"%@[%@]", selectorName,
                                 types ? [NSString stringWithUTF8String:types] : @"?"]];
+        IMP imp = method_getImplementation(methods[index]);
+        void *stripped = ptrauth_strip((void *)imp, ptrauth_key_function_pointer);
+        [methodIMPs addObject:[NSString stringWithFormat:@"%@=0x%llx", selectorName,
+                              (unsigned long long)(uintptr_t)stripped]];
     }
     if (methods) free(methods);
 
@@ -472,6 +477,8 @@ static void NNPPhase4BRecordSystemWakeClassMetadata(Class cls, NSString *prefix)
     NNPPhase4BDisplayModeSet([prefix stringByAppendingString:@"Class"], NSStringFromClass(cls));
     NNPPhase4BDisplayModeSet([prefix stringByAppendingString:@"Methods"],
                              [methodNames componentsJoinedByString:@"|"]);
+    NNPPhase4BDisplayModeSet([prefix stringByAppendingString:@"MethodIMPs"],
+                             [methodIMPs componentsJoinedByString:@"|"]);
     NNPPhase4BDisplayModeSet([prefix stringByAppendingString:@"Ivars"],
                              [ivarNames componentsJoinedByString:@"|"]);
 }
