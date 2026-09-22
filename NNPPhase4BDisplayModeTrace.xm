@@ -434,6 +434,48 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
 
 %end
 
+static void NNPPhase4BRecordSystemWakeClassMetadata(Class cls, NSString *prefix) {
+    if (!cls || !prefix) return;
+
+    unsigned int methodCount = 0;
+    Method *methods = class_copyMethodList(cls, &methodCount);
+    NSMutableArray *methodNames = [NSMutableArray array];
+    for (unsigned int index = 0; methods && index < methodCount; index++) {
+        SEL selector = method_getName(methods[index]);
+        const char *name = sel_getName(selector);
+        if (!name) continue;
+        NSString *selectorName = [NSString stringWithUTF8String:name];
+        NSString *lower = selectorName.lowercaseString;
+        if (![lower containsString:@"sleep"] && ![lower containsString:@"power"] &&
+            ![lower containsString:@"display"] && ![lower containsString:@"blank"] &&
+            ![lower containsString:@"request"] && ![lower containsString:@"notify"] &&
+            ![lower containsString:@"monitor"]) continue;
+        const char *types = method_getTypeEncoding(methods[index]);
+        [methodNames addObject:[NSString stringWithFormat:@"%@[%@]", selectorName,
+                                types ? [NSString stringWithUTF8String:types] : @"?"]];
+    }
+    if (methods) free(methods);
+
+    unsigned int ivarCount = 0;
+    Ivar *ivars = class_copyIvarList(cls, &ivarCount);
+    NSMutableArray *ivarNames = [NSMutableArray array];
+    for (unsigned int index = 0; ivars && index < ivarCount; index++) {
+        const char *name = ivar_getName(ivars[index]);
+        const char *types = ivar_getTypeEncoding(ivars[index]);
+        if (name) {
+            [ivarNames addObject:[NSString stringWithFormat:@"%s[%s]", name,
+                                  types ? types : "?"]];
+        }
+    }
+    if (ivars) free(ivars);
+
+    NNPPhase4BDisplayModeSet([prefix stringByAppendingString:@"Class"], NSStringFromClass(cls));
+    NNPPhase4BDisplayModeSet([prefix stringByAppendingString:@"Methods"],
+                             [methodNames componentsJoinedByString:@"|"]);
+    NNPPhase4BDisplayModeSet([prefix stringByAppendingString:@"Ivars"],
+                             [ivarNames componentsJoinedByString:@"|"]);
+}
+
 %hook BSServiceConnection
 
 - (id)performChangeRequest:(id)request {
@@ -616,6 +658,10 @@ static void NNPPhase4BDisplayModeSet(NSString *key, id value) {
     } else {
         NNPPhase4BDisplayModeSet(@"SystemSleepMonitorClassFound", @NO);
     }
+    NNPPhase4BRecordSystemWakeClassMetadata(NSClassFromString(@"SWSystemSleepMonitorProvider"),
+                                             @"SleepMonitorProvider");
+    NNPPhase4BRecordSystemWakeClassMetadata(NSClassFromString(@"SWSystemSleepAssertionProvider"),
+                                             @"SleepAssertionProvider");
     Class displayStateClass = NSClassFromString(@"BLSHBacklightDisplayStateMachine");
     SEL displayModeSelector = NSSelectorFromString(@"setDisplayMode:withRampDuration:");
     NNPPhase4BDisplayModeSet(@"DisplayModeClassFound", @(displayStateClass != Nil));
