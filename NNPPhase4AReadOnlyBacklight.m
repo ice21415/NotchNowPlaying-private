@@ -12,6 +12,9 @@
 #ifndef NNP_PHASE4A_BUILD_ID
 #define NNP_PHASE4A_BUILD_ID "unknown"
 #endif
+#ifndef NNP_PHASE4A_TRACE_MICRO_TEST
+#define NNP_PHASE4A_TRACE_MICRO_TEST 0
+#endif
 
 static BOOL gNNPPhase4AAwakeLogged;
 static BOOL gNNPPhase4ALockLogged;
@@ -71,6 +74,10 @@ void NNPPhase4ASetDiagnosticInteger(NSString *key, long long value) {
 
 __attribute__((used, visibility("default")))
 void NNPPhase4ATrace(NSString *line) {
+#if NNP_PHASE4A_TRACE_MICRO_TEST == 1
+    (void)line;
+    return;
+#endif
     if (!line.length) return;
     int fd = open(NNPPhase4ATracePath.UTF8String, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd < 0) {
