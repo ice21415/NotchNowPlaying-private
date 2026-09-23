@@ -76,6 +76,9 @@ static void NNPScreenshotPoll(void) {
             break;
         }
     }
+    // Refresh only on the helper's background queue; this code is never run
+    // from a display or lock transition hook.
+    if (gNNPScreenshotPollCount % 4 == 0) CFPreferencesAppSynchronize(NNPScreenshotPreferenceDomain);
     id preferenceRequest = CFBridgingRelease(CFPreferencesCopyAppValue(NNPScreenshotRequestPreference, NNPScreenshotPreferenceDomain));
     if ([preferenceRequest respondsToSelector:@selector(boolValue)] && [preferenceRequest boolValue]) {
         CFPreferencesSetAppValue(NNPScreenshotRequestPreference, kCFBooleanFalse, NNPScreenshotPreferenceDomain);
