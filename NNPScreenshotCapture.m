@@ -1,5 +1,6 @@
 #import "NNPScreenshotCapture.h"
 #import "NNPDiagnostics.h"
+#import <CoreFoundation/CoreFoundation.h>
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
@@ -8,6 +9,8 @@
 
 static NSString * const NNPScreenshotRequestPath = @"/var/mobile/Library/NotchNowPlaying/ssh-screenshot-request";
 static NSString * const NNPScreenshotPreferencesRequestPath = @"/var/mobile/Library/Preferences/com.user.notchnowplaying.ssh-screenshot-request";
+static CFStringRef const NNPScreenshotRequestPreference = CFSTR("SSHScreenshotRequest");
+static CFStringRef const NNPScreenshotPreferenceDomain = CFSTR("com.user.notchnowplaying");
 static NSString * const NNPScreenshotImagePath = @"/var/mobile/Library/NotchNowPlaying/ssh-screenshot.png";
 static NSString * const NNPScreenshotResultPath = @"/var/mobile/Library/NotchNowPlaying/ssh-screenshot-result.plist";
 static BOOL gNNPScreenshotCaptureRunning;
@@ -70,8 +73,14 @@ static void NNPScreenshotPoll(void) {
             break;
         }
     }
+    id preferenceRequest = CFBridgingRelease(CFPreferencesCopyAppValue(NNPScreenshotRequestPreference, NNPScreenshotPreferenceDomain));
+    if ([preferenceRequest respondsToSelector:@selector(boolValue)] && [preferenceRequest boolValue]) {
+        CFPreferencesSetAppValue(NNPScreenshotRequestPreference, kCFBooleanFalse, NNPScreenshotPreferenceDomain);
+        CFPreferencesAppSynchronize(NNPScreenshotPreferenceDomain);
+        requestPath = @"preference:SSHScreenshotRequest";
+    }
     if (gNNPScreenshotPollCount % 20 == 0) {
-        NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE poll count=%lu request=%@ pathVisible=%@", (unsigned long)gNNPScreenshotPollCount, requestPath ?: @"none", requestPath ? @"YES" : @"NO"]);
+        NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE poll count=%lu request=%@ pathVisible=%@ preference=%@", (unsigned long)gNNPScreenshotPollCount, requestPath ?: @"none", requestPath && ![requestPath hasPrefix:@"preference:"] ? @"YES" : @"NO", preferenceRequest ?: @"none"]);
     }
     if (requestPath.length) {
         BOOL removed = [[NSFileManager defaultManager] removeItemAtPath:requestPath error:&removeError];
