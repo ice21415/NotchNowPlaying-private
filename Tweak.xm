@@ -5,6 +5,12 @@
 #ifndef NNP_PHASE2J_READONLY_RUNTIME
 #define NNP_PHASE2J_READONLY_RUNTIME 0
 #endif
+#ifndef NNP_ENABLE_SSH_SCREENSHOT_PROBE
+#define NNP_ENABLE_SSH_SCREENSHOT_PROBE 0
+#endif
+#if NNP_ENABLE_SSH_SCREENSHOT_PROBE
+#import "NNPScreenshotProbe.h"
+#endif
 #if NNP_PHASE2J_READONLY_RUNTIME
 #import "NNPBackBoardReadOnlyDiagnostics.h"
 static NNPBackBoardReadOnlyDiagnostics *gNNPBackBoardReadOnlyDiagnostics;
@@ -93,6 +99,9 @@ static __attribute__((noinline)) void NNPLocalNoop(void) {
         [gNNPBackBoardReadOnlyDiagnostics start];
 #endif
         [[NNPController sharedController] install];
+#if NNP_ENABLE_SSH_SCREENSHOT_PROBE
+        NNPScreenshotProbeInterfaces();
+#endif
 #if NNP_PHASE4A_LOCAL_NOOP_TEST
         NNPLocalNoop();
 #endif
