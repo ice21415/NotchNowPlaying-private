@@ -539,3 +539,14 @@ followed by a short attended device test: verify normal use of another app
 while unlocked, then verify one lock transition, live media updates, unlock
 cleanup and the screenshot comparison. Do not classify the presentation fix as
 successful until the unlocked playback test passes on the target device.
+
+### Phase 7.2 build and deployment addendum
+
+The separate production workflow completed successfully as run
+`35804823114`, and the separate experimental workflow completed successfully
+as run `35804825427` for commit `2e95c56`. The experimental arm64e package was
+downloaded, copied to the target device, installed with `dpkg -i`, and
+SpringBoard was restarted with `sbreload`; the remote command returned success.
+These are `PASS` for compilation, package transfer, installation and respring.
+The target-device behavior checks remain `NOT TESTED` until the attended
+unlocked-playback and post-lock screenshot comparison are performed.
