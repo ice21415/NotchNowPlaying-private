@@ -26,7 +26,10 @@ static void NNPScreenshotWriteResult(BOOL success, NSString *error, UIImage *ima
         result[@"width"] = @(image.size.width);
         result[@"height"] = @(image.size.height);
         result[@"scale"] = @(image.scale);
+        NSData *png = UIImagePNGRepresentation(image);
+        if (png.length) NNPDiagnosticSetValue(@"SSHScreenshotPNG", png);
     }
+    NNPDiagnosticSetValue(@"SSHScreenshotResult", result);
     [[NSFileManager defaultManager] createDirectoryAtPath:NNPDiagnosticDirectoryPath() withIntermediateDirectories:YES attributes:nil error:NULL];
     [result writeToFile:NNPScreenshotResultPath atomically:YES];
 }
