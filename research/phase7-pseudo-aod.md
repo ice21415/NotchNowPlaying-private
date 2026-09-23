@@ -1314,13 +1314,16 @@ content:
 * provider and UIImage class, UIImage size/scale, CGImage availability and
   pixel dimensions;
 * bounded representative pixel statistics before PNG encoding;
-* encoded byte count and the same statistics after decoding the PNG;
+* encoded byte count and a host-side verification marker; full PNG decoding is
+  intentionally not performed inside SpringBoard after the v2 decoder stall;
 * direct-path write result and asynchronous diagnostic-preference publication.
 
 Pixel statistics are sampled on a utility queue and contain only counts and
-numeric maxima (`samples`, `nonBlackSamples`, `maxRGB`). PNG encoding,
-decoding, file writes and result publication no longer run on the main queue,
-including failure-result persistence. The existing one-shot request polling,
+numeric maxima (`samples`, `nonBlackSamples`, `maxRGB`). PNG encoding, file
+writes and result publication no longer run on the main queue, including
+failure-result persistence. Full PNG decode is deferred to the host/user
+verification path because the earlier in-process decoder stalled after
+pre-PNG sampling. The existing one-shot request polling,
 Phase 7.4 asynchronous diagnostics and display-hook reentrancy guard are
 unchanged. No alternative provider was invoked in this diagnostic build:
 runtime evidence establishes the selector encodings for
@@ -1351,5 +1354,77 @@ The next bounded action is one attended unlocked capture only. The user must
 show a visually distinctive, non-sensitive screen, confirm that the physical
 screen is on and unlocked immediately before the request, and then the host
 will issue exactly one `SSHScreenshotRequest`. The result must show non-black
-pre-PNG and post-PNG statistics and recognizable test content before any
+pre-PNG statistics and recognizable test content before any
 locked-visible comparison is considered.
+
+#### Phase 7.8 runtime addendum — unlocked content verified
+
+The first v3 diagnostic request exposed a diagnostic-path failure rather than
+a provider result: capture and PNG encoding completed, bounded pre-PNG sampling
+completed, and the worker then stopped in the old `UIImage imageWithData:`
+post-encode step. No provider conclusion was drawn from that incomplete run.
+
+The follow-up correction was commit `3b4b486` (`Avoid blocking screenshot PNG
+decode`). It removed the in-process full-PNG decode, retained bounded source
+image statistics, skipped oversized PNG preference transport, and added a
+temporary SSH-readable path `/tmp/notchnowplaying-ssh-screenshot.png`.
+Production remains unchanged because the screenshot experiment is still
+compile-time opt-in.
+
+The corrected experimental artifact was GitHub Actions run `35823214573`,
+installed over SSH, and SpringBoard restarted normally. Startup diagnostics
+reported `TweakLoaded=True` with SpringBoard PID `23311`; the experimental
+locked-visible setting remained `false`. No physical lock experiment was
+performed.
+
+After the user confirmed that the phone was physically on, unlocked and showing
+a non-sensitive test screen, one request was sent through the `defaults`
+backed `SSHScreenshotRequest` preference. The first direct `plutil` attempt was
+rejected by the device's different syntax and did not trigger a capture; the
+subsequent request was accepted exactly once. Relevant timestamps were:
+
+```text
+05:44:19.159788  request accepted; no wake or unlock requested
+05:44:19.160373  capture begin; brightness=0.4959836006164551; captured=0
+05:44:19.175924  capture complete; UIImage 375x812 scale=3; CGImage 1125x2436
+05:44:19.961270  PNG encoding complete; bytes=7466945
+05:44:20.371151  bounded pre-PNG stats complete
+05:44:20.526387  completed; preMaxRGB=255; preNonBlack=4096/4096;
+                sshPathWrite=YES; preferencePNG=NO
+```
+
+The user then manually opened the temporary `/tmp` screenshot and confirmed
+that it contained the expected unlocked test-screen content. This is the first
+verified unlocked system-composition screenshot in Phase 7.8. The image was
+not committed to the repository. An immediate later SCP attempt found that
+the temporary path had already disappeared from the SSH-visible namespace, so
+the persistence lifetime of the SpringBoard-written temporary file remains
+`INSUFFICIENT EVIDENCE`; the user-observed image content is `PASS`.
+
+The numerical evidence rules out the previous all-black interpretation for
+this controlled unlocked capture: the provider returned a valid full-size
+CGImage, every bounded sample was non-black, and the maximum RGB value was
+255. It does not establish what the provider captures after physical display
+blanking, nor does it establish panel power or brightness behavior.
+
+| Check | Result |
+| --- | --- |
+| Corrected helper build | `PASS` — run `35823214573`, commit `3b4b486` |
+| Installation, SpringBoard restart and injection | `PASS` — PID `23311` |
+| Request accepted without wake/unlock | `PASS` |
+| Provider returned expected dimensions | `PASS` — 1125×2436 CGImage |
+| Source image non-black before PNG encoding | `PASS` — 4096/4096, maxRGB 255 |
+| PNG encoding | `PASS` — 7,466,945 bytes |
+| Expected unlocked content visually verified | `PASS` — user inspected `/tmp` image |
+| Stable SCP retrieval after completion | `INSUFFICIENT EVIDENCE` — temporary file lifetime unresolved |
+| Locked-visible screenshot | `NOT TESTED` |
+| Genuine pseudo-AOD / panel visibility | `NOT TESTED` |
+
+A follow-up source-only improvement, commit `6f5949c`, adds a bounded preview
+PNG preference value for cases where the temporary namespace expires. Its
+experimental build, GitHub Actions run `35823812280`, compiled successfully
+but was not installed or runtime-tested; v4 remains the device-tested helper.
+The next step is not another unlocked capture: preserve this verified baseline
+and, only in a separately attended phase, compare it with one locked-visible
+capture. No display-mode, BackBoard/HID, authentication or lock behavior was
+changed by Phase 7.8.
