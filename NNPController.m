@@ -85,9 +85,6 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 }
 - (void)applyLockedBackground {
     BOOL dedicatedBlackPresentation = self.locked;
-#if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
-    dedicatedBlackPresentation = dedicatedBlackPresentation || self.display.lifecycleState == NNPDisplayLifecycleStateActive;
-#endif
     UIColor *background = dedicatedBlackPresentation ? UIColor.blackColor : UIColor.clearColor;
     self.window.opaque = dedicatedBlackPresentation;
     self.window.backgroundColor = background;

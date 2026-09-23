@@ -463,3 +463,79 @@ only for a short attended test, collect the new passive diagnostics, perform the
 non-sensitive screenshot comparison, and verify timeout plus lock/unlock and
 playback-stop cleanup. Stop immediately on abnormal heat, display behavior or
 loss of normal lock-screen behavior.
+
+## Phase 7.2 — premature black presentation correction
+
+### Newly reported regression
+
+The Phase 7.1 device test identified a regression: starting playback while the
+device was unlocked immediately changed the entire tweak-owned window to opaque
+black, leaving only NotchNowPlaying visible and preventing ordinary use of
+other applications. The same test continued to report live artwork, metadata
+and progress after the first side-button lock, while the complete display still
+appeared gray. The gray symptom remains a separate issue from the premature
+black presentation.
+
+### Cause
+
+`NNPDisplayController` correctly entered its experimental `Active` lifecycle
+state as soon as eligible playback and the opt-in setting were present. In
+`NNPController -applyLockedBackground`, the Phase 7.1 implementation treated
+`lifecycleState == Active` as sufficient to select an opaque black background.
+Because the controller arms before the physical side-button transition, that
+condition became true during ordinary unlocked playback. This was a state
+management error: “experiment armed” was conflated with “device is logically
+locked and should use the dedicated black presentation.”
+
+### Correction
+
+Status: `PASS` in source review; device confirmation `NOT TESTED`.
+
+The dedicated black background now depends only on the observed logical lock
+state (`self.locked`). The experimental controller may still arm before the
+side-button transition so the existing live locked-visible path is preserved,
+but arming or playing music no longer makes the presentation opaque while
+unlocked. When the lock observer reports unlock, the controller stops the
+experiment and restores the transparent, nonintrusive presentation. No window
+is removed, no system lock-screen layer is modified, and no authentication
+behavior is changed.
+
+This deliberately leaves a short observation-delay boundary: the black scene
+starts when the existing lock-state observer reports logical lock, not by
+guessing from a side-button event. The delay is recorded as a lifecycle/UI
+timing limitation rather than addressed by modifying security-critical lock
+components.
+
+### Gray-output diagnosis status
+
+Status: `NOT TESTED` for screenshot comparison; `UNSUPPORTED / NOT IDENTIFIED`
+for exact owner.
+
+The read-only diagnostic path remains unchanged. The required attended test is
+to capture the same non-sensitive static content while normally awake and
+again after the first physical side-button press with the experimental build,
+while separately recording the physical panel appearance. A normal-color
+system capture with a gray physical panel favors downstream display output
+processing; a gray system capture favors composition or capture-path
+processing. Either result narrows the hypotheses but does not identify a
+specific system layer. The native volume HUD being gray remains evidence
+against the NNP window alone being the source.
+
+### Phase 7.2 validation matrix
+
+| Validation | Result |
+| --- | --- |
+| Cause identified from Phase 7.1 source | `PASS` |
+| Unlocked playback remains nonintrusive | `NOT TESTED` after correction |
+| Experimental live update after lock preserved | `NOT TESTED` after correction |
+| Gray-screen screenshot comparison | `NOT TESTED` |
+| Logical lock/authentication behavior | `NOT TESTED` after correction |
+| Unlock cleanup and transparent restoration | `NOT TESTED` after correction |
+| Production build flag remains disabled | `PASS` |
+| Privacy-safe pseudo-AOD completion | `UNSUPPORTED` pending device validation |
+
+The next bounded step is separate production and experimental compilation,
+followed by a short attended device test: verify normal use of another app
+while unlocked, then verify one lock transition, live media updates, unlock
+cleanup and the screenshot comparison. Do not classify the presentation fix as
+successful until the unlocked playback test passes on the target device.
