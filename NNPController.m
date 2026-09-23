@@ -35,10 +35,14 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     UIScreen *screen = UIScreen.mainScreen;
     NSInteger visibleWindows = 0;
     NSInteger opaqueVisibleWindows = 0;
-    for (UIWindow *candidate in application.windows) {
-        if (candidate.hidden || candidate.alpha <= 0.01) continue;
-        visibleWindows += 1;
-        if (candidate.opaque || candidate.backgroundColor.alpha >= 0.99) opaqueVisibleWindows += 1;
+    for (UIScene *scene in application.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        for (UIWindow *candidate in ((UIWindowScene *)scene).windows) {
+            if (candidate.hidden || candidate.alpha <= 0.01) continue;
+            visibleWindows += 1;
+            CGFloat backgroundAlpha = candidate.backgroundColor ? CGColorGetAlpha(candidate.backgroundColor.CGColor) : 0.0;
+            if (candidate.opaque || backgroundAlpha >= 0.99) opaqueVisibleWindows += 1;
+        }
     }
     NSInteger connectedScenes = application.connectedScenes.count;
     NNPDiagnosticSetInteger(@"PresentationVisibleWindowCount", visibleWindows);
