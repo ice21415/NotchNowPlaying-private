@@ -841,3 +841,45 @@ confirmed no `dispatch_sync` in the audited Phase 7 sources. The generated
 packages were not installed and no new physical lock experiment was started
 after the watchdog incident. Phase 7.4 therefore remains `NOT TESTED` for
 runtime stability and `UNSUPPORTED` for gray-screen resolution.
+
+### Phase 7.4 deployment and pre-test validation
+
+Status: deployment `PASS`; physical lock validation `NOT TESTED`.
+
+The previously successful experimental artifact from workflow
+`35807534457` was reused. Its workflow head is `98f508b`; the code included
+the watchdog correction from `cf16538`. Package inspection confirmed the
+arm64e package metadata and the dylib strings for the background diagnostics
+queue, `DiagnosticLogEvents` and Phase 7 transition markers. The stable
+production rollback artifact from workflow `35807532171` remains available
+locally.
+
+Before installation, the target had version `0.1.2` installed, but its dylib
+timestamp predated the Phase 7.4 deployment. `ExperimentalLockedVisible` was
+`0`; it was not enabled during installation. The corrected package was copied
+to the device and installed with `dpkg -i` without an error. SpringBoard was
+restarted with `sbreload` and SSH remained responsive afterward.
+
+Post-respring evidence:
+
+```text
+Package: com.user.notchnowplaying 0.1.2 / iphoneos-arm64e
+ExperimentalLockedVisible: 0
+TweakLoaded: true
+SpringBoardPID: 21374
+StartupTimestamp: 2026-09-23 01:51:30 +0000
+DiagnosticLogEvents: 31
+```
+
+The new event history contains SpringBoard startup, lock observer startup,
+initial logical-lock reconciliation and display transition observations. This
+confirms that the corrected dylib loaded into the current SpringBoard process
+and that the nonblocking diagnostic fallback is persisting events. A working
+SSH connection alone was not used as injection evidence. Relaxin's internal
+injection flag is not exposed by the available device commands, but there was
+no new auto-disable/watchdog report during this installation check.
+
+Normal unlocked playback with the experimental setting disabled: `NOT TESTED`
+as a user-interaction result. No physical lock test, gray-screen comparison,
+timeout test or media playback test was started after deployment. The device
+is left with the experimental setting disabled pending user readiness.
