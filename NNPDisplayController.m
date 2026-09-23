@@ -47,6 +47,17 @@ void NNPPhase7RestoreNormalDisplay(void) {}
     if (_lifecycleState == NNPDisplayLifecycleStateActive ||
         _lifecycleState == NNPDisplayLifecycleStatePreparing) return YES;
     if (_lifecycleState == NNPDisplayLifecycleStateStopping) return NO;
+    // A preference change or SpringBoard restart can make the feature
+    // eligible while the device is already locked. Do not start a new
+    // display-mode experiment in that existing lock session. An Active or
+    // Preparing state has already been reached while unlocked and is allowed
+    // to continue through the subsequent lock transition above.
+    if (self.deviceLocked) {
+        NNPDiagnosticSetBool(@"LockedVisibleActivationDeferred", YES);
+        NNPDiagnosticLogTransition(@"DISPLAY activation deferred; device already locked");
+        return NO;
+    }
+    NNPDiagnosticSetBool(@"LockedVisibleActivationDeferred", NO);
     if (![self isLockedVisibleSupported]) {
         self.lifecycleState = NNPDisplayLifecycleStateUnsupported;
         NNPDiagnosticSetBool(@"LockedVisibleSupported", NO);
