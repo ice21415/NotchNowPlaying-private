@@ -9,6 +9,7 @@ FOUNDATION_EXPORT void NNPDiagnosticSetValue(NSString *key, id value);
 FOUNDATION_EXPORT id NNPDiagnosticCopyValue(NSString *key);
 FOUNDATION_EXPORT void NNPDiagnosticSetBool(NSString *key, BOOL value);
 FOUNDATION_EXPORT void NNPDiagnosticSetInteger(NSString *key, NSInteger value);
+FOUNDATION_EXPORT void NNPDiagnosticSetDouble(NSString *key, double value);
 FOUNDATION_EXPORT void NNPDiagnosticSetString(NSString *key, NSString *value);
 FOUNDATION_EXPORT void NNPDiagnosticAppendEvent(NSDictionary *event);
 FOUNDATION_EXPORT BOOL NNPDiagnosticArmExists(BOOL *readable);

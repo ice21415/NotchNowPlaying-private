@@ -168,6 +168,10 @@ void NNPDiagnosticSetInteger(NSString *key, NSInteger value) {
     NNPDiagnosticSetValue(key, @(value));
 }
 
+void NNPDiagnosticSetDouble(NSString *key, double value) {
+    NNPDiagnosticSetValue(key, @(value));
+}
+
 void NNPDiagnosticSetString(NSString *key, NSString *value) {
     if (value.length) NNPDiagnosticSetValue(key, value);
 }

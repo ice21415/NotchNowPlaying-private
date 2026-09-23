@@ -45,14 +45,22 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         }
     }
     NSInteger connectedScenes = application.connectedScenes.count;
+    CGFloat screenBrightness = screen.brightness;
+    UIWindowScene *presentationScene = self.window.windowScene;
+    NSInteger presentationSceneState = presentationScene ? presentationScene.activationState : UISceneActivationStateUnattached;
+    NSInteger presentationSceneWindowCount = presentationScene ? presentationScene.windows.count : 0;
     NNPDiagnosticSetInteger(@"PresentationVisibleWindowCount", visibleWindows);
     NNPDiagnosticSetInteger(@"PresentationOpaqueWindowCount", opaqueVisibleWindows);
     NNPDiagnosticSetInteger(@"PresentationConnectedSceneCount", connectedScenes);
-    NNPDiagnosticSetBool(@"PresentationScreenBrightnessNonzero", screen.brightness > 0.001);
+    NNPDiagnosticSetDouble(@"PresentationUIScreenBrightness", screenBrightness);
+    NNPDiagnosticSetDouble(@"PresentationUIScreenScale", screen.scale);
+    NNPDiagnosticSetBool(@"PresentationScreenBrightnessNonzero", screenBrightness > 0.001);
+    NNPDiagnosticSetInteger(@"PresentationSceneActivationState", presentationSceneState);
+    NNPDiagnosticSetInteger(@"PresentationSceneWindowCount", presentationSceneWindowCount);
     NNPDiagnosticSetBool(@"PresentationWindowVisible", !self.window.hidden);
     NNPDiagnosticSetBool(@"PresentationWindowOpaque", self.window.opaque);
     NNPDiagnosticSetBool(@"PresentationRootOpaque", self.window.rootViewController.view.opaque);
-    NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER presentation snapshot reason=%@ locked=%@ visibleWindows=%ld opaqueWindows=%ld scenes=%ld brightnessNonzero=%@ windowVisible=%@ windowLevel=%.1f windowOpaque=%@ rootOpaque=%@ expectedBlack=%@", reason ?: @"unknown", self.locked ? @"YES" : @"NO", (long)visibleWindows, (long)opaqueVisibleWindows, (long)connectedScenes, screen.brightness > 0.001 ? @"YES" : @"NO", self.window.hidden ? @"NO" : @"YES", self.window.windowLevel, self.window.opaque ? @"YES" : @"NO", self.window.rootViewController.view.opaque ? @"YES" : @"NO", self.locked ? @"YES" : @"NO"]);
+    NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER presentation snapshot reason=%@ locked=%@ visibleWindows=%ld opaqueWindows=%ld scenes=%ld UIKitBrightness=%.4f sceneState=%ld sceneWindows=%ld windowVisible=%@ windowLevel=%.1f windowOpaque=%@ rootOpaque=%@ expectedBlack=%@", reason ?: @"unknown", self.locked ? @"YES" : @"NO", (long)visibleWindows, (long)opaqueVisibleWindows, (long)connectedScenes, screenBrightness, (long)presentationSceneState, (long)presentationSceneWindowCount, self.window.hidden ? @"NO" : @"YES", self.window.windowLevel, self.window.opaque ? @"YES" : @"NO", self.window.rootViewController.view.opaque ? @"YES" : @"NO", self.locked ? @"YES" : @"NO"]);
 }
 - (void)install {
     if (_installed) return; _installed = YES;
