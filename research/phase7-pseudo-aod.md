@@ -1039,8 +1039,8 @@ be removed or forcibly raised solely from this comparison.
 | Numeric UIKit brightness diagnostics | `PASS` in source; `NOT TESTED` on device |
 | Scene/window diagnostic extension | `PASS` in source; `NOT TESTED` on device |
 | Experimental build | `PASS` — GitHub Actions run `35809721287`; arm64e artifact downloaded locally |
-| Installation/injection verification | `NOT TESTED` |
-| Physical display comparison | `NOT TESTED` |
+| Installation/injection verification | `PASS` — diagnostic deployment section below |
+| Physical display comparison | `NOT TESTED` — no screenshot/photo supplied |
 | Timeout and recovery | `NOT TESTED` |
 
 The next bounded step is to compile the separate experimental diagnostic
@@ -1073,3 +1073,81 @@ post-install snapshot recorded `UIKitBrightness=0.4015`. This is a UIKit
 measurement only and is not a BacklightServices policy value or a physical
 OLED measurement. No physical lock test, screenshot comparison, timeout test
 or new display-control experiment has been started after this deployment.
+
+#### Phase 7.5 attended brightness and presentation results
+
+Status: logical-lock and presentation instrumentation `PASS`; brightness
+mechanism identification `INSUFFICIENT EVIDENCE`; dedicated privacy-safe
+presentation `FAIL` for the observed physical result.
+
+The user completed one short attended side-button comparison. The physical
+behavior is recorded as the corrected description: the display became
+extremely dim and noninteractive, the previous application remained visible,
+Now Playing continued updating, and the hardware volume HUD was also
+extremely dim. The normal lock screen appeared after the second side-button
+press and normal operation returned after unlock. No second-device photograph
+or system screenshot from the locked-visible interval was supplied, so the
+physical/screenshot comparison is `NOT TESTED`.
+
+The captured diagnostic sequence was:
+
+```text
+02:23:04.308  display transition requested mode=0, armed=YES
+02:23:04.308  displayMode 0 -> 4
+02:23:13.588  display transition requested mode=3, armed=YES
+02:23:14.029  logical-lock-observed; isUILocked=YES
+02:23:14.029  self.locked=YES
+02:23:14.030  logical-lock snapshot: UIKitBrightness=0.4015, sceneState=0,
+                sceneWindows=14, windowLevel=1001, windowOpaque=NO,
+                rootOpaque=NO, expectedBlack=YES
+02:23:14.030  black-presentation snapshot: UIKitBrightness=0.4015,
+                sceneState=0, sceneWindows=14, windowLevel=1001,
+                windowOpaque=YES, rootOpaque=YES
+02:23:17.029  logical-unlock-observed; self.locked=NO
+02:23:17.030  transparent-presentation restored
+02:23:31.523  experiment stopped; armed=NO
+02:23:31.524  window visible=NO cleanup
+```
+
+The numeric UIKit brightness value remained `0.4015` across the available
+snapshots. This is evidence that `UIScreen.mainScreen.brightness` did not
+reflect the user's extremely dim physical-panel observation in this test. It
+does not establish the BacklightServices policy value, the actual OLED drive
+level or panel power state.
+
+The lock callback, display-mode substitution, black presentation and unlock
+cleanup all executed. The tweak-owned window was in the expected scene state
+with level `1001` and became opaque. Nevertheless, the physical result still
+retained the previous application. This rules out a missing logical-lock
+callback and a basic opacity/reconciliation failure. It does not distinguish:
+
+* a system-managed surface above the tweak window;
+* display-mode retention of an earlier application scene; or
+* downstream brightness/output processing after SpringBoard composition.
+
+The native volume HUD being extremely dim is consistent with a display-wide
+or system-managed output state, but it is not proof of a particular owner.
+No unidentified window was removed, no window level was increased, and no
+BackBoard/HID or brightness-control hook was added.
+
+| Result | Status |
+| --- | --- |
+| Experimental package installed and injected | `PASS` |
+| UIKit brightness captured numerically | `PASS` — `0.4015` in captured snapshots |
+| Mode 0 -> 4 substitution observed | `PASS` |
+| Logical lock and secure noninteractive behavior | `PASS` user-reported / callback captured |
+| Black window/root presentation activated | `PASS` |
+| Previous application absent from physical display | `FAIL` |
+| Extremely dim physical display | `CONFIRMED USER REPORTED`; exact mechanism `INSUFFICIENT EVIDENCE` |
+| Screenshot or second-device photo comparison | `NOT TESTED` |
+| BacklightServices numeric policy value | `NOT TESTED / UNSUPPORTED INTERFACE` |
+| 30-second timeout | `NOT TESTED` |
+| Watchdog during short test | `PASS` — no new watchdog or injection disable observed |
+
+After collection, `ExperimentalLockedVisible` was set to `0` and SpringBoard
+was restarted. Recovery was normal. The next bounded step is a screenshot plus
+second-device photograph during the same short interval, if the user can
+provide both. The strongest current hypothesis is a downstream system display
+state that preserves rendering but applies a very low physical brightness, with
+composition/surface ordering still unresolved. No speculative display-control
+correction is justified by this evidence.
