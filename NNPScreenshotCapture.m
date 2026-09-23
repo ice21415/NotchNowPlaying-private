@@ -14,7 +14,9 @@ static NSString * const NNPScreenshotPreferencesRequestPath = @"/var/mobile/Libr
 static CFStringRef const NNPScreenshotRequestPreference = CFSTR("SSHScreenshotRequest");
 static CFStringRef const NNPScreenshotPreferenceDomain = CFSTR("com.user.notchnowplaying");
 static NSString * const NNPScreenshotImagePath = @"/var/mobile/Library/NotchNowPlaying/ssh-screenshot.png";
+static NSString * const NNPScreenshotSSHPath = @"/tmp/notchnowplaying-ssh-screenshot.png";
 static NSString * const NNPScreenshotResultPath = @"/var/mobile/Library/NotchNowPlaying/ssh-screenshot-result.plist";
+static const NSUInteger NNPScreenshotPreferenceMaxBytes = 1024 * 1024;
 static BOOL gNNPScreenshotCaptureRunning;
 static NSUInteger gNNPScreenshotPollCount;
 
@@ -100,8 +102,14 @@ static void NNPScreenshotWriteResult(BOOL captureSucceeded, NSString *error, UII
     NNPDiagnosticLog(@"SCREENSHOT_CAPTURE pre-PNG stats begin");
     NSDictionary *prePNG = image ? NNPScreenshotImageStats(image) : nil;
     NNPDiagnosticLog(@"SCREENSHOT_CAPTURE pre-PNG stats complete");
-    UIImage *decodedPNG = png.length ? [UIImage imageWithData:png] : nil;
-    NSDictionary *postPNG = decodedPNG ? NNPScreenshotImageStats(decodedPNG) : nil;
+    // Do not decode the full PNG inside SpringBoard. The previous controlled
+    // run completed pre-PNG sampling and then stopped in UIImage imageWithData:
+    // before publishing any result. The source image has already been sampled
+    // above; full post-encode decoding is deferred to the host-side verifier.
+    NSDictionary *postPNG = @{
+        @"available": @NO,
+        @"reason": @"host-side verification required; in-process full PNG decode skipped",
+    };
     if (image) {
         result[@"width"] = @(image.size.width);
         result[@"height"] = @(image.size.height);
@@ -114,9 +122,19 @@ static void NNPScreenshotWriteResult(BOOL captureSucceeded, NSString *error, UII
     BOOL directWrite = png.length && [png writeToFile:NNPScreenshotImagePath options:NSDataWritingAtomic error:&writeError];
     result[@"directPathWrite"] = @(directWrite);
     if (!directWrite && writeError.localizedDescription.length) result[@"directPathError"] = writeError.localizedDescription;
-    if (png.length) {
+    NSError *sshWriteError = nil;
+    BOOL sshPathWrite = png.length && [png writeToFile:NNPScreenshotSSHPath options:NSDataWritingAtomic error:&sshWriteError];
+    result[@"sshPath"] = NNPScreenshotSSHPath;
+    result[@"sshPathWrite"] = @(sshPathWrite);
+    if (!sshPathWrite && sshWriteError.localizedDescription.length) result[@"sshPathError"] = sshWriteError.localizedDescription;
+
+    BOOL preferencePublished = NO;
+    if (png.length && png.length <= NNPScreenshotPreferenceMaxBytes) {
         NNPDiagnosticSetValue(@"SSHScreenshotPNG", png);
+        preferencePublished = YES;
         NNPDiagnosticLog(@"SCREENSHOT_CAPTURE diagnostic preference publication requested");
+    } else if (png.length) {
+        NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE diagnostic preference publication skipped bytes=%lu limit=%lu; use SSH path", (unsigned long)png.length, (unsigned long)NNPScreenshotPreferenceMaxBytes]);
     }
     NNPDiagnosticSetValue(@"SSHScreenshotCaptureDiagnostics", @{
         @"capture": captureDiagnostics ?: @{},
@@ -124,11 +142,14 @@ static void NNPScreenshotWriteResult(BOOL captureSucceeded, NSString *error, UII
         @"postPNG": postPNG ?: @{},
         @"encodedBytes": @(png.length),
         @"directPathWrite": @(directWrite),
+        @"sshPath": NNPScreenshotSSHPath,
+        @"sshPathWrite": @(sshPathWrite),
+        @"preferencePNGPublished": @(preferencePublished),
     });
     NNPDiagnosticSetValue(@"SSHScreenshotResult", result);
     [[NSFileManager defaultManager] createDirectoryAtPath:NNPDiagnosticDirectoryPath() withIntermediateDirectories:YES attributes:nil error:NULL];
     [result writeToFile:NNPScreenshotResultPath atomically:YES];
-    NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE completed success=%@ bytes=%lu preMaxRGB=%@ postMaxRGB=%@ preNonBlack=%@ postNonBlack=%@ directPathWrite=%@", captureSucceeded ? @"YES" : @"NO", (unsigned long)png.length, prePNG[@"maxRGB"] ?: @"none", postPNG[@"maxRGB"] ?: @"none", prePNG[@"nonBlackSamples"] ?: @"none", postPNG[@"nonBlackSamples"] ?: @"none", directWrite ? @"YES" : @"NO"]);
+    NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE completed success=%@ bytes=%lu preMaxRGB=%@ postStats=host-only preNonBlack=%@ directPathWrite=%@ sshPathWrite=%@ preferencePNG=%@", captureSucceeded ? @"YES" : @"NO", (unsigned long)png.length, prePNG[@"maxRGB"] ?: @"none", prePNG[@"nonBlackSamples"] ?: @"none", directWrite ? @"YES" : @"NO", sshPathWrite ? @"YES" : @"NO", preferencePublished ? @"YES" : @"NO"]);
 }
 
 static void NNPScreenshotCaptureOne(void) {
