@@ -11,6 +11,87 @@ static NSString * const NNPDiagArm = @"/var/mobile/Library/NotchNowPlaying/displ
 static CFStringRef const NNPDiagDomain = CFSTR("com.user.notchnowplaying.diagnostics");
 static NSUInteger NNPDiagnosticTransitionSequence = 0;
 static NSString *NNPDiagnosticCurrentTransition;
+static dispatch_queue_t NNPDiagnosticWriteQueue;
+static NSObject *NNPDiagnosticWriteLock;
+static NSMutableArray *NNPDiagnosticPendingLogEntries;
+static BOOL NNPDiagnosticFlushScheduled;
+
+static void NNPDiagnosticEnsureWriteQueue(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NNPDiagnosticWriteQueue = dispatch_queue_create("com.user.notchnowplaying.diagnostics.write", DISPATCH_QUEUE_SERIAL);
+        NNPDiagnosticWriteLock = [NSObject new];
+        NNPDiagnosticPendingLogEntries = [NSMutableArray array];
+    });
+}
+
+static void NNPDiagnosticSetValueSynchronously(NSString *key, id value) {
+    if (!key.length || !value) return;
+    CFPreferencesSetAppValue((__bridge CFStringRef)key, (__bridge CFPropertyListRef)value, NNPDiagDomain);
+    CFPreferencesAppSynchronize(NNPDiagDomain);
+}
+
+static id NNPDiagnosticCopyValueSynchronously(NSString *key) {
+    if (!key.length) return nil;
+    CFPreferencesAppSynchronize(NNPDiagDomain);
+    return CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)key, NNPDiagDomain));
+}
+
+static void NNPDiagnosticFlushPendingLogEntries(void);
+
+static void NNPDiagnosticScheduleFlush(void) {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), NNPDiagnosticWriteQueue, ^{
+        NNPDiagnosticFlushPendingLogEntries();
+    });
+}
+
+static void NNPDiagnosticFlushPendingLogEntries(void) {
+    NNPDiagnosticEnsureWriteQueue();
+    NSArray *entries = nil;
+    @synchronized (NNPDiagnosticWriteLock) {
+        if (NNPDiagnosticPendingLogEntries.count) {
+            entries = [NNPDiagnosticPendingLogEntries copy];
+            [NNPDiagnosticPendingLogEntries removeAllObjects];
+        }
+    }
+
+    if (entries.count) {
+        mkdir(NNPDiagDirectory.UTF8String, 0755);
+        NSMutableString *lines = [NSMutableString string];
+        for (NSDictionary *entry in entries) {
+            NSDate *timestamp = entry[@"timestamp"];
+            NSString *line = [NSString stringWithFormat:@"[%@] pid=%@ process=%@ %@\n", timestamp ?: [NSDate date], entry[@"pid"] ?: @0, entry[@"process"] ?: @"unknown", entry[@"event"] ?: @"event"];
+            [lines appendString:line];
+        }
+        NSData *data = [lines dataUsingEncoding:NSUTF8StringEncoding];
+        for (NSString *path in @[NNPDiagLog, NNPDiagFallbackLog]) {
+            int fd = open(path.UTF8String, O_WRONLY | O_CREAT | O_APPEND, 0644);
+            if (fd < 0) continue;
+            const uint8_t *bytes = data.bytes;
+            ssize_t remaining = (ssize_t)data.length;
+            while (remaining > 0) {
+                ssize_t written = write(fd, bytes, (size_t)remaining);
+                if (written <= 0) break;
+                bytes += written;
+                remaining -= written;
+            }
+            close(fd);
+        }
+
+        NSArray *existing = NNPDiagnosticCopyValueSynchronously(@"DiagnosticLogEvents");
+        NSMutableArray *allEvents = existing.count ? [existing mutableCopy] : [NSMutableArray array];
+        [allEvents addObjectsFromArray:entries];
+        if (allEvents.count > 256) [allEvents removeObjectsInRange:NSMakeRange(0, allEvents.count - 256)];
+        NNPDiagnosticSetValueSynchronously(@"DiagnosticLogEvents", allEvents);
+    }
+
+    BOOL scheduleAgain = NO;
+    @synchronized (NNPDiagnosticWriteLock) {
+        scheduleAgain = NNPDiagnosticPendingLogEntries.count > 0;
+        if (!scheduleAgain) NNPDiagnosticFlushScheduled = NO;
+    }
+    if (scheduleAgain) NNPDiagnosticScheduleFlush();
+}
 
 NSString *NNPDiagnosticDirectoryPath(void) { return NNPDiagDirectory; }
 NSString *NNPDiagnosticLogPath(void) { return NNPDiagLog; }
@@ -18,33 +99,27 @@ NSString *NNPDiagnosticArmPath(void) { return NNPDiagArm; }
 
 void NNPDiagnosticLog(NSString *event) {
     if (!event.length) return;
-    mkdir(NNPDiagDirectory.UTF8String, 0755);
-    NSDateFormatter *formatter = [NSDateFormatter new];
-    formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
-    formatter.dateFormat = @"yyyy-MM-dd HH:mm:ss.SSS";
-    NSString *line = [NSString stringWithFormat:@"[%@] pid=%d process=%@ %@\n", [formatter stringFromDate:[NSDate date]], getpid(), NSProcessInfo.processInfo.processName ?: @"unknown", event];
-    NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
-    for (NSString *path in @[NNPDiagLog, NNPDiagFallbackLog]) {
-        int fd = open(path.UTF8String, O_WRONLY | O_CREAT | O_APPEND, 0644);
-        if (fd < 0) continue;
-        write(fd, data.bytes, data.length);
-        close(fd);
-    }
-
-    // File logging may be unavailable on a RootHide/SpringBoard deployment.
-    // Keep a bounded, privacy-safe fallback in the existing diagnostics plist
-    // so a transition session remains recoverable without collecting system logs.
+    NNPDiagnosticEnsureWriteQueue();
     NSDictionary *entry = @{
-        @"timestamp": [formatter stringFromDate:[NSDate date]],
+        @"timestamp": [NSDate date],
         @"pid": @(getpid()),
         @"process": NSProcessInfo.processInfo.processName ?: @"unknown",
         @"event": event,
     };
-    NSArray *existing = NNPDiagnosticCopyValue(@"DiagnosticLogEvents");
-    NSMutableArray *events = existing.count ? [existing mutableCopy] : [NSMutableArray array];
-    [events addObject:entry];
-    if (events.count > 256) [events removeObjectsInRange:NSMakeRange(0, events.count - 256)];
-    NNPDiagnosticSetValue(@"DiagnosticLogEvents", events);
+    BOOL schedule = NO;
+    @synchronized (NNPDiagnosticWriteLock) {
+        if (NNPDiagnosticPendingLogEntries.count < 256) {
+            [NNPDiagnosticPendingLogEntries addObject:entry];
+        } else {
+            [NNPDiagnosticPendingLogEntries removeObjectAtIndex:0];
+            [NNPDiagnosticPendingLogEntries addObject:entry];
+        }
+        if (!NNPDiagnosticFlushScheduled) {
+            NNPDiagnosticFlushScheduled = YES;
+            schedule = YES;
+        }
+    }
+    if (schedule) NNPDiagnosticScheduleFlush();
 }
 
 NSString *NNPDiagnosticBeginTransition(NSString *reason) {
@@ -73,14 +148,16 @@ void NNPDiagnosticRecordStartup(NSString *detail) {
 
 void NNPDiagnosticSetValue(NSString *key, id value) {
     if (!key.length || !value) return;
-    CFPreferencesSetAppValue((__bridge CFStringRef)key, (__bridge CFPropertyListRef)value, NNPDiagDomain);
-    CFPreferencesAppSynchronize(NNPDiagDomain);
+    NNPDiagnosticEnsureWriteQueue();
+    NSString *copiedKey = [key copy];
+    id copiedValue = [value copy];
+    dispatch_async(NNPDiagnosticWriteQueue, ^{
+        NNPDiagnosticSetValueSynchronously(copiedKey, copiedValue);
+    });
 }
 
 id NNPDiagnosticCopyValue(NSString *key) {
-    if (!key.length) return nil;
-    CFPreferencesAppSynchronize(NNPDiagDomain);
-    return CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)key, NNPDiagDomain));
+    return NNPDiagnosticCopyValueSynchronously(key);
 }
 
 void NNPDiagnosticSetBool(NSString *key, BOOL value) {
@@ -97,11 +174,15 @@ void NNPDiagnosticSetString(NSString *key, NSString *value) {
 
 void NNPDiagnosticAppendEvent(NSDictionary *event) {
     if (![event isKindOfClass:NSDictionary.class]) return;
-    NSArray *existing = NNPDiagnosticCopyValue(@"BlankingObserverEvents");
-    NSMutableArray *events = existing.count ? [existing mutableCopy] : [NSMutableArray array];
-    [events addObject:event];
-    if (events.count > 64) [events removeObjectsInRange:NSMakeRange(0, events.count - 64)];
-    NNPDiagnosticSetValue(@"BlankingObserverEvents", events);
+    NNPDiagnosticEnsureWriteQueue();
+    NSDictionary *copiedEvent = [event copy];
+    dispatch_async(NNPDiagnosticWriteQueue, ^{
+        NSArray *existing = NNPDiagnosticCopyValueSynchronously(@"BlankingObserverEvents");
+        NSMutableArray *events = existing.count ? [existing mutableCopy] : [NSMutableArray array];
+        [events addObject:copiedEvent];
+        if (events.count > 64) [events removeObjectsInRange:NSMakeRange(0, events.count - 64)];
+        NNPDiagnosticSetValueSynchronously(@"BlankingObserverEvents", events);
+    });
 }
 
 BOOL NNPDiagnosticArmExists(BOOL *readable) {

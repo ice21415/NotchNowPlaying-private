@@ -4,6 +4,7 @@
 
 static volatile BOOL gNNPPhase7Armed = NO;
 static volatile BOOL gNNPPhase7Restore = NO;
+static __thread BOOL gNNPPhase7InsideTransitionHook = NO;
 static __unsafe_unretained id gNNPPhase7Provider;
 
 void NNPPhase7SetExperimentArmed(BOOL armed) {
@@ -26,6 +27,11 @@ void NNPPhase7RestoreNormalDisplay(void) {
 %hook BLSHBacklightOSInterfaceProvider
 - (void)transitionToDisplayMode:(long long)mode withDuration:(double)duration {
     gNNPPhase7Provider = self;
+    if (gNNPPhase7InsideTransitionHook) {
+        %orig;
+        return;
+    }
+    gNNPPhase7InsideTransitionHook = YES;
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 display transition requested mode=%lld duration=%.3f armed=%@ restore=%@", mode, duration, gNNPPhase7Armed ? @"YES" : @"NO", gNNPPhase7Restore ? @"YES" : @"NO"]);
     if (gNNPPhase7Armed && !gNNPPhase7Restore && mode == 0) {
         NNPDiagnosticSetInteger(@"Phase7OriginalDisplayMode", mode);
@@ -33,8 +39,10 @@ void NNPPhase7RestoreNormalDisplay(void) {
         NNPDiagnosticSetBool(@"Phase7ModeSubstitution", YES);
         NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 displayMode 0 -> 4 duration=%.3f", duration]);
         %orig(4, duration);
+        gNNPPhase7InsideTransitionHook = NO;
         return;
     }
     %orig;
+    gNNPPhase7InsideTransitionHook = NO;
 }
 %end
