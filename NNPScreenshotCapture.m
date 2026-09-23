@@ -12,14 +12,33 @@
 static NSString * const NNPScreenshotRequestPath = @"/var/mobile/Library/NotchNowPlaying/ssh-screenshot-request";
 static NSString * const NNPScreenshotPreferencesRequestPath = @"/var/mobile/Library/Preferences/com.user.notchnowplaying.ssh-screenshot-request";
 static CFStringRef const NNPScreenshotRequestPreference = CFSTR("SSHScreenshotRequest");
+static CFStringRef const NNPScreenshotRequestIDPreference = CFSTR("SSHScreenshotRequestID");
 static CFStringRef const NNPScreenshotPreferenceDomain = CFSTR("com.user.notchnowplaying");
-static NSString * const NNPScreenshotImagePath = @"/var/mobile/Library/NotchNowPlaying/ssh-screenshot.png";
-static NSString * const NNPScreenshotSSHPath = @"/tmp/notchnowplaying-ssh-screenshot.png";
+static NSString * const NNPScreenshotImagePathBase = @"/var/mobile/Library/NotchNowPlaying/ssh-screenshot";
+static NSString * const NNPScreenshotSSHPathBase = @"/tmp/notchnowplaying-ssh-screenshot";
 static NSString * const NNPScreenshotResultPath = @"/var/mobile/Library/NotchNowPlaying/ssh-screenshot-result.plist";
 static const NSUInteger NNPScreenshotPreferenceMaxBytes = 1024 * 1024;
 static const NSUInteger NNPScreenshotPreviewMaxBytes = 512 * 1024;
 static BOOL gNNPScreenshotCaptureRunning;
 static NSUInteger gNNPScreenshotPollCount;
+
+static NSString *NNPScreenshotSafeRequestID(NSString *requestID) {
+    NSMutableString *safe = [NSMutableString string];
+    for (NSUInteger index = 0; index < requestID.length; index++) {
+        unichar character = [requestID characterAtIndex:index];
+        if ((character >= 'a' && character <= 'z') ||
+            (character >= 'A' && character <= 'Z') ||
+            (character >= '0' && character <= '9') ||
+            character == '-' || character == '_') {
+            [safe appendFormat:@"%C", character];
+        }
+    }
+    return safe.length ? safe : @"legacy";
+}
+
+static NSString *NNPScreenshotArtifactPath(NSString *base, NSString *requestID) {
+    return [NSString stringWithFormat:@"%@-%@.png", base, NNPScreenshotSafeRequestID(requestID)];
+}
 
 static NSDictionary *NNPScreenshotImageStats(UIImage *image) {
     CGImageRef cgImage = image.CGImage;
@@ -107,11 +126,14 @@ static NSData *NNPScreenshotPreviewPNG(UIImage *image) {
     return preview ? UIImagePNGRepresentation(preview) : nil;
 }
 
-static void NNPScreenshotWriteResult(BOOL captureSucceeded, NSString *error, UIImage *image, NSData *png, NSDictionary *captureDiagnostics) {
+static void NNPScreenshotWriteResult(BOOL captureSucceeded, NSString *error, UIImage *image, NSData *png, NSDictionary *captureDiagnostics, NSString *requestID) {
+    NSString *imagePath = NNPScreenshotArtifactPath(NNPScreenshotImagePathBase, requestID);
+    NSString *sshPath = NNPScreenshotArtifactPath(NNPScreenshotSSHPathBase, requestID);
     NSMutableDictionary *result = [NSMutableDictionary dictionary];
     result[@"timestamp"] = [NSDate date];
     result[@"success"] = @(captureSucceeded);
-    result[@"path"] = NNPScreenshotImagePath;
+    result[@"requestID"] = requestID ?: @"legacy";
+    result[@"path"] = imagePath;
     if (error.length) result[@"error"] = error;
     if (captureDiagnostics) result[@"captureDiagnostics"] = captureDiagnostics;
 
@@ -135,12 +157,12 @@ static void NNPScreenshotWriteResult(BOOL captureSucceeded, NSString *error, UII
     if (postPNG) result[@"postPNGStats"] = postPNG;
 
     NSError *writeError = nil;
-    BOOL directWrite = png.length && [png writeToFile:NNPScreenshotImagePath options:NSDataWritingAtomic error:&writeError];
+    BOOL directWrite = png.length && [png writeToFile:imagePath options:NSDataWritingAtomic error:&writeError];
     result[@"directPathWrite"] = @(directWrite);
     if (!directWrite && writeError.localizedDescription.length) result[@"directPathError"] = writeError.localizedDescription;
     NSError *sshWriteError = nil;
-    BOOL sshPathWrite = png.length && [png writeToFile:NNPScreenshotSSHPath options:NSDataWritingAtomic error:&sshWriteError];
-    result[@"sshPath"] = NNPScreenshotSSHPath;
+    BOOL sshPathWrite = png.length && [png writeToFile:sshPath options:NSDataWritingAtomic error:&sshWriteError];
+    result[@"sshPath"] = sshPath;
     result[@"sshPathWrite"] = @(sshPathWrite);
     if (!sshPathWrite && sshWriteError.localizedDescription.length) result[@"sshPathError"] = sshWriteError.localizedDescription;
 
@@ -167,7 +189,8 @@ static void NNPScreenshotWriteResult(BOOL captureSucceeded, NSString *error, UII
         @"postPNG": postPNG ?: @{},
         @"encodedBytes": @(png.length),
         @"directPathWrite": @(directWrite),
-        @"sshPath": NNPScreenshotSSHPath,
+        @"requestID": requestID ?: @"legacy",
+        @"sshPath": sshPath,
         @"sshPathWrite": @(sshPathWrite),
         @"preferencePNGPublished": @(preferencePublished),
         @"previewBytes": @(previewPNG.length),
@@ -179,7 +202,7 @@ static void NNPScreenshotWriteResult(BOOL captureSucceeded, NSString *error, UII
     NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE completed success=%@ bytes=%lu previewBytes=%lu preMaxRGB=%@ postStats=host-only preNonBlack=%@ directPathWrite=%@ sshPathWrite=%@ preferencePNG=%@ previewPreference=%@", captureSucceeded ? @"YES" : @"NO", (unsigned long)png.length, (unsigned long)previewPNG.length, prePNG[@"maxRGB"] ?: @"none", prePNG[@"nonBlackSamples"] ?: @"none", directWrite ? @"YES" : @"NO", sshPathWrite ? @"YES" : @"NO", preferencePublished ? @"YES" : @"NO", previewPreferencePublished ? @"YES" : @"NO"]);
 }
 
-static void NNPScreenshotCaptureOne(void) {
+static void NNPScreenshotCaptureOne(NSString *requestID) {
     NSDate *captureStart = [NSDate date];
     UIScreen *screen = UIScreen.mainScreen;
     NSDictionary *screenMetadata = NNPScreenshotScreenMetadata(screen);
@@ -194,7 +217,7 @@ static void NNPScreenshotCaptureOne(void) {
             NNPScreenshotWriteResult(NO, error, nil, nil, @{
                 @"startTimestamp": captureStart,
                 @"screen": screenMetadata ?: @{},
-            });
+            }, requestID);
         });
         NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE failed error=%@", error]);
         return;
@@ -219,7 +242,7 @@ static void NNPScreenshotCaptureOne(void) {
     if (![image isKindOfClass:UIImage.class]) {
         NSString *error = @"captureScreenshot returned no UIImage";
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-            NNPScreenshotWriteResult(NO, error, nil, nil, captureDiagnostics);
+            NNPScreenshotWriteResult(NO, error, nil, nil, captureDiagnostics, requestID);
         });
         NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE failed error=%@", error]);
         return;
@@ -230,7 +253,7 @@ static void NNPScreenshotCaptureOne(void) {
         NNPDiagnosticLog(@"SCREENSHOT_CAPTURE encode worker started");
         NSData *png = UIImagePNGRepresentation(image);
         NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE PNG encoding complete bytes=%lu", (unsigned long)png.length]);
-        NNPScreenshotWriteResult(png.length > 0, png.length ? nil : @"PNG encoding returned no data", image, png, captureDiagnostics);
+        NNPScreenshotWriteResult(png.length > 0, png.length ? nil : @"PNG encoding returned no data", image, png, captureDiagnostics, requestID);
         }
     });
 }
@@ -240,6 +263,7 @@ static void NNPScreenshotPoll(void) {
     gNNPScreenshotPollCount += 1;
     NSError *removeError = nil;
     NSString *requestPath = nil;
+    NSString *requestID = nil;
     for (NSString *candidate in @[NNPScreenshotRequestPath, NNPScreenshotPreferencesRequestPath]) {
         if (access(candidate.UTF8String, F_OK) == 0) {
             requestPath = candidate;
@@ -250,8 +274,11 @@ static void NNPScreenshotPoll(void) {
     // from a display or lock transition hook.
     if (gNNPScreenshotPollCount % 4 == 0) CFPreferencesAppSynchronize(NNPScreenshotPreferenceDomain);
     id preferenceRequest = CFBridgingRelease(CFPreferencesCopyAppValue(NNPScreenshotRequestPreference, NNPScreenshotPreferenceDomain));
+    id preferenceRequestID = CFBridgingRelease(CFPreferencesCopyAppValue(NNPScreenshotRequestIDPreference, NNPScreenshotPreferenceDomain));
     if ([preferenceRequest respondsToSelector:@selector(boolValue)] && [preferenceRequest boolValue]) {
         CFPreferencesSetAppValue(NNPScreenshotRequestPreference, kCFBooleanFalse, NNPScreenshotPreferenceDomain);
+        requestID = [preferenceRequestID isKindOfClass:NSString.class] ? [preferenceRequestID copy] : nil;
+        CFPreferencesSetAppValue(NNPScreenshotRequestIDPreference, CFSTR(""), NNPScreenshotPreferenceDomain);
         CFPreferencesAppSynchronize(NNPScreenshotPreferenceDomain);
         requestPath = @"preference:SSHScreenshotRequest";
     }
@@ -263,9 +290,11 @@ static void NNPScreenshotPoll(void) {
         if (!removed) {
             NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE request removal failed error=%@", removeError.localizedDescription ?: @"unknown"]);
         } else {
-            NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE request accepted path=%@; no wake or unlock requested", requestPath]);
+            if (!requestID.length) requestID = [NSUUID UUID].UUIDString;
+            NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE request accepted id=%@ path=%@; no wake or unlock requested", requestID, requestPath]);
+            NSString *capturedRequestID = [requestID copy];
             dispatch_async(dispatch_get_main_queue(), ^{
-                NNPScreenshotCaptureOne();
+                NNPScreenshotCaptureOne(capturedRequestID);
             });
             return;
         }
