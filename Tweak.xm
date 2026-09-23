@@ -8,8 +8,14 @@
 #ifndef NNP_ENABLE_SSH_SCREENSHOT_PROBE
 #define NNP_ENABLE_SSH_SCREENSHOT_PROBE 0
 #endif
+#ifndef NNP_ENABLE_SSH_SCREENSHOT_EXPERIMENT
+#define NNP_ENABLE_SSH_SCREENSHOT_EXPERIMENT 0
+#endif
 #if NNP_ENABLE_SSH_SCREENSHOT_PROBE
 #import "NNPScreenshotProbe.h"
+#endif
+#if NNP_ENABLE_SSH_SCREENSHOT_EXPERIMENT
+#import "NNPScreenshotCapture.h"
 #endif
 #if NNP_PHASE2J_READONLY_RUNTIME
 #import "NNPBackBoardReadOnlyDiagnostics.h"
@@ -101,6 +107,9 @@ static __attribute__((noinline)) void NNPLocalNoop(void) {
         [[NNPController sharedController] install];
 #if NNP_ENABLE_SSH_SCREENSHOT_PROBE
         NNPScreenshotProbeInterfaces();
+#endif
+#if NNP_ENABLE_SSH_SCREENSHOT_EXPERIMENT
+        NNPScreenshotCaptureStart();
 #endif
 #if NNP_PHASE4A_LOCAL_NOOP_TEST
         NNPLocalNoop();
