@@ -824,8 +824,8 @@ compile-time flag and the user setting. Production remains unchanged.
 | Synchronous diagnostic I/O audit | `PASS — risk identified` |
 | Non-blocking diagnostic correction | `PASS` in source review |
 | Display-mode path changed | `NO` |
-| Production compilation after correction | `NOT TESTED` |
-| Experimental compilation after correction | `NOT TESTED` |
+| Production compilation after correction | `PASS` — workflow `35807532171` |
+| Experimental compilation after correction | `PASS` — workflow `35807534457` |
 | New physical lock experiment | `NOT TESTED` |
 | Gray-screen issue | `UNSUPPORTED / SEPARATE` |
 
@@ -835,3 +835,9 @@ both builds pass and Relaxin injection is explicitly confirmed active. The next
 device test must be brief, attended, and stopped immediately if SpringBoard
 slows, injection is disabled, or display recovery is abnormal; it must not wait
 for another 180-second watchdog event.
+
+Both requested builds completed successfully on 2026-09-23. Static search
+confirmed no `dispatch_sync` in the audited Phase 7 sources. The generated
+packages were not installed and no new physical lock experiment was started
+after the watchdog incident. Phase 7.4 therefore remains `NOT TESTED` for
+runtime stability and `UNSUPPORTED` for gray-screen resolution.
