@@ -6,7 +6,7 @@ Baseline: `main` commit `a9d7f1e`
 
 > **Latest status (user-reported device test, 2026-09-22):** The Phase 7 experimental build compiled and installed successfully. On a normal side-button press, the phone remained logically locked while the display stayed visible; album artwork and song information continued updating on track changes, and the progress bar continued moving. Unlock/recovery was normal. The display retained the pre-lock screen content rather than transitioning to an AOD-only black scene. The configured 30-second timeout was **NOT TESTED**. See [Phase 7 device-test addendum](#phase-7-device-test-addendum--user-reported-results-2026-09-22). Earlier `NOT TESTED` / `UNSUPPORTED` statements below describe the state **before** this device test and are superseded for observed visibility, not for timeout, privacy, or panel-power details.
 
-> **Follow-up observation (user-reported, 2026-09-23):** After the first side-button lock, the *entire* retained screen, including the NotchNowPlaying UI, becomes gray and cannot be interacted with. The native volume HUD still appears when using the hardware volume buttons, but it is also gray/appears beneath the same apparent effect. A second side-button press immediately shows the normal iOS lock screen. Media artwork/title and progress continue updating. This suggests a presentation-wide dimming/overlay or display-level color/brightness effect; the owner and implementation are **NOT IDENTIFIED**. The physical panel sleep/power state remains **UNVERIFIED**. The 30-second timeout is still **NOT TESTED**. See [follow-up observation addendum](#phase-7-follow-up-observation-addendum--2026-09-23).
+> **Follow-up observation (user-reported, 2026-09-23; terminology corrected in Phase 7.5):** After the first side-button lock, the *entire* retained screen, including the NotchNowPlaying UI, becomes extremely dim, resembling the lowest possible brightness, and cannot be interacted with. The native volume HUD still appears when using the hardware volume buttons, but it is also extremely dim. A second side-button press immediately shows the normal iOS lock screen. Media artwork/title and progress continue updating. Earlier references to a “gray screen” describe this same low-brightness physical appearance, not a confirmed gray overlay or color transform. The owner and implementation are **NOT IDENTIFIED**. The physical panel sleep/power state remains **UNVERIFIED**. The 30-second timeout is still **NOT TESTED**. See [follow-up observation addendum](#follow-up-observation-addendum--2026-09-23).
 
 ## Current status
 
@@ -955,3 +955,96 @@ Next evidence-backed step: repeat one short attended capture only if a direct
 physical observation is recorded alongside the timestamped events, and add a
 system screenshot comparison when capture is available. Do not change the
 display-mode hook based on this session alone.
+
+### Phase 7.5 — extremely dim, noninteractive locked-visible display
+
+#### Corrected observation
+
+The user clarified that the earlier term “gray screen” was imprecise. The
+observed behavior is: `Extremely dim, noninteractive locked-visible display`.
+After the first physical side-button press, the previous application remains
+visible, the touchscreen does not accept ordinary interaction, Now Playing
+content continues updating, and the hardware volume HUD is also extremely
+dim. A second side-button press shows the normal lock screen and unlocking
+restores normal operation. Historical Phase 7.1–7.4 “gray” descriptions are
+retained as contemporaneous wording, but should be read as this low-brightness
+physical observation; they do not establish a gray overlay or color transform.
+
+#### Source review and passive diagnostic preparation
+
+Status: source review `PASS`; diagnostic changes `PASS` in source; build and
+device deployment `NOT TESTED`.
+
+The existing Phase 7.4 display path was preserved. In particular, the mode
+substitution remains the only display hook: an armed mode-0 request is passed
+as mode 4, with the existing thread-local reentrancy guard and fail-open
+`%orig` path. No BackBoard/HID factor hook, BLS suppression, brightness setter,
+authentication change or panel-power policy change was added.
+
+The existing Phase 7.4 window observations already prove that the tweak-owned
+window and root view become opaque at the logical-lock callback. They do not
+prove that this window is the final surface composited by the display service.
+The source review therefore keeps presentation composition and downstream
+display output as separate hypotheses.
+
+The diagnostic preparation adds only numeric, source-labelled UIKit and scene
+observations to `NNPController`:
+
+* `UIScreen.mainScreen.brightness` is recorded as
+  `PresentationUIScreenBrightness` (a UIKit value in the 0.0–1.0 range), not
+  as a claim about OLED output or BacklightServices policy.
+* Screen scale, the presentation scene activation state and its window count
+  are recorded at each existing presentation snapshot.
+* The transition log now includes the numeric UIKit brightness and scene
+  state alongside display-mode requests, lock state and window opacity.
+* `NNPDiagnosticSetDouble` uses the existing asynchronous bounded persistence
+  path. No synchronous I/O was added to the display hook or lock callback.
+
+No reliable BacklightServices brightness-policy numeric value is currently
+available through the existing safe interfaces. UIKit brightness,
+BacklightServices policy state and physical OLED output therefore remain three
+distinct measurements. A nonzero UIKit value must not be interpreted as panel
+visibility or native AOD brightness.
+
+#### Evidence model for the next attended comparison
+
+The next test is intentionally not deployed automatically. It requires an
+installed diagnostic build, active SpringBoard injection and a short attended
+comparison of the same non-sensitive static screen:
+
+| Observation | Interpretation | Status |
+| --- | --- | --- |
+| Normal/unlocked UIKit brightness value | Baseline source measurement only | `NOT TESTED` |
+| Locked-visible UIKit brightness value | Distinguishes reported UIKit state from baseline | `NOT TESTED` |
+| System screenshot versus physical panel | Can separate composition/capture appearance from downstream output | `NOT TESTED` |
+| Exact BacklightServices policy value | No safe numeric interface currently established | `UNSUPPORTED / NOT IDENTIFIED` |
+| Previous application still visible in final composition | Composition or display-mode retention candidate | `CONFIRMED historically; new screenshot NOT TESTED` |
+| Touch non-interactive while logically locked | Consistent with normal lock enforcement | `CONFIRMED USER REPORTED` |
+
+If the screenshot retains normal colors while the physical panel is extremely
+dim, downstream brightness/output processing becomes the stronger hypothesis.
+If the screenshot itself retains the previous application or is dimmed, scene
+composition or capture-path behavior becomes stronger. Neither result alone
+proves panel power state or identifies a system-owned surface. No window will
+be removed or forcibly raised solely from this comparison.
+
+#### Phase 7.5 preparation status
+
+| Item | Result |
+| --- | --- |
+| Terminology corrected | `PASS` |
+| Phase 7.4 nonblocking logger preserved | `PASS` |
+| Reentrancy guard preserved | `PASS` |
+| New display-control hook | `NONE` |
+| Numeric UIKit brightness diagnostics | `PASS` in source; `NOT TESTED` on device |
+| Scene/window diagnostic extension | `PASS` in source; `NOT TESTED` on device |
+| Experimental build | `NOT TESTED` |
+| Installation/injection verification | `NOT TESTED` |
+| Physical display comparison | `NOT TESTED` |
+| Timeout and recovery | `NOT TESTED` |
+
+The next bounded step is to compile the separate experimental diagnostic
+package and inspect its artifact. Deployment and the physical side-button
+comparison require explicit user readiness. Until that occurs, the exact
+dimming mechanism and the reason the previous application remains visible are
+`INSUFFICIENT EVIDENCE`.
