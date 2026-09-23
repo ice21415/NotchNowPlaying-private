@@ -432,6 +432,21 @@ experimental flag set to `0`. No persistent system display policy is written.
 | Gray-screen owner | `UNSUPPORTED / NOT IDENTIFIED` |
 | Privacy-safe pseudo-AOD completion | `UNSUPPORTED` pending device validation |
 
+The Phase 7.1 experimental workflow was dispatched at GitHub Actions run
+`35803792090` for commit `f4b2159`, but GitHub did not start a runner: the job
+had zero steps and was rejected because the account's recent payment failed or
+its spending limit must be increased. A retry had the same result. The stable
+Phase 5 workflow was also dispatched as run `35803862259` against the same
+commit and was rejected before its first step for the same account-level
+reason. Therefore this is `NOT RUN / BLOCKED`, not a compiler failure. No
+Phase 7.1 package was installed after this change.
+
+Static validation completed: `git diff --check` passed, the production flag
+remains disabled, and the experimental source path remains isolated behind the
+existing compile-time and user-controlled settings. Apple-platform compilation
+and device validation remain `NOT TESTED` until GitHub Actions billing is
+restored.
+
 The next bounded step is to build the separate experimental package, install it
 only for a short attended test, collect the new passive diagnostics, perform the
 non-sensitive screenshot comparison, and verify timeout plus lock/unlock and
