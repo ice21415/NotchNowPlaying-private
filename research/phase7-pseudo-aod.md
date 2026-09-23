@@ -1151,3 +1151,59 @@ provide both. The strongest current hypothesis is a downstream system display
 state that preserves rendering but applies a very low physical brightness, with
 composition/surface ordering still unresolved. No speculative display-control
 correction is justified by this evidence.
+
+### Phase 7.6 — remote screenshot capture during locked-visible mode
+
+Status: screenshot capability discovery `FAIL`; locked-visible screenshot
+comparison `NOT TESTED`.
+
+#### Available connection and tools
+
+The existing authorized computer connection was verified as SSH/SCP to the
+target device. It is not evidence of a paired iOS developer-services channel.
+The Windows host was checked for the following tools:
+
+| Method | Result | Limitation |
+| --- | --- | --- |
+| `pymobiledevice3` | `NOT FOUND` | No DVT/CoreDevice client available |
+| CoreDevice screenshot interface | `NOT TESTED` | Requires a compatible developer-services connection and disk image; no client is installed |
+| `idevicescreenshot` / libimobiledevice | `NOT FOUND` | No legacy screenshot client available; iOS 17 compatibility is not assumed |
+| macOS `screencapture` | `NOT FOUND` | Host is Windows |
+| SSH-only device utility | `FAIL` | No `screencapture`, `screenshot`, `idevicescreenshot`, `pngcrush`, `ffmpeg` or ImageMagick binary was found in the checked device paths |
+
+SSH access therefore provides command execution and file transfer only. It
+does not provide a supported system screenshot service. No Developer Mode,
+Developer Disk Image, pairing record, developer tunnel or additional package
+was installed or changed.
+
+#### Baseline capture
+
+Status: `NOT TESTED` because no compatible capture method was available.
+
+The required unlocked non-sensitive baseline screenshot could not be
+demonstrated. Consequently no locked-visible screenshot request was attempted,
+no screenshot timestamp/completion event was added, and no physical display
+state was altered for this phase. A failed capability discovery is not evidence
+that the OLED is off or that the locked-visible framebuffer is black.
+
+The Phase 7.4 nonblocking diagnostic logger and reentrancy guard remain
+unchanged. The Phase 7.5 brightness and scene diagnostics remain available for
+a future session. No screenshot hook, BackBoard/HID modification, display
+policy change or authentication change was introduced.
+
+#### Classification and fallback
+
+The result is Case D — remote screenshot unavailable. Cases A–C are
+`NOT TESTED`; there is no image to compare against the synchronized
+`UIKitBrightness=0.4015`, opaque window/root state, or physical observation.
+The next evidence-backed step is either:
+
+1. use a separately prepared, compatible iOS 17 developer-services setup with
+   its pairing and Developer Disk Image prerequisites satisfied; or
+2. perform one future short attended test while a second device photographs
+   the same non-sensitive screen, with the existing passive diagnostics
+   captured at the same time.
+
+Installing a new host/device developer component requires a separate decision
+because its prerequisites and lock-state behavior must be verified first. The
+stable rollback package and the Phase 7.4 watchdog protections are preserved.
