@@ -23,5 +23,4 @@ typedef NS_ENUM(NSInteger, NNPDisplayLifecycleState) {
 // the production implementation.
 FOUNDATION_EXPORT void NNPPhase7SetExperimentArmed(BOOL armed);
 FOUNDATION_EXPORT void NNPPhase7SetSessionID(NSString *sessionID);
-FOUNDATION_EXPORT BOOL NNPPhase7RestoreNormalDisplay(void);
 FOUNDATION_EXPORT void NNPPhase7NotifyDisplayModeSubstitution(long long requestedMode, long long substitutedMode);

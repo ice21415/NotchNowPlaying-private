@@ -8,7 +8,6 @@
 #if !NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
 void NNPPhase7SetExperimentArmed(__unused BOOL armed) {}
 void NNPPhase7SetSessionID(__unused NSString *sessionID) {}
-BOOL NNPPhase7RestoreNormalDisplay(void) { return NO; }
 void NNPPhase7NotifyDisplayModeSubstitution(__unused long long requestedMode, __unused long long substitutedMode) {}
 #endif
 
@@ -17,7 +16,6 @@ void NNPPhase7NotifyDisplayModeSubstitution(__unused long long requestedMode, __
 @property(nonatomic) NSUInteger sessionGeneration;
 @property(nonatomic, copy) NSString *sessionIdentifier;
 @property(nonatomic) BOOL modeSubstitutionObserved;
-@property(nonatomic) BOOL restorationRequested;
 @property(nonatomic) BOOL lockedVisibleActivated;
 - (void)noteDisplayModeSubstitutionRequested:(long long)requestedMode substitutedMode:(long long)substitutedMode;
 - (void)activateLockedVisibleSessionIfReady;
@@ -105,7 +103,7 @@ void NNPPhase7NotifyDisplayModeSubstitution(long long requestedMode, long long s
             NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY stale timeout ignored session=%@ current=%@ generation=%lu currentGeneration=%lu lifecycle=%ld locked=%@ substituted=%@", session ?: @"none", strongSelf.sessionIdentifier ?: @"none", (unsigned long)generation, (unsigned long)strongSelf.sessionGeneration, (long)strongSelf.lifecycleState, strongSelf.deviceLocked ? @"YES" : @"NO", strongSelf.modeSubstitutionObserved ? @"YES" : @"NO"]);
             return;
         }
-        NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY timeout callback session=%@ deadline=%.3f", strongSelf.sessionIdentifier ?: @"none", deadline.timeIntervalSince1970]);
+        NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY timeout callback session=%@ deadline=%.3f autoOff=SUPPRESSED_FAIL_OPEN", strongSelf.sessionIdentifier ?: @"none", deadline.timeIntervalSince1970]);
         [strongSelf stopLockedVisibleModeWithReason:@"maximum-duration"];
     }];
 }
@@ -152,7 +150,6 @@ void NNPPhase7NotifyDisplayModeSubstitution(long long requestedMode, long long s
     self.sessionGeneration = ++NNPNextSessionGeneration;
     self.sessionIdentifier = [NSString stringWithFormat:@"S%lu", (unsigned long)self.sessionGeneration];
     self.modeSubstitutionObserved = NO;
-    self.restorationRequested = NO;
     self.lockedVisibleActivated = NO;
     [self cancelVisibleDurationTimer:@"new-session"];
     NNPPhase7SetSessionID(self.sessionIdentifier);
@@ -176,25 +173,17 @@ void NNPPhase7NotifyDisplayModeSubstitution(long long requestedMode, long long s
         _lifecycleState == NNPDisplayLifecycleStateUnsupported) return;
     if (_lifecycleState == NNPDisplayLifecycleStateStopping) return;
     NSString *session = [self.sessionIdentifier copy] ?: @"none";
-    BOOL restorationWouldRequirePrivateModeSetter = self.deviceLocked && self.modeSubstitutionObserved && !self.restorationRequested;
+    BOOL substitutedDuringLockedSession = self.deviceLocked && self.modeSubstitutionObserved;
+    // Disarm before any other cleanup so a nested/native transition cannot be
+    // intercepted while this session is being torn down.
+    NNPPhase7SetExperimentArmed(NO);
     self.lifecycleState = NNPDisplayLifecycleStateStopping;
     [self cancelVisibleDurationTimer:reason];
-    NNPPhase7SetExperimentArmed(NO);
-    // The Phase 4 boundary does not establish that a synchronous mode-0 call
-    // is safe during locked cleanup. A timeout must fail open: disarm our
-    // substitution and let the native display state machine handle its next
-    // transition. This avoids re-entering a private display setter from the
-    // timeout/cleanup path, which correlated with the user's safe-mode report.
-    BOOL restoreRequested = NO;
-    if (restorationWouldRequirePrivateModeSetter) {
-        NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY explicit mode-0 restore skipped fail-open session=%@ reason=%@; native transition remains responsible", session, reason ?: @"unknown"]);
-    } else {
-        NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY restore not needed session=%@ substituted=%@ deviceLocked=%@ reason=%@", session, self.modeSubstitutionObserved ? @"YES" : @"NO", self.deviceLocked ? @"YES" : @"NO", reason ?: @"unknown"]);
-    }
+    NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY cleanup fail-open session=%@ substituted=%@ deviceLocked=%@ reason=%@ autoOff=SUPPRESSED", session, self.modeSubstitutionObserved ? @"YES" : @"NO", self.deviceLocked ? @"YES" : @"NO", reason ?: @"unknown"]);
     self.lifecycleState = NNPDisplayLifecycleStateIdle;
     NNPDiagnosticSetBool(@"Phase7LockedVisibleActive", NO);
-    NNPDiagnosticSetBool(@"Phase7RestoreRequested", restoreRequested);
-    NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY experiment stopped session=%@ reason=%@ substituted=%@ restoreRequested=%@ explicitRestore=%@ deviceLocked=%@", session, reason ?: @"unknown", self.modeSubstitutionObserved ? @"YES" : @"NO", restoreRequested ? @"YES" : @"NO", restorationWouldRequirePrivateModeSetter ? @"SKIPPED_FAIL_OPEN" : @"NOT_NEEDED", self.deviceLocked ? @"YES" : @"NO"]);
+    NNPDiagnosticSetBool(@"Phase7RestoreRequested", NO);
+    NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY experiment stopped session=%@ reason=%@ substituted=%@ lockedSession=%@ restoreRequested=NO autoOff=SUPPRESSED deviceLocked=%@", session, reason ?: @"unknown", self.modeSubstitutionObserved ? @"YES" : @"NO", substitutedDuringLockedSession ? @"YES" : @"NO", self.deviceLocked ? @"YES" : @"NO"]);
     self.modeSubstitutionObserved = NO;
     self.lockedVisibleActivated = NO;
     self.sessionIdentifier = nil;
