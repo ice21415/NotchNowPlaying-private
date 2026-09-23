@@ -17,6 +17,7 @@ static NSString * const NNPScreenshotImagePath = @"/var/mobile/Library/NotchNowP
 static NSString * const NNPScreenshotSSHPath = @"/tmp/notchnowplaying-ssh-screenshot.png";
 static NSString * const NNPScreenshotResultPath = @"/var/mobile/Library/NotchNowPlaying/ssh-screenshot-result.plist";
 static const NSUInteger NNPScreenshotPreferenceMaxBytes = 1024 * 1024;
+static const NSUInteger NNPScreenshotPreviewMaxBytes = 512 * 1024;
 static BOOL gNNPScreenshotCaptureRunning;
 static NSUInteger gNNPScreenshotPollCount;
 
@@ -91,6 +92,21 @@ static NSDictionary *NNPScreenshotScreenMetadata(UIScreen *screen) {
     };
 }
 
+static NSData *NNPScreenshotPreviewPNG(UIImage *image) {
+    if (!image || image.size.width <= 0 || image.size.height <= 0) return nil;
+    CGSize previewSize = image.size;
+    CGFloat longestEdge = MAX(previewSize.width, previewSize.height);
+    if (longestEdge > 512.0) {
+        CGFloat factor = 512.0 / longestEdge;
+        previewSize = CGSizeMake(MAX(1.0, floor(previewSize.width * factor)), MAX(1.0, floor(previewSize.height * factor)));
+    }
+    UIGraphicsBeginImageContextWithOptions(previewSize, YES, 1.0);
+    [image drawInRect:CGRectMake(0, 0, previewSize.width, previewSize.height)];
+    UIImage *preview = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    return preview ? UIImagePNGRepresentation(preview) : nil;
+}
+
 static void NNPScreenshotWriteResult(BOOL captureSucceeded, NSString *error, UIImage *image, NSData *png, NSDictionary *captureDiagnostics) {
     NSMutableDictionary *result = [NSMutableDictionary dictionary];
     result[@"timestamp"] = [NSDate date];
@@ -128,6 +144,15 @@ static void NNPScreenshotWriteResult(BOOL captureSucceeded, NSString *error, UII
     result[@"sshPathWrite"] = @(sshPathWrite);
     if (!sshPathWrite && sshWriteError.localizedDescription.length) result[@"sshPathError"] = sshWriteError.localizedDescription;
 
+    NSData *previewPNG = image ? NNPScreenshotPreviewPNG(image) : nil;
+    BOOL previewPreferencePublished = NO;
+    if (previewPNG.length && previewPNG.length <= NNPScreenshotPreviewMaxBytes) {
+        NNPDiagnosticSetValue(@"SSHScreenshotPreviewPNG", previewPNG);
+        previewPreferencePublished = YES;
+    }
+    result[@"previewBytes"] = @(previewPNG.length);
+    result[@"previewPreferencePublished"] = @(previewPreferencePublished);
+
     BOOL preferencePublished = NO;
     if (png.length && png.length <= NNPScreenshotPreferenceMaxBytes) {
         NNPDiagnosticSetValue(@"SSHScreenshotPNG", png);
@@ -145,11 +170,13 @@ static void NNPScreenshotWriteResult(BOOL captureSucceeded, NSString *error, UII
         @"sshPath": NNPScreenshotSSHPath,
         @"sshPathWrite": @(sshPathWrite),
         @"preferencePNGPublished": @(preferencePublished),
+        @"previewBytes": @(previewPNG.length),
+        @"previewPreferencePublished": @(previewPreferencePublished),
     });
     NNPDiagnosticSetValue(@"SSHScreenshotResult", result);
     [[NSFileManager defaultManager] createDirectoryAtPath:NNPDiagnosticDirectoryPath() withIntermediateDirectories:YES attributes:nil error:NULL];
     [result writeToFile:NNPScreenshotResultPath atomically:YES];
-    NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE completed success=%@ bytes=%lu preMaxRGB=%@ postStats=host-only preNonBlack=%@ directPathWrite=%@ sshPathWrite=%@ preferencePNG=%@", captureSucceeded ? @"YES" : @"NO", (unsigned long)png.length, prePNG[@"maxRGB"] ?: @"none", prePNG[@"nonBlackSamples"] ?: @"none", directWrite ? @"YES" : @"NO", sshPathWrite ? @"YES" : @"NO", preferencePublished ? @"YES" : @"NO"]);
+    NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE completed success=%@ bytes=%lu previewBytes=%lu preMaxRGB=%@ postStats=host-only preNonBlack=%@ directPathWrite=%@ sshPathWrite=%@ preferencePNG=%@ previewPreference=%@", captureSucceeded ? @"YES" : @"NO", (unsigned long)png.length, (unsigned long)previewPNG.length, prePNG[@"maxRGB"] ?: @"none", prePNG[@"nonBlackSamples"] ?: @"none", directWrite ? @"YES" : @"NO", sshPathWrite ? @"YES" : @"NO", preferencePublished ? @"YES" : @"NO", previewPreferencePublished ? @"YES" : @"NO"]);
 }
 
 static void NNPScreenshotCaptureOne(void) {
