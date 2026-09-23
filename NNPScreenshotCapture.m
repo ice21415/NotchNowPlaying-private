@@ -3,11 +3,15 @@
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
+#import <sys/stat.h>
+#import <unistd.h>
 
 static NSString * const NNPScreenshotRequestPath = @"/var/mobile/Library/NotchNowPlaying/ssh-screenshot-request";
+static NSString * const NNPScreenshotPreferencesRequestPath = @"/var/mobile/Library/Preferences/com.user.notchnowplaying.ssh-screenshot-request";
 static NSString * const NNPScreenshotImagePath = @"/var/mobile/Library/NotchNowPlaying/ssh-screenshot.png";
 static NSString * const NNPScreenshotResultPath = @"/var/mobile/Library/NotchNowPlaying/ssh-screenshot-result.plist";
 static BOOL gNNPScreenshotCaptureRunning;
+static NSUInteger gNNPScreenshotPollCount;
 
 static void NNPScreenshotWriteResult(BOOL success, NSString *error, UIImage *image) {
     NSMutableDictionary *result = [NSMutableDictionary dictionary];
@@ -57,13 +61,24 @@ static void NNPScreenshotCaptureOne(void) {
 
 static void NNPScreenshotPoll(void) {
     if (!gNNPScreenshotCaptureRunning) return;
+    gNNPScreenshotPollCount += 1;
     NSError *removeError = nil;
-    BOOL requestExists = [[NSFileManager defaultManager] fileExistsAtPath:NNPScreenshotRequestPath];
-    if (requestExists) {
-        BOOL removed = [[NSFileManager defaultManager] removeItemAtPath:NNPScreenshotRequestPath error:&removeError];
+    NSString *requestPath = nil;
+    for (NSString *candidate in @[NNPScreenshotRequestPath, NNPScreenshotPreferencesRequestPath]) {
+        if (access(candidate.UTF8String, F_OK) == 0) {
+            requestPath = candidate;
+            break;
+        }
+    }
+    if (gNNPScreenshotPollCount % 20 == 0) {
+        NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE poll count=%lu request=%@ pathVisible=%@", (unsigned long)gNNPScreenshotPollCount, requestPath ?: @"none", requestPath ? @"YES" : @"NO"]);
+    }
+    if (requestPath.length) {
+        BOOL removed = [[NSFileManager defaultManager] removeItemAtPath:requestPath error:&removeError];
         if (!removed) {
             NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE request removal failed error=%@", removeError.localizedDescription ?: @"unknown"]);
         } else {
+            NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE request accepted path=%@; no wake or unlock requested", requestPath]);
             dispatch_async(dispatch_get_main_queue(), ^{
                 NNPScreenshotCaptureOne();
             });
@@ -78,7 +93,7 @@ static void NNPScreenshotPoll(void) {
 void NNPScreenshotCaptureStart(void) {
     if (gNNPScreenshotCaptureRunning) return;
     gNNPScreenshotCaptureRunning = YES;
-    NNPDiagnosticLog(@"SCREENSHOT_CAPTURE helper armed requestPath=/var/mobile/Library/NotchNowPlaying/ssh-screenshot-request");
+    NNPDiagnosticLog(@"SCREENSHOT_CAPTURE helper armed requestPaths=NotchNowPlaying/ssh-screenshot-request,Preferences/com.user.notchnowplaying.ssh-screenshot-request");
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         NNPDiagnosticLog(@"SCREENSHOT_CAPTURE poll worker started");
         NNPScreenshotPoll();
