@@ -1548,3 +1548,112 @@ the experimental correction or repeat the side-button sequence until
 SpringBoard stability and the missing crash evidence are addressed. The
 brightness mechanism and dedicated black presentation remain separate,
 unresolved issues.
+
+### Phase 7.10 — safety-fix deployment and attended retry
+
+Status: deployment `PASS`; unlocked preflight `PASS`; logical lock observation
+`PASS`; pseudo-AOD visibility `FAIL`; safe-mode stability `FAIL / exact cause
+INSUFFICIENT EVIDENCE`.
+
+#### Build, installation and activation correction
+
+The weak-provider correction from commit `d17da7f` was present in the source
+and included in the experimental package. The small activation correction from
+commit `82e91f4` was also included: an experiment already in `Active` or
+`Preparing` is preserved while unlocked, while a new start is deferred when
+`deviceLocked=YES`. This prevents a preference change during an existing lock
+session from intentionally starting a new display experiment.
+
+| Check | Result |
+| --- | --- |
+| Production compilation | `PASS` — Actions run `35826810481` |
+| Experimental compilation | `PASS` — Actions run `35826813250` |
+| Experimental installation | `PASS` — package installed over SSH |
+| SpringBoard restart/injection | `PASS` — initial PID `24406`, later PID `24741` |
+| SSH screenshot preflight after install | `PASS` — preview non-black and valid |
+| Initial preference after installation | `PASS` — `ExperimentalLockedVisible=0` |
+| Rollback after the retry | `PASS` — final PID `24882`, `TweakLoaded=1`, lifecycle `0`, preference `0` |
+
+The first SSH write of `ExperimentalLockedVisible=1` changed the on-disk
+preference but did not notify the already-running `NNPPreferences` instance.
+After one controlled SpringBoard restart, the live diagnostics showed Spotify
+playing, `LogicalLockState=false`, `LockedVisibleLifecycle=3`, and
+`experimentEligible=YES`. This was a preference-reload issue, not evidence of
+an unavailable media state.
+
+#### Valid lock attempt and screenshot evidence
+
+After the final restart, PID `24741` recorded an unlocked armed state at
+`06:44:24.234445`:
+
+```text
+DISPLAY experiment armed duration=40.6s deviceLocked=NO
+```
+
+The host-side preparation and SSH password prompts then consumed enough time
+that the experiment reached its configured timeout at `06:45:04.947825` and
+restored normal display control before the physical lock at
+`06:45:08.165440`. The lock callback itself was observed:
+
+```text
+T2 CONTROLLER self.locked=YES
+T2 DISPLAY activation deferred; device already locked
+T2 ... black-presentation ... windowOpaque=YES rootOpaque=YES
+```
+
+This confirms the new locked-session deferral path ran. It also confirms that
+the dedicated black presentation was requested at the UIKit/window layer, but
+the experimental display substitution was no longer active at the moment of
+the physical lock. Therefore this was not a valid pseudo-AOD visibility
+demonstration.
+
+The one early SSH screenshot request was accepted and retrieved successfully.
+It produced a correctly sized `1125x2436` image, but the source diagnostics
+reported `UIScreen brightness=0.0`, `preMaxRGB=0`, and `preNonBlackSamples=0`;
+the host preview was valid but entirely black (`1903` bytes, `0/120832`
+non-black pixels). This is consistent with the device having entered normal
+display-off behavior. It does not establish that the OLED remained visible,
+nor does it identify a compositor defect.
+
+The later screenshot was not collected because the user stopped the host
+command after the physical result was clear. No second locked capture should
+be inferred.
+
+#### Manual locked preference toggle and recovery
+
+The user then manually disabled and re-enabled the experimental feature while
+the phone was already locked. The screen became dim and Relaxin subsequently
+entered safe mode again. This reproduces the unsafe user-visible sequence, but
+there is still no crash stack or watchdog report proving which function caused
+it. The event is recorded as a stability failure, not attributed to
+`__weak`, diagnostic persistence, or the display hook without evidence.
+
+The feature was disabled over SSH and SpringBoard was restarted. The final
+check reported `ExperimentalLockedVisible=0`, `TweakLoaded=1`,
+`LogicalLockState=0`, and `LockedVisibleLifecycle=0`. Normal rollback was
+therefore restored.
+
+| Runtime check | Result |
+| --- | --- |
+| Unlocked playback remains usable | `PASS` |
+| Armed before the final lock attempt | `PASS` |
+| Logical lock callback | `PASS` |
+| Experiment still active at physical lock | `FAIL` — 40.6-second timeout elapsed first |
+| Locked black presentation window/root opacity | `PASS` at UIKit layer |
+| Remote locked screenshot capture | `PASS` request/retrieval; content all black |
+| Dedicated pseudo-AOD visibly retained after lock | `FAIL / NOT DEMONSTRATED` |
+| Manual locked toggle stability | `FAIL` user-reported safe mode |
+| Exact safe-mode cause | `INSUFFICIENT EVIDENCE` |
+| Authentication or normal lock bypass | `PASS` — no such change made |
+| Recovery and experiment disable | `PASS` |
+
+#### Evidence-backed next step
+
+Do not repeat the physical lock sequence with the current host orchestration:
+the 40.6-second timer can expire before the user action and the multiple SSH
+password prompts make that race likely. The next bounded step is host-side
+session reuse (one authenticated SSH connection for arming, monitoring and
+both screenshot requests), followed by one attended lock within the confirmed
+armed interval. No new BackBoard/HID, brightness, panel-power or
+authentication modification is justified by this run. The stable rollback
+state is the production package with `ExperimentalLockedVisible=0`.
