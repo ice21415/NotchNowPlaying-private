@@ -83,7 +83,7 @@ static void NNPScreenshotPoll(void) {
         NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE poll count=%lu request=%@ pathVisible=%@ preference=%@", (unsigned long)gNNPScreenshotPollCount, requestPath ?: @"none", requestPath && ![requestPath hasPrefix:@"preference:"] ? @"YES" : @"NO", preferenceRequest ?: @"none"]);
     }
     if (requestPath.length) {
-        BOOL removed = [[NSFileManager defaultManager] removeItemAtPath:requestPath error:&removeError];
+        BOOL removed = [requestPath hasPrefix:@"preference:"] || [[NSFileManager defaultManager] removeItemAtPath:requestPath error:&removeError];
         if (!removed) {
             NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE request removal failed error=%@", removeError.localizedDescription ?: @"unknown"]);
         } else {
