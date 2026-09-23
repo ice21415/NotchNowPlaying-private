@@ -188,10 +188,13 @@ def main() -> int:
         (session_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         return 1
 
+    # Poll the on-disk diagnostic plist rather than `defaults read`. The
+    # latter can remain stale in cfprefsd while SCP already sees the new
+    # SpringBoard result.
     poll = (
         "i=0; found=1; "
         f"while [ $i -lt {max(1, args.timeout)} ]; do "
-        f"defaults read {DOMAIN} SSHScreenshotResult 2>/dev/null | grep -F '{request_id}' >/dev/null "
+        f"plutil -key SSHScreenshotResult {DIAGNOSTIC_DOMAIN_PATH} 2>/dev/null | grep -F '{request_id}' >/dev/null "
         "&& found=0 && break; sleep 1; i=$((i+1)); done; exit $found"
     )
     manifest["requestSentUTC"] = dt.datetime.now(dt.timezone.utc).isoformat()
