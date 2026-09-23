@@ -1207,3 +1207,93 @@ The next evidence-backed step is either:
 Installing a new host/device developer component requires a separate decision
 because its prerequisites and lock-state behavior must be verified first. The
 stable rollback package and the Phase 7.4 watchdog protections are preserved.
+
+### Phase 7.7 — SSH-only screenshot capture on jailbroken iOS 17
+
+Status: SSH-triggered capture `PASS`; unlocked-content baseline `FAIL / INSUFFICIENT EVIDENCE`; locked-visible comparison `NOT TESTED`.
+
+#### Mechanism and implementation
+
+The host connection remains SSH/SCP only. No USB pairing, Developer Disk Image,
+CoreDevice tunnel, `pymobiledevice3`, libimobiledevice client or standalone
+on-device screenshot utility was added. Read-only runtime inspection in
+SpringBoard found `_SBMainScreenScreenshotProvider` with
+`initWithScreen:` and `captureScreenshot`; the latter returned a `UIImage` on
+iOS 17.1.2. `_SBDefaultScreenshotProvider` exposed the same selectors but was
+not invoked. `SBScreenshotManager` exposed save selectors without an
+established output contract. `SSScreenCapturer` had no usable capture selector,
+and `BKDisplayCaptureImage` was unavailable in SpringBoard.
+
+`NNPScreenshotCapture.m` is included only when
+`NNP_ENABLE_SSH_SCREENSHOT_EXPERIMENT=1`. It polls from a utility background
+queue, accepts one request, dispatches the provider call to the main queue,
+and encodes/publishes the PNG asynchronously. It is not connected to display
+or lock transition hooks and does not wake, unlock, change authentication or
+modify BackBoard/HID state. A preference boolean
+`com.user.notchnowplaying:SSHScreenshotRequest` is used as the validated SSH
+trigger; the helper refreshes that preference about once per second and clears
+it after acceptance. File-marker compatibility remains, but files created by
+SSH root under the research directory were not visible to SpringBoard.
+
+SpringBoard reported the direct PNG path write as successful, but that path was
+not visible to SSH root. For retrieval, the one-shot PNG and result metadata
+are also published as temporary diagnostic preference values and obtained by
+SCP of the diagnostic plist. The diagnostic plist and extracted PNGs are local
+test artifacts only and were not committed.
+
+#### Build and deployment
+
+The latest experimental build was GitHub Actions run `35814624628`, commit
+`7302636`. The arm64e package installed successfully through SSH, SpringBoard
+restarted normally, and `ExperimentalLockedVisible` remained disabled. Startup
+diagnostics recorded the helper and poll worker in the current SpringBoard
+process. No watchdog or injection-disable event was observed during the
+capture attempts.
+
+#### Unlocked capture attempts
+
+The final attended request was issued after the user stated that the device had
+been unlocked:
+
+```text
+03:33:12.767686Z  request accepted; no wake or unlock requested
+03:33:12.896530Z  completed success=YES bytes=36215 width=375 height=812
+```
+
+The resulting PNG decoded as 1125×2436 pixels at scale 3. Pixel inspection
+reported `maxRGB=0` and zero non-black pixels. The same all-black result was
+also obtained in the earlier post-respring request; that earlier capture was
+known to have occurred before unlock. The final request therefore confirms the
+trigger and provider return path, but does not prove that the provider captured
+the visible Settings screen. The physical screen and the captured content were
+not independently correlated by a second device.
+
+| Check | Result |
+| --- | --- |
+| Runtime provider resolved | `PASS` |
+| SSH one-shot request accepted | `PASS` |
+| Valid PNG retrieved through diagnostic plist/SCP | `PASS` |
+| No wake/unlock requested by helper | `PASS` by implementation and log |
+| Final request was after user-reported unlock | `PASS` user-reported |
+| PNG contains the expected unlocked non-sensitive screen | `FAIL / INSUFFICIENT EVIDENCE` — image is entirely black |
+| Display state unchanged after capture | `NOT TESTED` |
+| Locked-visible screenshot | `NOT TESTED` |
+
+An all-black provider result is not evidence that the OLED is off and does not
+identify whether the provider captures a compositor surface, a protected
+framebuffer or a downstream-blackened output. Because the required unlocked
+content baseline did not pass, no physical side-button capture was attempted.
+
+#### Rollback and next step
+
+Keep `NNP_ENABLE_SSH_SCREENSHOT_EXPERIMENT=0` for production builds. To remove
+the experiment, set `SSHScreenshotRequest` to `false`, remove the temporary
+diagnostic screenshot values if desired, install the stable production package
+and use the normal SpringBoard restart procedure. No display policy or
+authentication state is changed by this helper.
+
+The next bounded step is static/runtime investigation of why the SpringBoard
+provider returns an all-black image even after an unlocked user-reported test;
+do not proceed to locked-visible comparison until an unlocked screenshot with
+known visible content is demonstrated. Do not add another display-control hook
+solely to force screenshot output.
