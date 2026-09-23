@@ -443,9 +443,20 @@ Phase 7.1 package was installed after this change.
 
 Static validation completed: `git diff --check` passed, the production flag
 remains disabled, and the experimental source path remains isolated behind the
-existing compile-time and user-controlled settings. Apple-platform compilation
-and device validation remain `NOT TESTED` until GitHub Actions billing is
-restored.
+existing compile-time and user-controlled settings.
+
+After the repository was intentionally made public, the standard macOS runner
+became available. Experimental workflow run `35804226513` compiled the
+arm64e RootHide package successfully after the iOS 17 SDK diagnostics fix.
+The resulting `com.user.notchnowplaying_0.1.2_iphoneos-arm64e.deb` was copied
+to the target device, installed with `dpkg -i`, and SpringBoard was restarted
+with `sbreload`; the remote command returned success. This establishes
+`PASS` for compilation, package transfer, installation and respring only. It
+does not establish the dedicated black scene, timeout, gray-screen diagnosis
+or privacy-safe pseudo-AOD behavior.
+
+The target-device test status after this deployment is still `NOT TESTED` for
+the new Phase 7.1 behavior.
 
 The next bounded step is to build the separate experimental package, install it
 only for a short attended test, collect the new passive diagnostics, perform the
