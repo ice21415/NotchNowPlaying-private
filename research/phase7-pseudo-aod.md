@@ -712,3 +712,32 @@ credentials or authentication information is recorded. This is a diagnostic
 instrumentation correction, not a display behavior change. It requires a new
 build and one repeat attended test before classifying the lock presentation
 failure.
+
+### Phase 7.3 runtime-results addendum — Relaxin injection state
+
+The user identified that Relaxin appears to have automatically disabled tweak
+injection after the display incident. This explains why a device can remain
+reachable over SSH while the SpringBoard presentation hook is no longer active.
+The diagnostic package cannot treat an SSH connection or an installed dylib as
+proof of injection into the current SpringBoard process.
+
+The follow-up read-only check found:
+
+```text
+Package version: 0.1.2
+ExperimentalLockedVisible before recovery: 1
+DiagnosticLogEvents: 6
+Latest events: SpringBoard startup, initial logical-lock state, initial
+presentation snapshot, initial reconcile and cleanup
+No new logical-lock-observed event for the intended physical-button test
+```
+
+The plist startup timestamp advanced after the respring, but the event history
+contained only the post-respring initial state. It did not contain the required
+first-button sequence, so the prior test cannot distinguish Case A, B, C or D.
+Classification: `INSUFFICIENT EVIDENCE`; injected runtime result: `NOT TESTED`.
+
+For safety, `ExperimentalLockedVisible` was then set to `0` and SpringBoard was
+resprung. No display-mode or authentication behavior was changed. The next
+valid collection requires Relaxin injection to be explicitly confirmed active
+in the same SpringBoard process before the user repeats the attended lock test.
