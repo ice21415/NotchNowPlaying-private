@@ -330,3 +330,110 @@ Treat Phase 7 as a **live-rendering locked-visible experiment with unexplained g
 The next milestone should be **read-only diagnosis before any additional display-mode changes**. On a non-sensitive test screen and during a short attended test, compare normal-awake and experimental gray-mode screenshots and their on-device visual appearance. If captured screenshots show normal colors while the panel appears gray, prioritize downstream display/color/brightness hypotheses; if the captured screenshot itself is gray, prioritize compositor/window/scene or screen-capture-path color transforms. Either result is narrowing evidence, not proof of exact ownership. Examine existing SpringBoard presentation/window/scene and brightness observations without hiding or disabling security-critical lock-screen components.
 
 Before treating this as usable, verify that the intended timeout restores normal display behavior, and design the final black-background scene so the retained previous app screen never remains visible after locking. Do not publish the current experimental presentation as privacy-safe.
+
+## Phase 7.1 — gray-screen diagnosis and privacy-safe presentation
+
+### Milestone A — preserved checkpoint
+
+Status: `PASS`.
+
+The pre-change Phase 7 state is preserved by tag
+`phase7.1-baseline-before-gray-diagnosis` and commit `1041ef6`. The existing
+experimental `NNPPhase7PseudoAOD.xm` display-mode substitution was not removed
+or rewritten during this investigation. Production builds continue to use
+`NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE=0`; the Phase 7 workflow remains a
+separate opt-in build.
+
+### Milestone B — read-only gray-screen diagnosis
+
+Status: `PASS` for instrumentation; `NOT TESTED` for a new device capture.
+
+`NNPController` now records, without changing system state:
+
+* logical lock/unlock transition reason;
+* count of visible and opaque SpringBoard windows;
+* connected scene count;
+* whether `UIScreen.brightness` is nonzero;
+* the NotchNowPlaying window's visibility and opacity;
+* the presentation root view's opacity.
+
+The diagnostic log does not record artwork, titles, application content,
+coordinates of other windows or authentication data. It does not remove or
+hide any unidentified system window. These observations can narrow whether a
+future screenshot is normal in the compositor but gray on the physical panel,
+or already gray in the captured composition; they cannot by themselves name
+the system owner of the effect.
+
+Current evidence remains:
+
+| Hypothesis | Evidence | Status |
+| --- | --- | --- |
+| A NotchNowPlaying window alone causes the gray screen | Native volume HUD is also gray; no window owner was identified | `NOT SUPPORTED` |
+| A system-managed dimming/presentation layer affects the composition | Whole screen and HUD are affected | `PLAUSIBLE / NOT PROVEN` |
+| Display-wide brightness or color processing affects output | Whole-screen symptom is consistent with it | `PLAUSIBLE / NOT PROVEN` |
+| The experimental display-mode transition interacts with normal lock blanking | Timing correlation exists; no passive trace proves the exact owner | `PLAUSIBLE / NOT PROVEN` |
+
+No BKS setter, HID factor replacement, BLS transition suppression, scene
+blanking override or authentication component was added.
+
+### Milestone C — screenshot comparison
+
+Status: `NOT TESTED`.
+
+The bounded next test is an attended comparison using the same non-sensitive
+static screen: capture it while normally awake, enable the experimental setting
+with Now Playing active, capture after the first physical side-button press,
+and separately record how the physical panel looks. A normal-color capture with
+a gray physical panel would favor downstream display processing; a gray capture
+would favor composition or capture-path processing. Neither outcome alone
+identifies a specific component. No screenshot or pixel comparison has been
+claimed yet.
+
+### Milestone D — dedicated privacy-safe presentation
+
+Status: `PASS` in implementation; `NOT TESTED` on device.
+
+The existing NNP window remains the only tweak-owned presentation, but the
+experimental path now makes it an opaque, full-screen black presentation while
+the experiment is active or the device is logically locked. Its root view and
+`NNPView` are also opaque black, and the content hierarchy contains only the
+existing artwork, title, artist and progress elements. No previous application
+view or screenshot is copied into the hierarchy. This intentionally makes the
+opt-in experimental screen black even before the physical lock transition so
+that a polling delay in lock-state observation cannot leave the previous app
+content as the presentation background.
+
+The implementation preserves the normal lock screen and authentication path;
+it does not claim that the system's gray output is solved. If the system applies
+a display-wide effect after composition, the dedicated black source may still
+appear gray on the physical panel.
+
+### Milestone E — lifecycle and rollback
+
+Status: `PASS` in code review; `NOT TESTED` for the new build on device.
+
+The existing bounded maximum-duration stop, playback-stop cleanup, unlock
+cleanup and idempotent display lifecycle remain in place. The new diagnostic
+state is passive. Rollback is to disable `實驗性鎖定顯示`, stop playback and
+respring; if necessary reinstall the stable Phase 5 package built with the
+experimental flag set to `0`. No persistent system display policy is written.
+
+### Phase 7.1 build/runtime status
+
+| Validation | Result |
+| --- | --- |
+| Source/static review | `PASS` |
+| Production configuration unchanged | `PASS` |
+| Experimental compilation | `NOT TESTED` after Phase 7.1 changes |
+| Package installation | `NOT TESTED` after Phase 7.1 changes |
+| SpringBoard stability | `NOT TESTED` after Phase 7.1 changes |
+| Dedicated black scene on target | `NOT TESTED` |
+| 30-second timeout and normal restoration | `NOT TESTED` |
+| Gray-screen owner | `UNSUPPORTED / NOT IDENTIFIED` |
+| Privacy-safe pseudo-AOD completion | `UNSUPPORTED` pending device validation |
+
+The next bounded step is to build the separate experimental package, install it
+only for a short attended test, collect the new passive diagnostics, perform the
+non-sensitive screenshot comparison, and verify timeout plus lock/unlock and
+playback-stop cleanup. Stop immediately on abnormal heat, display behavior or
+loss of normal lock-screen behavior.

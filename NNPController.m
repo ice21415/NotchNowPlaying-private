@@ -30,6 +30,26 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 
 @implementation NNPController
 + (instancetype)sharedController { static NNPController *controller; static dispatch_once_t once; dispatch_once(&once, ^{ controller = [self new]; }); return controller; }
+- (void)recordPresentationDiagnostics:(NSString *)reason {
+    UIApplication *application = UIApplication.sharedApplication;
+    UIScreen *screen = UIScreen.mainScreen;
+    NSInteger visibleWindows = 0;
+    NSInteger opaqueVisibleWindows = 0;
+    for (UIWindow *candidate in application.windows) {
+        if (candidate.hidden || candidate.alpha <= 0.01) continue;
+        visibleWindows += 1;
+        if (candidate.opaque || candidate.backgroundColor.alpha >= 0.99) opaqueVisibleWindows += 1;
+    }
+    NSInteger connectedScenes = application.connectedScenes.count;
+    NNPDiagnosticSetInteger(@"PresentationVisibleWindowCount", visibleWindows);
+    NNPDiagnosticSetInteger(@"PresentationOpaqueWindowCount", opaqueVisibleWindows);
+    NNPDiagnosticSetInteger(@"PresentationConnectedSceneCount", connectedScenes);
+    NNPDiagnosticSetBool(@"PresentationScreenBrightnessNonzero", screen.brightness > 0.001);
+    NNPDiagnosticSetBool(@"PresentationWindowVisible", !self.window.hidden);
+    NNPDiagnosticSetBool(@"PresentationWindowOpaque", self.window.opaque);
+    NNPDiagnosticSetBool(@"PresentationRootOpaque", self.window.rootViewController.view.opaque);
+    NNPDiagnosticLog([NSString stringWithFormat:@"PHASE7.1 presentation snapshot reason=%@ locked=%@ visibleWindows=%ld opaqueWindows=%ld scenes=%ld brightnessNonzero=%@ windowVisible=%@ windowOpaque=%@ rootOpaque=%@", reason ?: @"unknown", self.locked ? @"YES" : @"NO", (long)visibleWindows, (long)opaqueVisibleWindows, (long)connectedScenes, screen.brightness > 0.001 ? @"YES" : @"NO", self.window.hidden ? @"NO" : @"YES", self.window.opaque ? @"YES" : @"NO", self.window.rootViewController.view.opaque ? @"YES" : @"NO"]);
+}
 - (void)install {
     if (_installed) return; _installed = YES;
     self.preferences = [NNPPreferences sharedPreferences]; [self.preferences startObserving];
@@ -49,17 +69,30 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 }
 - (void)preferencesChanged:(NSNotification *)note { [self.preferences reload]; [self reconcile]; }
 - (void)refreshDiagnosticUI { [self reconcile]; }
-- (void)setLocked:(BOOL)locked { if (_locked == locked) return; _locked = locked; NNPDiagnosticSetBool(@"LogicalLockState", locked); NSLog(@"%@ device %@", NNPLog, locked ? @"locked" : @"unlocked"); [self reconcile]; }
+- (void)setLocked:(BOOL)locked { if (_locked == locked) return; _locked = locked; NNPDiagnosticSetBool(@"LogicalLockState", locked); NSLog(@"%@ device %@", NNPLog, locked ? @"locked" : @"unlocked"); [self recordPresentationDiagnostics:locked ? @"logical-lock" : @"logical-unlock"]; [self reconcile]; }
 - (void)receive:(NNPState *)state { dispatch_async(dispatch_get_main_queue(), ^{ self.state = state; NNPDiagnosticSetString(@"ActiveMediaBundle", state.bundleIdentifier ?: @""); NNPDiagnosticSetBool(@"SpotifyDetected", [self isAllowedMedia:state]); NNPDiagnosticSetBool(@"PlaybackActive", state.playing); [self reconcile]; }); }
 - (BOOL)isAllowedMedia:(NNPState *)state { if (!state.bundleIdentifier.length) return NO; return !self.preferences.spotifyOnly || [state.bundleIdentifier isEqualToString:NNPSpotify]; }
 - (BOOL)shouldShow { NNPState *state = self.state; if (!self.preferences.enabled || !state.hasTrack || ![self isAllowedMedia:state]) return NO; if (self.locked && !self.preferences.showOnLockScreen) return NO; if (!self.locked && !self.preferences.showWhileUnlocked) return NO; if (!state.playing && self.preferences.hideWhenPaused) return NO; return YES; }
 - (void)makeWindow {
     if (self.window) return;
     UIWindowScene *scene = nil; for (UIScene *candidate in UIApplication.sharedApplication.connectedScenes) { if ([candidate isKindOfClass:UIWindowScene.class] && candidate.activationState != UISceneActivationStateUnattached) { scene = (UIWindowScene *)candidate; break; } }
-    self.window = scene ? [[UIWindow alloc] initWithWindowScene:scene] : [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds]; self.window.frame = UIScreen.mainScreen.bounds; self.window.windowLevel = UIWindowLevelStatusBar + 1.0; self.window.backgroundColor = UIColor.clearColor; self.window.userInteractionEnabled = NO;
-    UIViewController *root = [UIViewController new]; root.view.backgroundColor = UIColor.clearColor; root.view.userInteractionEnabled = NO; self.view = [[NNPView alloc] initWithFrame:self.window.bounds]; self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight; [root.view addSubview:self.view]; self.window.rootViewController = root; self.window.hidden = YES;
+    self.window = scene ? [[UIWindow alloc] initWithWindowScene:scene] : [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds]; self.window.frame = UIScreen.mainScreen.bounds; self.window.windowLevel = UIWindowLevelStatusBar + 1.0; self.window.backgroundColor = UIColor.clearColor; self.window.userInteractionEnabled = NO; self.window.clipsToBounds = YES;
+    UIViewController *root = [UIViewController new]; root.view.backgroundColor = UIColor.clearColor; root.view.opaque = NO; root.view.userInteractionEnabled = NO; self.view = [[NNPView alloc] initWithFrame:self.window.bounds]; self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight; [root.view addSubview:self.view]; self.window.rootViewController = root; self.window.hidden = YES;
 }
-- (void)applyLockedBackground { self.window.backgroundColor = self.locked ? UIColor.blackColor : UIColor.clearColor; self.window.rootViewController.view.backgroundColor = self.locked ? UIColor.blackColor : UIColor.clearColor; }
+- (void)applyLockedBackground {
+    BOOL dedicatedBlackPresentation = self.locked;
+#if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
+    dedicatedBlackPresentation = dedicatedBlackPresentation || self.display.lifecycleState == NNPDisplayLifecycleStateActive;
+#endif
+    UIColor *background = dedicatedBlackPresentation ? UIColor.blackColor : UIColor.clearColor;
+    self.window.opaque = dedicatedBlackPresentation;
+    self.window.backgroundColor = background;
+    self.window.rootViewController.view.opaque = dedicatedBlackPresentation;
+    self.window.rootViewController.view.backgroundColor = background;
+    self.view.backgroundColor = background;
+    NNPDiagnosticSetBool(@"PresentationDedicatedBlack", dedicatedBlackPresentation);
+    [self recordPresentationDiagnostics:dedicatedBlackPresentation ? @"black-presentation" : @"transparent-presentation"];
+}
 - (void)applyViewPreferences { self.view.showArtwork = self.preferences.showArtwork; self.view.showArtist = self.preferences.showArtist; self.view.showProgress = self.preferences.showProgress; self.view.artworkSize = self.preferences.artworkSize; self.view.cornerRadius = self.preferences.cornerRadius; self.view.textSize = self.preferences.textSize; self.view.progressHeight = self.preferences.progressHeight; [self.view setNeedsLayout]; }
 - (void)reconcile { dispatch_async(dispatch_get_main_queue(), ^{ BOOL show = [self shouldShow]; NNPDiagnosticSetBool(@"UIVisible", show);
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
