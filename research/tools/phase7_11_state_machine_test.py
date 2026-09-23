@@ -16,7 +16,7 @@ class Model:
     substituted: bool = False
     timer_started: bool = False
     session: int = 0
-    restore_count: int = 0
+    explicit_restore_count: int = 0
     provider_available: bool = True
 
     def arm(self):
@@ -51,8 +51,8 @@ class Model:
             return
         self.state = "Stopping"
         self.timer_started = False
-        if self.locked and self.substituted and self.provider_available:
-            self.restore_count += 1
+        # Cleanup never calls the private mode-0 setter. Disarming the hook
+        # leaves the next native display transition responsible for restore.
         self.state = "Idle"
         self.substituted = False
 
@@ -67,10 +67,10 @@ def test_armed_without_lock_does_not_timeout():
     m.timeout()
     assert m.state == "Preparing"
     assert not m.timer_started
-    assert m.restore_count == 0
+    assert m.explicit_restore_count == 0
 
 
-def test_valid_lock_starts_timer_and_restores_once():
+def test_valid_lock_starts_timer_and_fails_open_once():
     m = Model()
     assert m.arm()
     m.lock()
@@ -79,7 +79,10 @@ def test_valid_lock_starts_timer_and_restores_once():
     m.timeout()
     m.timeout()
     assert m.state == "Idle"
-    assert m.restore_count == 1
+    # The real controller now disarms the hook and lets the native state
+    # machine own the next display transition; it does not issue a private
+    # synchronous mode-0 setter from timeout cleanup.
+    assert m.explicit_restore_count == 0
 
 
 def test_early_unlock_cancels_timer_without_locked_restore():
@@ -89,7 +92,7 @@ def test_early_unlock_cancels_timer_without_locked_restore():
     m.mode_substitution()
     m.unlock()
     assert m.state == "Idle" and not m.timer_started
-    assert m.restore_count == 0
+    assert m.explicit_restore_count == 0
 
 
 def test_stale_previous_session_cannot_stop_new_session():
@@ -113,7 +116,7 @@ def test_provider_unavailable_fails_open():
     m.mode_substitution()
     m.timeout()
     assert m.state == "Idle"
-    assert m.restore_count == 0
+    assert m.explicit_restore_count == 0
 
 
 def test_multiple_cleanup_events_are_idempotent():
@@ -124,7 +127,7 @@ def test_multiple_cleanup_events_are_idempotent():
     m.timeout()
     m.stop("unlock")
     m.stop("preference-disable")
-    assert m.restore_count == 1
+    assert m.explicit_restore_count == 0
 
 
 if __name__ == "__main__":
