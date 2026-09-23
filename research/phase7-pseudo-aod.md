@@ -648,3 +648,67 @@ stable production build remains the rollback path. The next bounded step is to
 build and deploy this instrumentation, collect one short attended transition
 log, and compare the actual window state at logical lock with the physical gray
 appearance before considering any further display experiment.
+
+### Phase 7.3 runtime-results addendum — first capture attempt
+
+#### Package and collection
+
+The target reported package `com.user.notchnowplaying` version `0.1.2` as
+installed. The Phase 7.3 arm64e dylib was present at the expected RootHide
+DynamicLibraries path after the deployment of workflow `35805461385`.
+
+An attended capture was started at approximately device time `09:21 CST` on
+2026-09-23 using the targeted
+`/var/mobile/Library/NotchNowPlaying/load-path-diagnostic.log` path. The user
+then performed the requested unlocked playback, first side-button lock,
+second side-button press and unlock sequence. The file logger did not create
+either its primary or fallback log file.
+
+#### Available runtime evidence
+
+The diagnostics plist was updated during/after the test and downloaded from
+`/var/mobile/Library/Preferences/com.user.notchnowplaying.diagnostics.plist`.
+The post-test values included:
+
+```text
+TweakLoaded = true
+StartupTimestamp = 2026-09-23 01:16:04 +0000
+UIVisible = true
+LogicalLockState = false
+PresentationWindowVisible = true
+PresentationWindowOpaque = false
+PresentationRootOpaque = false
+PresentationDedicatedBlack = false
+LockedVisibleLifecycle = 1 (Idle)
+PresentationVisibleWindowCount = 9
+PresentationOpaqueWindowCount = 5
+PresentationConnectedSceneCount = 1
+PresentationScreenBrightnessNonzero = true
+Phase7ModeSubstitution = true
+Phase7SubstitutedDisplayMode = 4
+```
+
+These are final/post-unlock state values, not a timestamped first-lock
+sequence. They show that the tweak was loaded and that cleanup left the
+presentation transparent and idle, but they do not establish whether the
+black presentation was requested or visible at the first logical lock.
+The plist also contained older blanking-observer records from previous runs;
+they were not attributed to this session.
+
+#### Classification
+
+The first capture is `INSUFFICIENT EVIDENCE` for Cases A–D. The missing
+capability is a recoverable per-event transition history: the file logger is
+unavailable on this deployment and the existing scalar plist values only keep
+the latest state. No code or display-path fix is justified by this capture.
+
+#### Diagnostic collection correction
+
+The logger now keeps a bounded `DiagnosticLogEvents` array (maximum 256
+entries) in the existing diagnostics plist as a fallback whenever file writes
+are unavailable. Entries contain only timestamp, process, PID and the tweak's
+own diagnostic event text; no media metadata, application content,
+credentials or authentication information is recorded. This is a diagnostic
+instrumentation correction, not a display behavior change. It requires a new
+build and one repeat attended test before classifying the lock presentation
+failure.

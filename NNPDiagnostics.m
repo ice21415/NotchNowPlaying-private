@@ -30,6 +30,21 @@ void NNPDiagnosticLog(NSString *event) {
         write(fd, data.bytes, data.length);
         close(fd);
     }
+
+    // File logging may be unavailable on a RootHide/SpringBoard deployment.
+    // Keep a bounded, privacy-safe fallback in the existing diagnostics plist
+    // so a transition session remains recoverable without collecting system logs.
+    NSDictionary *entry = @{
+        @"timestamp": [formatter stringFromDate:[NSDate date]],
+        @"pid": @(getpid()),
+        @"process": NSProcessInfo.processInfo.processName ?: @"unknown",
+        @"event": event,
+    };
+    NSArray *existing = NNPDiagnosticCopyValue(@"DiagnosticLogEvents");
+    NSMutableArray *events = existing.count ? [existing mutableCopy] : [NSMutableArray array];
+    [events addObject:entry];
+    if (events.count > 256) [events removeObjectsInRange:NSMakeRange(0, events.count - 256)];
+    NNPDiagnosticSetValue(@"DiagnosticLogEvents", events);
 }
 
 NSString *NNPDiagnosticBeginTransition(NSString *reason) {
