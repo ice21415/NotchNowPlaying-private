@@ -92,45 +92,45 @@ static NSDictionary *NNPScreenshotScreenMetadata(UIScreen *screen) {
 }
 
 static void NNPScreenshotWriteResult(BOOL captureSucceeded, NSString *error, UIImage *image, NSData *png, NSDictionary *captureDiagnostics) {
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        NSMutableDictionary *result = [NSMutableDictionary dictionary];
-        result[@"timestamp"] = [NSDate date];
-        result[@"success"] = @(captureSucceeded);
-        result[@"path"] = NNPScreenshotImagePath;
-        if (error.length) result[@"error"] = error;
-        if (captureDiagnostics) result[@"captureDiagnostics"] = captureDiagnostics;
+    NSMutableDictionary *result = [NSMutableDictionary dictionary];
+    result[@"timestamp"] = [NSDate date];
+    result[@"success"] = @(captureSucceeded);
+    result[@"path"] = NNPScreenshotImagePath;
+    if (error.length) result[@"error"] = error;
+    if (captureDiagnostics) result[@"captureDiagnostics"] = captureDiagnostics;
 
-        NSDictionary *prePNG = image ? NNPScreenshotImageStats(image) : nil;
-        UIImage *decodedPNG = png.length ? [UIImage imageWithData:png] : nil;
-        NSDictionary *postPNG = decodedPNG ? NNPScreenshotImageStats(decodedPNG) : nil;
-        if (image) {
-            result[@"width"] = @(image.size.width);
-            result[@"height"] = @(image.size.height);
-            result[@"scale"] = @(image.scale);
-            if (prePNG) result[@"prePNGStats"] = prePNG;
-        }
-        if (postPNG) result[@"postPNGStats"] = postPNG;
+    NNPDiagnosticLog(@"SCREENSHOT_CAPTURE pre-PNG stats begin");
+    NSDictionary *prePNG = image ? NNPScreenshotImageStats(image) : nil;
+    NNPDiagnosticLog(@"SCREENSHOT_CAPTURE pre-PNG stats complete");
+    UIImage *decodedPNG = png.length ? [UIImage imageWithData:png] : nil;
+    NSDictionary *postPNG = decodedPNG ? NNPScreenshotImageStats(decodedPNG) : nil;
+    if (image) {
+        result[@"width"] = @(image.size.width);
+        result[@"height"] = @(image.size.height);
+        result[@"scale"] = @(image.scale);
+        if (prePNG) result[@"prePNGStats"] = prePNG;
+    }
+    if (postPNG) result[@"postPNGStats"] = postPNG;
 
-        NSError *writeError = nil;
-        BOOL directWrite = png.length && [png writeToFile:NNPScreenshotImagePath options:NSDataWritingAtomic error:&writeError];
-        result[@"directPathWrite"] = @(directWrite);
-        if (!directWrite && writeError.localizedDescription.length) result[@"directPathError"] = writeError.localizedDescription;
-        if (png.length) {
-            NNPDiagnosticSetValue(@"SSHScreenshotPNG", png);
-            NNPDiagnosticLog(@"SCREENSHOT_CAPTURE diagnostic preference publication requested");
-        }
-        NNPDiagnosticSetValue(@"SSHScreenshotCaptureDiagnostics", @{
-            @"capture": captureDiagnostics ?: @{},
-            @"prePNG": prePNG ?: @{},
-            @"postPNG": postPNG ?: @{},
-            @"encodedBytes": @(png.length),
-            @"directPathWrite": @(directWrite),
-        });
-        NNPDiagnosticSetValue(@"SSHScreenshotResult", result);
-        [[NSFileManager defaultManager] createDirectoryAtPath:NNPDiagnosticDirectoryPath() withIntermediateDirectories:YES attributes:nil error:NULL];
-        [result writeToFile:NNPScreenshotResultPath atomically:YES];
-        NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE completed success=%@ bytes=%lu preMaxRGB=%@ postMaxRGB=%@ preNonBlack=%@ postNonBlack=%@ directPathWrite=%@", captureSucceeded ? @"YES" : @"NO", (unsigned long)png.length, prePNG[@"maxRGB"] ?: @"none", postPNG[@"maxRGB"] ?: @"none", prePNG[@"nonBlackSamples"] ?: @"none", postPNG[@"nonBlackSamples"] ?: @"none", directWrite ? @"YES" : @"NO"]);
+    NSError *writeError = nil;
+    BOOL directWrite = png.length && [png writeToFile:NNPScreenshotImagePath options:NSDataWritingAtomic error:&writeError];
+    result[@"directPathWrite"] = @(directWrite);
+    if (!directWrite && writeError.localizedDescription.length) result[@"directPathError"] = writeError.localizedDescription;
+    if (png.length) {
+        NNPDiagnosticSetValue(@"SSHScreenshotPNG", png);
+        NNPDiagnosticLog(@"SCREENSHOT_CAPTURE diagnostic preference publication requested");
+    }
+    NNPDiagnosticSetValue(@"SSHScreenshotCaptureDiagnostics", @{
+        @"capture": captureDiagnostics ?: @{},
+        @"prePNG": prePNG ?: @{},
+        @"postPNG": postPNG ?: @{},
+        @"encodedBytes": @(png.length),
+        @"directPathWrite": @(directWrite),
     });
+    NNPDiagnosticSetValue(@"SSHScreenshotResult", result);
+    [[NSFileManager defaultManager] createDirectoryAtPath:NNPDiagnosticDirectoryPath() withIntermediateDirectories:YES attributes:nil error:NULL];
+    [result writeToFile:NNPScreenshotResultPath atomically:YES];
+    NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE completed success=%@ bytes=%lu preMaxRGB=%@ postMaxRGB=%@ preNonBlack=%@ postNonBlack=%@ directPathWrite=%@", captureSucceeded ? @"YES" : @"NO", (unsigned long)png.length, prePNG[@"maxRGB"] ?: @"none", postPNG[@"maxRGB"] ?: @"none", prePNG[@"nonBlackSamples"] ?: @"none", postPNG[@"nonBlackSamples"] ?: @"none", directWrite ? @"YES" : @"NO"]);
 }
 
 static void NNPScreenshotCaptureOne(void) {
@@ -144,9 +144,11 @@ static void NNPScreenshotCaptureOne(void) {
     SEL captureSelector = NSSelectorFromString(@"captureScreenshot");
     if (!providerClass || !class_getInstanceMethod(providerClass, initSelector) || !class_getInstanceMethod(providerClass, captureSelector)) {
         NSString *error = @"_SBMainScreenScreenshotProvider or selector unavailable";
-        NNPScreenshotWriteResult(NO, error, nil, nil, @{
-            @"startTimestamp": captureStart,
-            @"screen": screenMetadata ?: @{},
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            NNPScreenshotWriteResult(NO, error, nil, nil, @{
+                @"startTimestamp": captureStart,
+                @"screen": screenMetadata ?: @{},
+            });
         });
         NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE failed error=%@", error]);
         return;
@@ -170,14 +172,20 @@ static void NNPScreenshotCaptureOne(void) {
     NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE capture complete provider=%@ image=%@ size=%@ scale=%@ cgImage=%@ cgSize=%@x%@", captureDiagnostics[@"providerClass"], captureDiagnostics[@"imageClass"], captureDiagnostics[@"imageSize"], captureDiagnostics[@"imageScale"], captureDiagnostics[@"cgImageAvailable"], captureDiagnostics[@"cgImageWidth"], captureDiagnostics[@"cgImageHeight"]]);
     if (![image isKindOfClass:UIImage.class]) {
         NSString *error = @"captureScreenshot returned no UIImage";
-        NNPScreenshotWriteResult(NO, error, nil, nil, captureDiagnostics);
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            NNPScreenshotWriteResult(NO, error, nil, nil, captureDiagnostics);
+        });
         NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE failed error=%@", error]);
         return;
     }
 
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        @autoreleasepool {
+        NNPDiagnosticLog(@"SCREENSHOT_CAPTURE encode worker started");
         NSData *png = UIImagePNGRepresentation(image);
+        NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE PNG encoding complete bytes=%lu", (unsigned long)png.length]);
         NNPScreenshotWriteResult(png.length > 0, png.length ? nil : @"PNG encoding returned no data", image, png, captureDiagnostics);
+        }
     });
 }
 
