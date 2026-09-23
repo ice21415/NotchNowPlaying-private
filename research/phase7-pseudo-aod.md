@@ -4,6 +4,10 @@ Date: 2026-09-22
 Target: iPhone 12 mini / iPhone13,1, iOS 17.1.2, RootHide  
 Baseline: `main` commit `a9d7f1e`
 
+> **Latest status (user-reported device test, 2026-09-22):** The Phase 7 experimental build compiled and installed successfully. On a normal side-button press, the phone remained logically locked while the display stayed visible; album artwork and song information continued updating on track changes, and the progress bar continued moving. Unlock/recovery was normal. The display retained the pre-lock screen content rather than transitioning to an AOD-only black scene. The configured 30-second timeout was **NOT TESTED**. See [Phase 7 device-test addendum](#phase-7-device-test-addendum--user-reported-results-2026-09-22). Earlier `NOT TESTED` / `UNSUPPORTED` statements below describe the state **before** this device test and are superseded for observed visibility, not for timeout, privacy, or panel-power details.
+
+> **Follow-up observation (user-reported, 2026-09-23):** After the first side-button lock, the *entire* retained screen, including the NotchNowPlaying UI, becomes gray and cannot be interacted with. The native volume HUD still appears when using the hardware volume buttons, but it is also gray/appears beneath the same apparent effect. A second side-button press immediately shows the normal iOS lock screen. Media artwork/title and progress continue updating. This suggests a presentation-wide dimming/overlay or display-level color/brightness effect; the owner and implementation are **NOT IDENTIFIED**. The physical panel sleep/power state remains **UNVERIFIED**. The 30-second timeout is still **NOT TESTED**. See [follow-up observation addendum](#phase-7-follow-up-observation-addendum--2026-09-23).
+
 ## Current status
 
 ```text
@@ -249,3 +253,80 @@ These observations establish a display-wide symptom but do not identify its
 owner. In particular, they do not distinguish SpringBoard composition from a
 system-managed presentation layer or downstream display processing. No
 security-critical component was changed in response to the observation.
+## Phase 7 device-test addendum — user-reported results (2026-09-22)
+
+This section records the tester's direct report after the earlier research snapshot. It is **user-reported runtime evidence**, not a fresh CI log, device diagnostic capture, or independent verification of panel power. Historical statuses earlier in the report reflect the pre-deployment state; this addendum supersedes them where directly tested.
+
+### Test environment and observations
+
+Target as defined by this report: iPhone 12 mini (iPhone13,1), iOS 17.1.2, RootHide. The user reported the following for the Phase 7 experimental build:
+
+| Test | Result | User observation / limitation |
+| --- | --- | --- |
+| Experimental build and installation | `PASS (USER REPORTED)` | Compiled and installed successfully; workflow/run ID not supplied. |
+| Ordinary side-button lock | `PASS (USER REPORTED)` | Phone remained logically locked while the display stayed visibly on. |
+| Album artwork and song information visible | `PASS (USER REPORTED)` | Artwork and song details remained visible after locking. |
+| Track change while locked | `PASS (USER REPORTED)` | Artwork and title updated to the new track. |
+| Playback progress while locked | `PASS (USER REPORTED)` | Progress bar continued moving. |
+| Return to normal behavior | `PASS (USER REPORTED)` | User reported normal recovery. Pressing again brought up the normal lock screen. |
+| Configured 30-second timeout | `NOT TESTED` | User has not yet checked whether the display blanks and normal mode is restored at timeout. |
+| Privacy-safe AOD-only scene | `FAIL / NOT IMPLEMENTED` | Immediately after locking, the display retained the pre-lock screen content instead of switching to a dedicated black-background AOD scene. |
+| Panel power-rail state, thermal behavior, long-run reliability | `NOT VERIFIED` | No measurement or prolonged test was supplied. |
+
+### Interpretation
+
+This is **not merely a frozen final frame**: track metadata/artwork and the playback progress continued updating while the phone was reported locked. It is evidence of a working *experimental locked-visible, live-updating presentation* on the tested device. It does **not** establish genuine native AOD, panel-power behavior, or safe all-day operation.
+
+The principal functional/privacy gap is that normal pre-lock screen content remains visible after the first side-button press. A subsequent press shows the ordinary lock screen according to the user. Treat this as a privacy concern rather than a completed AOD presentation: do not enable it over sensitive content while this behavior remains.
+
+### Updated milestone status
+
+```text
+Milestone A — display-path feasibility:  PASS for experimental visibility on target (user report)
+Milestone B — visible, live-updating prototype: PASS (user report)
+Milestone C — Now Playing rendering/updates: PASS with existing UI (user report)
+Milestone D — privacy-safe scene, timeout and reliability: INCOMPLETE
+Overall pseudo-AOD experiment: PARTIAL PASS; not production-ready
+```
+
+### Next bounded validation
+
+1. Verify the configured 30-second timeout and normal display restoration, without leaving the display unattended.
+2. Resolve the retained pre-lock content before treating this as a privacy-safe AOD-like interface. The desired post-lock scene contains only the black background and NotchNowPlaying elements.
+3. Separately verify normal lock-screen access, playback-stop cleanup, repeated lock/unlock, and crash/recovery behavior. Record build/run identity and device diagnostics with future results.
+
+Do not relabel this result as native AOD or claim that the physical OLED panel's power state is known.
+
+## Phase 7 follow-up observation addendum — 2026-09-23
+
+This section records a second round of **user-reported device observations**. The tester has not supplied a screenshot pair, compositor trace, brightness telemetry, or a confirmed timeout result. This addendum refines the earlier Phase 7 device-test interpretation rather than replacing the original observations.
+
+### Exact observed sequence
+
+1. Phase 7 experimental build was previously reported compiled and installed successfully.
+2. With the existing Now Playing UI active, pressing the physical side button leaves the device apparently logically locked and the screen visibly updating, but **the entire pre-lock screen becomes gray and touch interaction is unavailable**. The gray appearance affects the plugin as well as the rest of the screen.
+3. Using the hardware volume buttons produces the native system volume HUD. **The HUD is also gray, appearing beneath the same apparent gray effect**. This is evidence of ongoing system UI rendering, not proof of an overlay window's identity or z-order.
+4. Artwork and song title update after a track change and playback progress continues to move. Therefore this is not a frozen last frame.
+5. Pressing the side button a second time **immediately** displays the ordinary iOS lock screen (no reported intervening black frame).
+6. The configurable **30-second timeout is NOT TESTED**. No physical panel power or thermal measurement has been reported.
+
+### Revised evidence matrix
+
+| Question | Result | Evidence limit |
+| --- | --- | --- |
+| Live rendering after first side-button press | `PASS (USER REPORTED)` | Track information and progress update; volume HUD renders. |
+| Logical lock and input behavior | `USER REPORTED` | Screen cannot be tapped; second press shows lock screen. These observations alone do not independently prove all authentication invariants. |
+| Whole-screen gray appearance | `CONFIRMED (USER REPORTED)` | Plugin, background and system volume HUD are all affected. |
+| Gray effect caused by a top-level overlay | `HYPOTHESIS — UNVERIFIED` | Could be composited dimming, a presentation layer or a display-wide brightness/color process. No owner, window identity or stacking order is proven. |
+| Display-wide brightness/color processing | `HYPOTHESIS — UNVERIFIED` | Consistent with native volume HUD also turning gray, but no brightness/color telemetry or screenshot comparison yet. |
+| Dedicated black AOD scene | `FAIL / NOT IMPLEMENTED` | Previous app/screen content remains visible and gray, creating a privacy concern. |
+| Normal lock screen on second side-button press | `PASS (USER REPORTED)` | Appears immediately. |
+| Timeout / failsafe / thermal / panel-power state | `NOT TESTED / NOT VERIFIED` | Do not infer hardware state from visible UI. |
+
+### Revised interpretation and next experiment
+
+Treat Phase 7 as a **live-rendering locked-visible experiment with unexplained global gray appearance**, not as a finished pseudo-AOD presentation. A single alleged topmost gray `UIWindow` is only one candidate; the report does not establish whether the native volume HUD is under an overlay or whether the entire display output is transformed.
+
+The next milestone should be **read-only diagnosis before any additional display-mode changes**. On a non-sensitive test screen and during a short attended test, compare normal-awake and experimental gray-mode screenshots and their on-device visual appearance. If captured screenshots show normal colors while the panel appears gray, prioritize downstream display/color/brightness hypotheses; if the captured screenshot itself is gray, prioritize compositor/window/scene or screen-capture-path color transforms. Either result is narrowing evidence, not proof of exact ownership. Examine existing SpringBoard presentation/window/scene and brightness observations without hiding or disabling security-critical lock-screen components.
+
+Before treating this as usable, verify that the intended timeout restores normal display behavior, and design the final black-background scene so the retained previous app screen never remains visible after locking. Do not publish the current experimental presentation as privacy-safe.
