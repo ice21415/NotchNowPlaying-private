@@ -1428,3 +1428,123 @@ The next step is not another unlocked capture: preserve this verified baseline
 and, only in a separately attended phase, compare it with one locked-visible
 capture. No display-mode, BackBoard/HID, authentication or lock behavior was
 changed by Phase 7.8.
+
+### Phase 7.9 — integrated end-to-end capture and stability result
+
+Status: integrated preflight `PASS`; intended locked-visible comparison
+`FAIL / NOT COMPLETED`; safe-mode stability `FAIL` by user report; exact crash
+cause `INSUFFICIENT EVIDENCE`.
+
+#### Integrated build and retrieval tooling
+
+The integrated experimental build from GitHub Actions run `35824547581`,
+commit `9ca44a5`, added request IDs to the SpringBoard screenshot helper and
+used unique per-request artifact names. The Windows host tool
+`research/tools/phase7_9_screenshot.py` verifies SSH, triggers one request,
+polls for the matching result, retrieves diagnostics and the full image or
+bounded preview, validates PNG structure/pixels, and writes a unique local
+session directory. It never wakes, unlocks, changes display policy or invokes
+a screenshot from a display/lock hook.
+
+The first integrated preflight exposed a host-side polling issue: `defaults
+read` remained stale while the on-disk diagnostic plist already contained the
+new result. The helper itself completed successfully. The script was corrected
+in commit `a61139e` to poll the diagnostic plist with `plutil`; this is a
+host-only change and did not require another device deployment.
+
+#### Preflight result
+
+The integrated package installed successfully, SpringBoard restarted, and
+post-install diagnostics reported `TweakLoaded=true`, PID `23445`, and
+`ExperimentalLockedVisible=0`. One unlocked request used ID
+`preflight-20260923T055935-6b99e265`:
+
+```text
+06:00:08.071581  request accepted; no wake or unlock requested
+06:00:08.071975  capture begin; brightness=0.4959836006164551; captured=0
+06:00:08.088157  capture complete; UIImage 375x812 scale=3; CGImage 1125x2436
+06:00:08.858286  PNG encoding complete; bytes=7467680
+06:00:09.268450  bounded pre-PNG stats complete
+06:00:09.825784  completed; preMaxRGB=255; preNonBlack=4096/4096;
+                previewBytes=241614; previewPreference=YES
+```
+
+The preview was extracted from the diagnostic plist and validated on Windows
+as a 236×512 RGB PNG with 120354/120832 non-black pixels and `maxRGB=255`.
+The known unlocked screen content was visually inspected. Preflight capture,
+preview transport and content verification are therefore `PASS`.
+
+#### Attended lock attempt and safe-mode report
+
+After preflight, the experimental setting was enabled and a passive monitor
+was prepared. The user reported that the first physical side-button press
+directly locked and turned the display off; the previously observed
+extremely-dim visible state did not occur in that attempt. The monitor timed
+out without a new logical-lock event, so early and late locked-visible
+screenshots were not issued. This leaves the intended two-screenshot
+comparison `NOT TESTED`, not a success or a provider failure.
+
+The user then manually toggled the experimental feature. The display became
+extremely dim, but after a period the device entered Relaxin safe mode. The
+feature was immediately set back to `ExperimentalLockedVisible=false` over
+SSH. No further physical lock, screenshot or timeout experiment was run.
+
+The post-recovery diagnostic plist showed a new SpringBoard PID `24130` at
+`06:09:14 +0000`, `TweakLoaded=true`, initial logical lock `YES`, and a
+startup-time experimental activation followed by unlock cleanup:
+
+```text
+06:09:18.987538  LOCK_OBSERVER started initialLogicalLock=YES
+06:09:19.072991  PHASE7 armed=YES
+06:09:19.072995  DISPLAY experiment armed duration=40.6s deviceLocked=YES
+06:09:19.075144  black presentation window visible=YES, windowOpaque=YES,
+                rootOpaque=YES
+06:09:19.988599  logical-unlock-observed
+06:09:23.076182  PHASE7 armed=NO
+06:09:23.076195  DISPLAY experiment stopped restoreRequested=NO deviceLocked=NO
+```
+
+These lines document recovery/startup behavior; they do not independently
+prove that they correspond to the physical side-button event or to the safe
+mode trigger. A bounded filename search in the accessible
+`CrashReporter`/`DiagnosticReports`/`Logs` directories found no Relaxin or
+SpringBoard report. The safe-mode message therefore remains user-reported
+evidence without a termination reason, blocked thread or stack. It is not
+valid to attribute it to diagnostic I/O, the display hook, the provider
+lifetime or any other single function from this evidence alone.
+
+| Check | Result |
+| --- | --- |
+| Integrated experimental build | `PASS` — run `35824547581` |
+| SSH preflight and unlocked preview | `PASS` |
+| Unique request ID / artifact association | `PASS` in source; preflight verified |
+| First physical lock retained visible presentation | `FAIL / NOT OBSERVED` — direct normal screen-off reported |
+| Early locked screenshot | `NOT TESTED` |
+| Late locked screenshot | `NOT TESTED` |
+| Extremely dim state after manual feature toggle | `CONFIRMED USER REPORTED` |
+| Relaxin safe mode after experiment | `FAIL` user reported |
+| Relaxin/SpringBoard crash stack | `NOT FOUND / INSUFFICIENT EVIDENCE` |
+| Recovery setting disabled | `PASS` — `ExperimentalLockedVisible=0` |
+| New watchdog/display stability | `FAIL` for unattended continuation; exact cause unknown |
+
+#### Fail-safe correction prepared, not deployed
+
+Static review identified that `NNPPhase7PseudoAOD.xm` retained the system
+display provider as `__unsafe_unretained`. A timeout or cleanup after that
+system object was released could message a dangling pointer. Commit `d17da7f`
+changes only this reference to `__weak`, so a released provider becomes nil and
+the restore path fails open with its existing diagnostic message. This is a
+narrow safety correction supported by source analysis and the safe-mode
+symptom, but the incident does not prove that it caused the failure.
+
+Production run `35825762811` and experimental run `35825766176` both compiled
+successfully from this correction. Neither artifact was installed after the
+safe-mode report. The stable installed behavior and the current disabled
+setting remain the rollback state.
+
+The next evidence-backed step is to obtain the exact Relaxin Analytics/watchdog
+report, if available, before any further physical lock test. Do not redeploy
+the experimental correction or repeat the side-button sequence until
+SpringBoard stability and the missing crash evidence are addressed. The
+brightness mechanism and dedicated black presentation remain separate,
+unresolved issues.
