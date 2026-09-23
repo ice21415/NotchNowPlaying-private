@@ -228,3 +228,24 @@ and panel-visibility contract that can survive the normal lock-side transition
 while leaving the device securely locked. Finding that contract would require
 new evidence below or within the BackBoard display-policy boundary. Generic
 driver or panel-power reverse engineering is outside this phase's scope.
+
+## Phase 7.1 checkpoint — gray-screen investigation baseline
+
+Checkpoint: the latest Phase 7 implementation before Phase 7.1 changes is
+preserved at commit `2ccf5be` (`phase7.1-baseline-before-gray-diagnosis`). The
+existing opt-in display-mode substitution and the Traditional Chinese
+PreferenceLoader settings are unchanged at this checkpoint.
+
+The user subsequently reported these attended device observations while the
+experimental setting was enabled: after the first physical side-button press,
+the device behaved as logically locked and did not accept normal interaction,
+but the entire visible display became gray, including NotchNowPlaying. Artwork,
+metadata and playback progress continued updating. The native volume HUD also
+appeared with the same gray appearance. A second side-button press immediately
+showed the normal iOS lock screen. The configured 30-second timeout was not
+observed in that test.
+
+These observations establish a display-wide symptom but do not identify its
+owner. In particular, they do not distinguish SpringBoard composition from a
+system-managed presentation layer or downstream display processing. No
+security-critical component was changed in response to the observation.
