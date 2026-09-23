@@ -633,8 +633,9 @@ be recorded and the transition log used instead.
 | User-reported whole-screen gray output | `CONFIRMED` |
 | Source-level transition instrumentation | `PASS` |
 | Production configuration unchanged | `PASS` |
-| Production compilation after instrumentation | `NOT TESTED` |
-| Experimental compilation after instrumentation | `NOT TESTED` |
+| Production compilation after instrumentation | `PASS` — workflow `35805459044` |
+| Experimental compilation after instrumentation | `PASS` — workflow `35805461385` |
+| Experimental package transfer, installation and respring | `PASS` — deployed to target after workflow `35805461385` |
 | Runtime diagnostic sequence | `NOT TESTED` |
 | Screenshot comparison | `NOT TESTED` |
 | Exact gray-screen owner | `UNSUPPORTED / NOT IDENTIFIED` |
