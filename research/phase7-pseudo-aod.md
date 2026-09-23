@@ -1048,3 +1048,28 @@ package and inspect its artifact. Deployment and the physical side-button
 comparison require explicit user readiness. Until that occurs, the exact
 dimming mechanism and the reason the previous application remains visible are
 `INSUFFICIENT EVIDENCE`.
+
+#### Phase 7.5 diagnostic deployment
+
+Status: deployment and injection `PASS`; physical display comparison `NOT
+TESTED`.
+
+The experimental arm64e artifact from GitHub Actions run `35809721287` was
+copied to the target and installed with `dpkg -i` successfully. The
+`ExperimentalLockedVisible` preference was explicitly kept at `0`, and
+SpringBoard was restarted with `sbreload`. Post-restart evidence from the
+diagnostic preference domain showed:
+
+```text
+TweakLoaded=true
+SpringBoardPID=21664
+StartupTimestamp=2026-09-23 02:20:31 +0000
+DiagnosticLogEvents=188
+ExperimentalLockedVisible=0
+```
+
+The new event history includes the numeric UIKit brightness field; one
+post-install snapshot recorded `UIKitBrightness=0.4015`. This is a UIKit
+measurement only and is not a BacklightServices policy value or a physical
+OLED measurement. No physical lock test, screenshot comparison, timeout test
+or new display-control experiment has been started after this deployment.
