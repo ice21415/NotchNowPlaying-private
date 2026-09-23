@@ -5,7 +5,11 @@
 static volatile BOOL gNNPPhase7Armed = NO;
 static volatile BOOL gNNPPhase7Restore = NO;
 static __thread BOOL gNNPPhase7InsideTransitionHook = NO;
-static __unsafe_unretained id gNNPPhase7Provider;
+// The provider is owned by the system display service. A raw unsafe reference
+// could become dangling before timeout or cleanup restores mode 0. Weak
+// ownership fails open when the provider has gone away instead of messaging a
+// released SpringBoard object.
+static __weak id gNNPPhase7Provider;
 
 void NNPPhase7SetExperimentArmed(BOOL armed) {
     gNNPPhase7Armed = armed;
