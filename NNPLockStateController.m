@@ -1,4 +1,5 @@
 #import "NNPLockStateController.h"
+#import "NNPDiagnostics.h"
 #import <objc/message.h>
 
 @interface NNPLockStateController ()
@@ -21,6 +22,7 @@ static BOOL NNPReadLockState(void) {
     if (_started) return;
     _started = YES;
     _locked = NNPReadLockState();
+    NNPDiagnosticLog([NSString stringWithFormat:@"LOCK_OBSERVER started initialLogicalLock=%@", _locked ? @"YES" : @"NO"]);
     __weak typeof(self) weakSelf = self;
     self.timer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(__unused NSTimer *timer) {
         [weakSelf poll];
@@ -30,8 +32,10 @@ static BOOL NNPReadLockState(void) {
     BOOL value = NNPReadLockState();
     if (value == _locked) return;
     _locked = value;
+    NNPDiagnosticBeginTransition(value ? @"logical-lock-observed" : @"logical-unlock-observed");
+    NNPDiagnosticLogTransition([NSString stringWithFormat:@"LOCK_OBSERVER isUILocked changed value=%@", value ? @"YES" : @"NO"]);
     if (self.stateHandler) self.stateHandler(value);
 }
-- (void)stop { [_timer invalidate]; _timer = nil; _started = NO; }
+- (void)stop { [_timer invalidate]; _timer = nil; _started = NO; NNPDiagnosticLogTransition(@"LOCK_OBSERVER stopped"); }
 - (void)dealloc { [self stop]; }
 @end

@@ -13,3 +13,5 @@ FOUNDATION_EXPORT void NNPDiagnosticSetString(NSString *key, NSString *value);
 FOUNDATION_EXPORT void NNPDiagnosticAppendEvent(NSDictionary *event);
 FOUNDATION_EXPORT BOOL NNPDiagnosticArmExists(BOOL *readable);
 FOUNDATION_EXPORT BOOL NNPDiagnosticConsumeArm(void);
+FOUNDATION_EXPORT NSString *NNPDiagnosticBeginTransition(NSString *reason);
+FOUNDATION_EXPORT void NNPDiagnosticLogTransition(NSString *event);

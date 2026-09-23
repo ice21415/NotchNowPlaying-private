@@ -40,6 +40,7 @@ void NNPPhase7RestoreNormalDisplay(void) {}
     if (_lifecycleState == state) return;
     _lifecycleState = state;
     NNPDiagnosticSetInteger(@"LockedVisibleLifecycle", state);
+    NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY lifecycle state=%ld", (long)state]);
 }
 
 - (BOOL)startLockedVisibleMode {
@@ -49,19 +50,19 @@ void NNPPhase7RestoreNormalDisplay(void) {}
     if (![self isLockedVisibleSupported]) {
         self.lifecycleState = NNPDisplayLifecycleStateUnsupported;
         NNPDiagnosticSetBool(@"LockedVisibleSupported", NO);
-        NNPDiagnosticLog(@"LOCKED_VISIBLE unsupported; no display mutation attempted");
+        NNPDiagnosticLogTransition(@"DISPLAY unsupported; no display mutation attempted");
         return NO;
     }
     self.lifecycleState = NNPDisplayLifecycleStatePreparing;
     NNPPhase7SetExperimentArmed(YES);
     self.lifecycleState = NNPDisplayLifecycleStateActive;
     NNPDiagnosticSetBool(@"LockedVisibleSupported", YES);
-    NNPDiagnosticLog([NSString stringWithFormat:@"PHASE7 experiment armed duration=%.1fs", self.maximumDuration]);
+    NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY experiment armed duration=%.1fs deviceLocked=%@", self.maximumDuration, self.deviceLocked ? @"YES" : @"NO"]);
     __weak typeof(self) weakSelf = self;
     NSTimeInterval duration = MAX(5.0, MIN(60.0, self.maximumDuration));
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(duration * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         if (weakSelf.lifecycleState != NNPDisplayLifecycleStateActive) return;
-        NNPDiagnosticLog(@"PHASE7 maximum duration reached; restoring normal display");
+        NNPDiagnosticLogTransition(@"DISPLAY maximum duration reached; restoring normal display");
         [weakSelf stopLockedVisibleMode];
     });
     return YES;
@@ -76,6 +77,6 @@ void NNPPhase7RestoreNormalDisplay(void) {}
     NNPPhase7SetExperimentArmed(NO);
     if (_deviceLocked) NNPPhase7RestoreNormalDisplay();
     self.lifecycleState = NNPDisplayLifecycleStateIdle;
-    NNPDiagnosticLog(@"PHASE7 experiment stopped; normal display restore requested");
+    NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY experiment stopped restoreRequested=%@ deviceLocked=%@", self.deviceLocked ? @"YES" : @"NO", self.deviceLocked ? @"YES" : @"NO"]);
 }
 @end

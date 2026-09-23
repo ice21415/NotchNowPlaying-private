@@ -550,3 +550,100 @@ SpringBoard was restarted with `sbreload`; the remote command returned success.
 These are `PASS` for compilation, package transfer, installation and respring.
 The target-device behavior checks remain `NOT TESTED` until the attended
 unlocked-playback and post-lock screenshot comparison are performed.
+
+## Phase 7.2 device-result correction — user report
+
+The user subsequently tested the deployed Phase 7.2 package. These results
+supersede the earlier `NOT TESTED` entries for the corresponding behaviors:
+
+| Test | Result | Observation |
+| --- | --- | --- |
+| Normal unlocked playback | `PASS` | Playback works normally. |
+| Other applications while unlocked | `PASS` | The premature full-screen black regression was not present in ordinary unlocked use. |
+| Restoration after unlocking | `PASS` | Normal behavior returned. |
+| Dedicated black background after physical lock | `FAIL` | The intended black-only scene was not visible. |
+| Previous application content after lock | `CONFIRMED` | Original content remained visible. |
+| Whole-screen gray output | `CONFIRMED` | NotchNowPlaying and the entire display became gray. |
+| Live metadata/artwork/progress after lock | `PASS` from earlier tests | The live update capability remains established by prior attended tests. |
+| 30-second timeout | `NOT TESTED` | No timeout result supplied. |
+
+The native volume HUD was also reported gray, and a second side-button press
+showed the normal iOS lock screen. These results do not identify a specific
+window, scene or display-processing owner.
+
+## Phase 7.3 — lock-state reconciliation and gray-screen investigation
+
+### Confirmed starting state
+
+The Phase 7.2 source correction successfully addressed the unlocked playback
+regression, but it did not produce a dedicated black scene after the first
+physical lock. The strongest current possibilities are: the lock observer
+does not observe the relevant transition; it observes it after system
+composition has already changed; `self.locked` changes without a subsequent
+reconcile; the tweak window becomes opaque but is obscured by a system surface;
+or the display-mode substitution causes the system to retain/composite the
+existing application content. The gray volume HUD keeps a tweak-owned window
+alone from being a sufficient explanation.
+
+### Instrumentation added
+
+Status: `PASS` in source review; runtime collection `NOT TESTED`.
+
+The diagnostic layer now creates compact transition identifiers (`T1`, `T2`,
+...) and records a timestamped sequence without media content or credentials.
+The sequence covers:
+
+* `NNPLockStateController` startup and `SBLockScreenManager isUILocked` changes;
+* `NNPController self.locked` changes and unchanged-state callbacks;
+* reconcile eligibility and display lifecycle state;
+* `NNPDisplayController` lifecycle transitions, arming, timeout and stopping;
+* every `applyLockedBackground` call with expected black state, actual window
+  visibility, window level, window/root opacity, visible/opaque window counts,
+  scene count and nonzero screen-brightness observation;
+* window show/hide cleanup;
+* Phase 7 provider display-mode requests, mode substitution and restore calls.
+
+The diagnostic path does not log artwork, song titles, application content,
+credentials or authentication state. A hardware side-button press is not
+claimed as independently observed; only the existing logical lock observer
+event is labeled as observed.
+
+### Gray-screen comparison
+
+Status: `NOT TESTED`.
+
+No screenshot pair or diagnostic session from the Phase 7.2 test was supplied.
+The required attended comparison remains the same non-sensitive screen while
+normally awake and after the first physical side-button press. If a system
+screenshot remains normal while the physical panel is gray, downstream
+brightness/color processing becomes stronger evidence. If the captured image is
+gray, compositor/window/scene or capture-path processing becomes stronger
+evidence. Neither result alone identifies an exact system component. If a
+screenshot cannot be captured in the experimental state, that limitation must
+be recorded and the transition log used instead.
+
+### Phase 7.3 status
+
+| Validation | Result |
+| --- | --- |
+| User-reported unlocked playback | `PASS` |
+| User-reported other-app usability while unlocked | `PASS` |
+| User-reported dedicated black scene after lock | `FAIL` |
+| User-reported original content retention | `CONFIRMED` |
+| User-reported whole-screen gray output | `CONFIRMED` |
+| Source-level transition instrumentation | `PASS` |
+| Production configuration unchanged | `PASS` |
+| Production compilation after instrumentation | `NOT TESTED` |
+| Experimental compilation after instrumentation | `NOT TESTED` |
+| Runtime diagnostic sequence | `NOT TESTED` |
+| Screenshot comparison | `NOT TESTED` |
+| Exact gray-screen owner | `UNSUPPORTED / NOT IDENTIFIED` |
+| Phase 7.3 completion | `UNSUPPORTED` pending runtime evidence |
+
+No display-mode substitution, BackBoard HID factor, BLS transition or
+authentication behavior was changed in this diagnostic milestone. Recovery is
+to disable the experimental setting, stop playback, unlock, and respring; the
+stable production build remains the rollback path. The next bounded step is to
+build and deploy this instrumentation, collect one short attended transition
+log, and compare the actual window state at logical lock with the physical gray
+appearance before considering any further display experiment.

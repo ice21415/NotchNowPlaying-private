@@ -9,6 +9,8 @@ static NSString * const NNPDiagLog = @"/var/mobile/Library/NotchNowPlaying/load-
 static NSString * const NNPDiagFallbackLog = @"/var/mobile/Library/Logs/NotchNowPlaying-load-path-diagnostic.log";
 static NSString * const NNPDiagArm = @"/var/mobile/Library/NotchNowPlaying/display-assertion-arm";
 static CFStringRef const NNPDiagDomain = CFSTR("com.user.notchnowplaying.diagnostics");
+static NSUInteger NNPDiagnosticTransitionSequence = 0;
+static NSString *NNPDiagnosticCurrentTransition;
 
 NSString *NNPDiagnosticDirectoryPath(void) { return NNPDiagDirectory; }
 NSString *NNPDiagnosticLogPath(void) { return NNPDiagLog; }
@@ -27,6 +29,22 @@ void NNPDiagnosticLog(NSString *event) {
         if (fd < 0) continue;
         write(fd, data.bytes, data.length);
         close(fd);
+    }
+}
+
+NSString *NNPDiagnosticBeginTransition(NSString *reason) {
+    @synchronized ([NSProcessInfo processInfo]) {
+        NNPDiagnosticTransitionSequence += 1;
+        NNPDiagnosticCurrentTransition = [NSString stringWithFormat:@"T%lu", (unsigned long)NNPDiagnosticTransitionSequence];
+        NSString *identifier = NNPDiagnosticCurrentTransition;
+        NNPDiagnosticLog([NSString stringWithFormat:@"transition=%@ begin reason=%@", identifier, reason ?: @"unknown"]);
+        return identifier;
+    }
+}
+
+void NNPDiagnosticLogTransition(NSString *event) {
+    @synchronized ([NSProcessInfo processInfo]) {
+        NNPDiagnosticLog([NSString stringWithFormat:@"transition=%@ %@", NNPDiagnosticCurrentTransition ?: @"none", event ?: @"event"]);
     }
 }
 
