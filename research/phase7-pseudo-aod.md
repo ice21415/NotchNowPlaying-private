@@ -741,3 +741,97 @@ For safety, `ExperimentalLockedVisible` was then set to `0` and SpringBoard was
 resprung. No display-mode or authentication behavior was changed. The next
 valid collection requires Relaxin injection to be explicitly confirmed active
 in the same SpringBoard process before the user repeats the attended lock test.
+
+## Phase 7.4 — SpringBoard watchdog root-cause analysis and fail-safe recovery
+
+### New device evidence
+
+Status: `CONFIRMED (USER REPORTED)`; exact incident timestamp `NOT PROVIDED`.
+
+Relaxin reported a Watchdog Timeout with the message:
+
+```text
+no successful checkins from SpringBoard (2 induced crashes) in 180 seconds
+```
+
+The user reported that backboardd, mediaserverd, audiomxd, logd and other
+listed services continued successful checkins. Relaxin then temporarily
+disabled tweak injection and initiated a userspace reboot. This establishes a
+SpringBoard-specific availability failure, but the watchdog message alone does
+not identify the blocking function, thread or module. The previous Phase 7.3
+runtime capture is therefore `INSUFFICIENT EVIDENCE` for display-state
+classification and must not be used as proof of a gray-screen cause.
+
+### Relaxin / SpringBoard report retrieval
+
+Status: `NOT FOUND` on the authorized device connection.
+
+Targeted read-only searches of the available mobile/root Logs, CrashReporter
+and Analytics directories for SpringBoard, Relaxin, watchdog and incident
+reports returned no matching file. No unrelated system log or user data was
+collected. Consequently the following remain `NOT TESTED`: incident timestamp
+from the report, termination reason, sampled/blocked thread, SpringBoard main
+thread stack, loaded NotchNowPlaying image, repeated frames and display/
+backlight frames.
+
+### SpringBoard blocking audit
+
+Source audit result: `FAIL` for diagnostic fail-safe design; watchdog root cause
+`NOT PROVEN`.
+
+The Phase 7.3 diagnostic fallback synchronously called
+`CFPreferencesCopyAppValue`, `CFPreferencesSetAppValue` and
+`CFPreferencesAppSynchronize` from `NNPDiagnosticLog`. File logging also called
+`mkdir`, `open` and `write` directly from the caller. Since diagnostic logging
+is reached from `NNPPhase7PseudoAOD`'s display-mode hook and lock/reconcile
+paths, this was a real SpringBoard blocking risk even though no report proves it
+caused the watchdog.
+
+The audit found no `dispatch_sync` in the Phase 7 paths, no intentional wait
+for BackBoard, and no recursive preference callback that is proven to loop.
+`dispatch_async` media callbacks return to the main queue for UI reconciliation,
+and the bounded timeout uses `dispatch_after`; these remain potential workload
+sources but not synchronous waits. The display hook's restore flag was already
+idempotent for its restore path; a thread-local hook guard is now added to make
+re-entry fail open to `%orig`.
+
+### Fail-safe diagnostic correction
+
+Status: `PASS` in source review; device runtime validation `NOT TESTED`.
+
+`NNPDiagnosticLog` now only creates a small in-memory event and schedules a
+coalesced flush on a serial background queue. File `mkdir/open/write` and
+bounded plist serialization occur on that queue, never in the display/lock
+caller. Events are bounded to 256 and may be dropped under pressure. Scalar
+diagnostic writes and blanking-event persistence are also dispatched to the
+same background queue. If persistence fails, the caller continues without
+waiting; normal display and authentication behavior are not held for
+diagnostics.
+
+`NNPPhase7PseudoAOD` now has a narrow thread-local reentrancy guard. The hook
+does the guard check and schedules passive logging before returning through the
+original implementation; restore remains idempotent and no new display hook or
+BackBoard control was added. The experimental path remains behind both the
+compile-time flag and the user setting. Production remains unchanged.
+
+### Phase 7.4 status before rebuild
+
+| Item | Result |
+| --- | --- |
+| Watchdog event recorded | `PASS (USER REPORTED)` |
+| Exact Relaxin report retrieved | `NOT FOUND` |
+| Exact blocking frame identified | `NOT TESTED` |
+| Synchronous diagnostic I/O audit | `PASS — risk identified` |
+| Non-blocking diagnostic correction | `PASS` in source review |
+| Display-mode path changed | `NO` |
+| Production compilation after correction | `NOT TESTED` |
+| Experimental compilation after correction | `NOT TESTED` |
+| New physical lock experiment | `NOT TESTED` |
+| Gray-screen issue | `UNSUPPORTED / SEPARATE` |
+
+The next bounded step is production and experimental compilation plus static
+inspection of the generated sources. Do not repeat the physical lock test until
+both builds pass and Relaxin injection is explicitly confirmed active. The next
+device test must be brief, attended, and stopped immediately if SpringBoard
+slows, injection is disabled, or display recovery is abnormal; it must not wait
+for another 180-second watchdog event.
