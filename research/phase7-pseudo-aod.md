@@ -1038,7 +1038,7 @@ be removed or forcibly raised solely from this comparison.
 | New display-control hook | `NONE` |
 | Numeric UIKit brightness diagnostics | `PASS` in source; `NOT TESTED` on device |
 | Scene/window diagnostic extension | `PASS` in source; `NOT TESTED` on device |
-| Experimental build | `NOT TESTED` |
+| Experimental build | `PASS` — GitHub Actions run `35809721287`; arm64e artifact downloaded locally |
 | Installation/injection verification | `NOT TESTED` |
 | Physical display comparison | `NOT TESTED` |
 | Timeout and recovery | `NOT TESTED` |
