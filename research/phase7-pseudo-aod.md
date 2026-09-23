@@ -883,3 +883,75 @@ Normal unlocked playback with the experimental setting disabled: `NOT TESTED`
 as a user-interaction result. No physical lock test, gray-screen comparison,
 timeout test or media playback test was started after deployment. The device
 is left with the experimental setting disabled pending user readiness.
+
+### Phase 7.4 attended runtime results
+
+Status: SpringBoard safety `PASS`; lock presentation diagnosis `PASS` for
+state reconciliation; gray-output resolution `INSUFFICIENT EVIDENCE`.
+
+After the user confirmed physical readiness, the experimental preference was
+enabled and SpringBoard was restarted. A post-test diagnostic plist was copied
+from the device. It contained `TweakLoaded=true`, SpringBoard PID `21487`,
+startup timestamp `2026-09-23 01:57:04 +0000`, and 114 bounded diagnostic
+events. The dedicated file log was not present at the attempted path, so the
+plist event history was the authoritative capture for this session.
+
+The relevant transition was reconstructed from the events around the attended
+test (timestamps are device event timestamps):
+
+```text
+01:59:06.740  T1 reconcile unlocked, show=YES, experimentEligible=YES
+01:59:06.740  T1 DISPLAY lifecycle state=2 (Preparing)
+01:59:06.740  T1 PHASE7 armed=YES
+01:59:06.740  T1 DISPLAY lifecycle state=3 (Active)
+01:59:06.742  T1 window visible=YES, level=1001
+01:59:13.520  T1 display transition requested mode=0; substituted 0 -> 4
+01:59:20.666  T1 display transition requested mode=3
+01:59:21.294  T2 logical-lock-observed
+01:59:21.294  T2 isUILocked changed value=YES
+01:59:21.294  T2 self.locked=YES
+01:59:21.295  T2 window visible=YES, expectedBlack=YES, rootOpaque=NO
+01:59:21.295  T2 reconcile locked=YES, show=YES, lifecycle=3
+01:59:21.296  T2 black-presentation: windowOpaque=YES, rootOpaque=YES
+01:59:30.294  T3 logical-unlock-observed
+01:59:30.294  T3 self.locked=NO
+01:59:30.294  T3 transparent-presentation: windowOpaque=NO, rootOpaque=NO
+01:59:32.451  T3 lifecycle state=4 -> state=1; experiment stopped
+01:59:32.452  T3 window visible=NO cleanup
+```
+
+This rules out Case A (lock transition not observed), Case B (state
+reconciliation failure) and Case C (requested presentation never became
+opaque). It does not distinguish Case D subtypes: the opaque black
+SpringBoard presentation may have been obscured by a system-managed surface,
+or the final physical output may have been altered downstream by the display
+transition. The earlier user-observed gray screen remains historical evidence,
+but this capture does not independently record its physical appearance.
+
+| Question | Result |
+| --- | --- |
+| First logical lock transition observed | `PASS` |
+| `self.locked` reconciled to `YES` | `PASS` |
+| Black presentation requested and activated | `PASS` |
+| Unlock callback and cleanup | `PASS` |
+| SpringBoard responsive during short test | `PASS` — no new watchdog/auto-disable observed |
+| Actual physical panel appearance in this session | `NOT TESTED` |
+| Screenshot comparison | `NOT TESTED` |
+| 30-second timeout | `NOT TESTED` |
+
+The display-mode substitution was active before the logical lock callback and
+the black presentation was applied after that callback. No new BackBoard/BLS
+hook or display-power modification was introduced. The watchdog correction is
+therefore separate from the gray-screen issue and is not claimed as its cause
+or fix.
+
+Rollback: disable `ExperimentalLockedVisible`, respring, and use the retained
+production package from workflow `35807532171` if injection recovery is
+needed. The attended test restored the window and experimental lifecycle on
+unlock. No authentication, Face ID, passcode or normal lock-screen behavior
+was modified.
+
+Next evidence-backed step: repeat one short attended capture only if a direct
+physical observation is recorded alongside the timestamped events, and add a
+system screenshot comparison when capture is available. Do not change the
+display-mode hook based on this session alone.
