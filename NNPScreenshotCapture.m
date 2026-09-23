@@ -24,52 +24,50 @@ static NSDictionary *NNPScreenshotImageStats(UIImage *image) {
 
     size_t width = CGImageGetWidth(cgImage);
     size_t height = CGImageGetHeight(cgImage);
-    size_t bitsPerPixel = CGImageGetBitsPerPixel(cgImage);
-    size_t bytesPerRow = CGImageGetBytesPerRow(cgImage);
-    size_t channels = bitsPerPixel / 8;
-    if (!channels || !bytesPerRow || !width || !height) {
+    if (!width || !height) {
         return @{
             @"available": @YES,
             @"width": @(width),
             @"height": @(height),
-            @"bitsPerPixel": @(bitsPerPixel),
-            @"bytesPerRow": @(bytesPerRow),
         };
     }
 
-    CFDataRef dataRef = CGDataProviderCopyData(CGImageGetDataProvider(cgImage));
-    if (!dataRef) return @{ @"available": @YES, @"width": @(width), @"height": @(height), @"data": @NO };
-    const UInt8 *bytes = CFDataGetBytePtr(dataRef);
-    CFIndex dataLength = CFDataGetLength(dataRef);
-    NSUInteger targetSamples = 4096;
-    NSUInteger totalPixels = width > (SIZE_MAX / height) ? 0 : width * height;
-    NSUInteger step = totalPixels > targetSamples ? (totalPixels / targetSamples) : 1;
+    size_t sampleWidth = 64;
+    size_t sampleHeight = 64;
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = CGBitmapContextCreate(NULL, sampleWidth, sampleHeight, 8, sampleWidth * 4, colorSpace, kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(colorSpace);
+    if (!context) return @{ @"available": @YES, @"width": @(width), @"height": @(height), @"data": @NO };
+    CGContextDrawImage(context, CGRectMake(0, 0, sampleWidth, sampleHeight), cgImage);
+    const UInt8 *bytes = CGBitmapContextGetData(context);
+    size_t bytesPerRow = CGBitmapContextGetBytesPerRow(context);
+    if (!bytes) {
+        CGContextRelease(context);
+        return @{ @"available": @YES, @"width": @(width), @"height": @(height), @"data": @NO };
+    }
     NSUInteger samples = 0;
     NSUInteger nonBlackSamples = 0;
     NSUInteger maxRGB = 0;
-    for (NSUInteger pixel = 0; pixel < totalPixels && samples < targetSamples; pixel += step) {
-        size_t x = pixel % width;
-        size_t y = pixel / width;
-        size_t offset = y * bytesPerRow + x * channels;
-        if (offset >= (size_t)dataLength) break;
-        size_t available = (size_t)dataLength - offset;
-        size_t componentCount = channels < 3 ? channels : 3;
-        if (available < componentCount) break;
-        NSUInteger pixelMax = 0;
-        for (size_t component = 0; component < componentCount; component++) {
-            if (bytes[offset + component] > pixelMax) pixelMax = bytes[offset + component];
+    for (size_t y = 0; y < sampleHeight; y++) {
+        for (size_t x = 0; x < sampleWidth; x++) {
+            size_t offset = y * bytesPerRow + x * 4;
+            NSUInteger pixelMax = 0;
+            for (size_t component = 0; component < 3; component++) {
+                if (bytes[offset + component] > pixelMax) pixelMax = bytes[offset + component];
+            }
+            if (pixelMax) nonBlackSamples += 1;
+            if (pixelMax > maxRGB) maxRGB = pixelMax;
+            samples += 1;
         }
-        if (pixelMax) nonBlackSamples += 1;
-        if (pixelMax > maxRGB) maxRGB = pixelMax;
-        samples += 1;
     }
-    CFRelease(dataRef);
+    CGContextRelease(context);
     return @{
         @"available": @YES,
         @"data": @YES,
         @"width": @(width),
         @"height": @(height),
-        @"bitsPerPixel": @(bitsPerPixel),
+        @"sampleWidth": @(sampleWidth),
+        @"sampleHeight": @(sampleHeight),
         @"bytesPerRow": @(bytesPerRow),
         @"samples": @(samples),
         @"nonBlackSamples": @(nonBlackSamples),
