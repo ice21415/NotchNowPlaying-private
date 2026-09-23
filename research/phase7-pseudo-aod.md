@@ -1297,3 +1297,59 @@ provider returns an all-black image even after an unlocked user-reported test;
 do not proceed to locked-visible comparison until an unlocked screenshot with
 known visible content is demonstrated. Do not add another display-control hook
 solely to force screenshot output.
+
+### Phase 7.8 — capture-stage diagnosis of the all-black screenshot
+
+Status: diagnostic implementation `PASS`; deployment `PASS`; controlled
+unlocked content capture `NOT TESTED`; locked-visible capture `NOT TESTED`.
+
+#### Diagnostic changes
+
+`NNPScreenshotCapture.m` now records, without private media or application
+content:
+
+* request acceptance and capture start/completion timestamps;
+* the actual `UIScreen.mainScreen` class, bounds, native bounds, scale,
+  nativeScale, UIKit brightness and `isCaptured` state;
+* provider and UIImage class, UIImage size/scale, CGImage availability and
+  pixel dimensions;
+* bounded representative pixel statistics before PNG encoding;
+* encoded byte count and the same statistics after decoding the PNG;
+* direct-path write result and asynchronous diagnostic-preference publication.
+
+Pixel statistics are sampled on a utility queue and contain only counts and
+numeric maxima (`samples`, `nonBlackSamples`, `maxRGB`). PNG encoding,
+decoding, file writes and result publication no longer run on the main queue,
+including failure-result persistence. The existing one-shot request polling,
+Phase 7.4 asynchronous diagnostics and display-hook reentrancy guard are
+unchanged. No alternative provider was invoked in this diagnostic build:
+runtime evidence establishes the selector encodings for
+`_SBDefaultScreenshotProvider`, but not its complete ownership or output
+contract, so no guessed call was added.
+
+#### Build and deployment
+
+The diagnostic-only experimental build was GitHub Actions run
+`35815553995`, commit `2dcd902`. Compilation and package publication were
+`PASS`. The arm64e package was installed over SSH, SpringBoard was restarted,
+and startup diagnostics recorded the new SpringBoard PID `22667`,
+`TweakLoaded=True`, the runtime probe and the screenshot poll worker. The
+`ExperimentalLockedVisible` preference was set to `false` before restart.
+No physical capture or lock experiment was initiated after deployment.
+
+| Check | Result |
+| --- | --- |
+| Production configuration changed | `PASS` — screenshot experiment remains compile-time disabled by default |
+| Experimental package compiled | `PASS` — run `35815553995` |
+| Package installed and SpringBoard restarted | `PASS` |
+| Updated helper loaded in SpringBoard | `PASS` — startup PID and helper events recorded |
+| Alternative provider comparison | `NOT TESTED` |
+| Controlled unlocked test screen | `NOT TESTED` |
+| Locked-visible screenshot | `NOT TESTED` |
+
+The next bounded action is one attended unlocked capture only. The user must
+show a visually distinctive, non-sensitive screen, confirm that the physical
+screen is on and unlocked immediately before the request, and then the host
+will issue exactly one `SSHScreenshotRequest`. The result must show non-black
+pre-PNG and post-PNG statistics and recognizable test content before any
+locked-visible comparison is considered.
