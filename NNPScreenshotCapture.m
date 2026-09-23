@@ -8,7 +8,6 @@ static NSString * const NNPScreenshotRequestPath = @"/var/mobile/Library/NotchNo
 static NSString * const NNPScreenshotImagePath = @"/var/mobile/Library/NotchNowPlaying/ssh-screenshot.png";
 static NSString * const NNPScreenshotResultPath = @"/var/mobile/Library/NotchNowPlaying/ssh-screenshot-result.plist";
 static BOOL gNNPScreenshotCaptureRunning;
-static dispatch_source_t gNNPScreenshotPollTimer;
 
 static void NNPScreenshotWriteResult(BOOL success, NSString *error, UIImage *image) {
     NSMutableDictionary *result = [NSMutableDictionary dictionary];
@@ -56,25 +55,32 @@ static void NNPScreenshotCaptureOne(void) {
     });
 }
 
+static void NNPScreenshotPoll(void) {
+    if (!gNNPScreenshotCaptureRunning) return;
+    NSError *removeError = nil;
+    BOOL requestExists = [[NSFileManager defaultManager] fileExistsAtPath:NNPScreenshotRequestPath];
+    if (requestExists) {
+        BOOL removed = [[NSFileManager defaultManager] removeItemAtPath:NNPScreenshotRequestPath error:&removeError];
+        if (!removed) {
+            NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE request removal failed error=%@", removeError.localizedDescription ?: @"unknown"]);
+        } else {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                NNPScreenshotCaptureOne();
+            });
+            return;
+        }
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        NNPScreenshotPoll();
+    });
+}
+
 void NNPScreenshotCaptureStart(void) {
     if (gNNPScreenshotCaptureRunning) return;
     gNNPScreenshotCaptureRunning = YES;
     NNPDiagnosticLog(@"SCREENSHOT_CAPTURE helper armed requestPath=/var/mobile/Library/NotchNowPlaying/ssh-screenshot-request");
-    dispatch_queue_t queue = dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
-    gNNPScreenshotPollTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, queue);
-    dispatch_source_set_timer(gNNPScreenshotPollTimer, dispatch_time(DISPATCH_TIME_NOW, 0), (uint64_t)(0.25 * NSEC_PER_SEC), (uint64_t)(0.05 * NSEC_PER_SEC));
-    dispatch_source_set_event_handler(gNNPScreenshotPollTimer, ^{
-        NSError *removeError = nil;
-        BOOL requestExists = [[NSFileManager defaultManager] fileExistsAtPath:NNPScreenshotRequestPath];
-        if (!requestExists) return;
-        BOOL removed = [[NSFileManager defaultManager] removeItemAtPath:NNPScreenshotRequestPath error:&removeError];
-        if (!removed) {
-            NNPDiagnosticLog([NSString stringWithFormat:@"SCREENSHOT_CAPTURE request removal failed error=%@", removeError.localizedDescription ?: @"unknown"]);
-            return;
-        }
-        dispatch_async(dispatch_get_main_queue(), ^{
-            NNPScreenshotCaptureOne();
-        });
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        NNPDiagnosticLog(@"SCREENSHOT_CAPTURE poll worker started");
+        NNPScreenshotPoll();
     });
-    dispatch_resume(gNNPScreenshotPollTimer);
 }
