@@ -1657,3 +1657,92 @@ both screenshot requests), followed by one attended lock within the confirmed
 armed interval. No new BackBoard/HID, brightness, panel-power or
 authentication modification is justified by this run. The stable rollback
 state is the production package with `ExperimentalLockedVisible=0`.
+
+### Phase 7.11 — timeout lifecycle and safe-mode containment
+
+Status: state-machine correction `PASS`; first corrected timeout observation
+`FAIL` by user report; final fail-open removal of the private restore path
+deployed `PASS`; final safe-mode regression result `NOT TESTED`.
+
+#### Defect identified
+
+The original Phase 7 controller started its maximum-duration callback when the
+experiment was armed while unlocked. This allowed the 40.6-second deadline to
+expire before the physical side-button lock. Its cleanup also attempted a
+synchronous private display-mode restoration whenever the device was locked.
+The user then reported a repeatable sequence in which the plugin's own
+automatic timeout/display-off behavior was followed by Relaxin safe mode.
+This is important runtime evidence, but it does not identify a crashing
+function by itself.
+
+#### State-machine correction
+
+Commit `a8dce01` separated the lifecycle into an unlocked `Preparing` session
+and a locked-visible `Active` session. The timer now starts only after the
+armed session observes the display-mode substitution and the logical lock is
+true. Each session has a generation and identifier; stale callbacks, unlock,
+preference disable, playback ineligibility and repeated cleanup cancel or
+ignore the timer. Six deterministic model tests passed:
+
+```text
+PASS: 6 Phase 7.11 lifecycle model tests
+```
+
+The corresponding builds compiled successfully: production
+`35829901402`, experimental `35829898434`.
+
+#### First timeout observation
+
+The corrected package was installed and the user performed a direct attended
+test. The display again became extremely dim and entered safe mode when the
+plugin's configured timeout/display-off behavior occurred. The observation is
+recorded as `FAIL`; it is not attributed to one function without a stack.
+
+The following diagnostic evidence was also observed during recovery:
+
+```text
+DISPLAY experiment armed session=S1 duration=40.6s deviceLocked=NO
+DISPLAY activation deferred; device already locked
+```
+
+No historical crash-report search was performed, per the user's instruction.
+
+#### Fail-open correction
+
+Commit `1fde6fc` stopped calling the private mode-0 setter from cleanup and
+made cleanup conditional on fail-open behavior. Because the user continued to
+report the timeout/safe-mode pattern, commit `494d09c` made the containment
+explicit and narrower:
+
+* timeout disarms the display hook before any cleanup;
+* the plugin no longer contains a private mode-0 restore call;
+* the provider reference and restore path were removed;
+* an unarmed display transition calls `%orig` immediately with no diagnostic
+  or mode modification;
+* timeout diagnostics report `autoOff=SUPPRESSED_FAIL_OPEN`;
+* normal display recovery is left to the native display state machine or the
+  next ordinary lock/unlock transition.
+
+This deliberately disables the plugin's forced panel-off action. It prevents
+the plugin from claiming a safe way to power down the OLED; it does not prove
+that the panel remains visible or that native restoration is available at this
+private boundary.
+
+| Check | Result |
+| --- | --- |
+| Phase 7.11 lifecycle model tests | `PASS` — 6/6 |
+| Fail-open source review | `PASS` — no cleanup call to private mode 0 remains |
+| Final production build | `PASS` — run `35831144517` |
+| Final experimental build | `PASS` — run `35831141699` |
+| Final experimental installation | `PASS` |
+| Final SpringBoard injection | `PASS` — PID `25207`, `TweakLoaded=1` |
+| Final rollback preference | `PASS` — `ExperimentalLockedVisible=0` |
+| Final lifecycle after recovery | `PASS` — `LockedVisibleLifecycle=0` |
+| Safe mode after final `494d09c` timeout path | `NOT TESTED` |
+| Plugin-forced panel power-off | `UNSUPPORTED / SUPPRESSED` |
+| Exact cause of prior safe mode | `INSUFFICIENT EVIDENCE` |
+
+The device was left locked with the experiment disabled. No further physical
+timeout test was started automatically. The next bounded test, if performed,
+must verify only that the final fail-open timeout no longer enters safe mode;
+it must not be described as proof of pseudo-AOD or panel-power control.
