@@ -1,0 +1,61 @@
+name: Build Backlight Flow Probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install RootHide build tools
+        run: |
+          set -euo pipefail
+          brew install ldid dpkg
+          git clone --recursive https://github.com/roothide/theos.git "$HOME/roothide-theos"
+          export THEOS="$HOME/roothide-theos"
+          export GITHUB_TOKEN="${{ github.token }}"
+          "$THEOS/bin/install-sdk" latest
+          git -C "$THEOS" rev-parse HEAD | tee theos-commit.txt
+
+      - name: Build passive arm64e probe
+        run: |
+          set -euo pipefail
+          export THEOS="$HOME/roothide-theos"
+          cd BacklightFlowProbe
+          make clean package THEOS_PACKAGE_SCHEME=roothide FINALPACKAGE=1 DEBUG=0 STRIP=1
+
+      - name: Verify package architecture
+        run: |
+          set -euo pipefail
+          package=$(find build-packages-backlight-flow-probe -maxdepth 1 -name '*.deb' -print -quit)
+          test -n "$package"
+          test "$(dpkg-deb -f "$package" Architecture)" = iphoneos-arm64e
+          dpkg-deb -x "$package" /tmp/nnp-backlight-flow-probe
+          dylib=$(find /tmp/nnp-backlight-flow-probe -name NNPBacklightFlowProbe.dylib -print -quit)
+          test -n "$dylib"
+          file "$dylib"
+          xcrun lipo -verify_arch arm64e "$dylib"
+          xcrun vtool -show-build "$dylib"
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backlight-flow-probe-build-diagnostics
+          path: |
+            theos-commit.txt
+          if-no-files-found: ignore
+
+      - name: Upload arm64e probe package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backlight-flow-probe-arm64e
+          path: build-packages-backlight-flow-probe/*.deb
+          if-no-files-found: error
