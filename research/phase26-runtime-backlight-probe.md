@@ -27,6 +27,10 @@ side-button marker with the first later event shows where the observed delay
 occurs. The probe does not request a display mode, alter a BLS request, change
 brightness, or call a BackBoard API.
 
+The constructor also appends a one-line `probe-bootstrap` marker synchronously
+before scheduling the normal asynchronous logger. This tiny marker separates
+an injection failure from a failure in the dispatch-based log writer.
+
 ## Build and installation gate
 
 The probe source is in `BacklightFlowProbe/`. A Clang 22 build for generic

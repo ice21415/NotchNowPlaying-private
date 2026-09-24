@@ -11,6 +11,14 @@ static dispatch_queue_t NNPProbeWriteQueue;
 static NSString * const NNPProbeDirectory = @"/var/mobile/Library/NotchNowPlaying";
 static NSString * const NNPProbeLogPath = @"/var/mobile/Library/NotchNowPlaying/backlight-flow-probe.log";
 
+static void NNPProbeWriteBootstrapMarker(void) {
+    int fd = open(NNPProbeLogPath.UTF8String, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd < 0) return;
+    static const char marker[] = "probe-bootstrap\n";
+    (void)write(fd, marker, sizeof(marker) - 1);
+    close(fd);
+}
+
 static double NNPProbeMonotonicSeconds(void) {
     static mach_timebase_info_data_t timebase;
     static dispatch_once_t once;
@@ -212,6 +220,7 @@ static void NNPProbeLogRequest(NSString *stage, id request) {
 %end
 
 %ctor {
+    NNPProbeWriteBootstrapMarker();
     NNPProbeLog(@"probe-loaded");
 }
 

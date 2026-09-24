@@ -1,6 +1,6 @@
 Package: com.user.nnpbacklightflowprobe
 Name: NNP Backlight Flow Probe
-Version: 0.1.0
+Version: 0.1.1
 Architecture: iphoneos-arm64e
 Description: Passive SpringBoard backlight transition diagnostics.
 Maintainer: USER
