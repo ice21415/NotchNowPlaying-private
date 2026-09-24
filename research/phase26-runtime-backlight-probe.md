@@ -28,8 +28,10 @@ occurs. The probe does not request a display mode, alter a BLS request, change
 brightness, or call a BackBoard API.
 
 The constructor also appends a one-line `probe-bootstrap` marker synchronously
-before scheduling the normal asynchronous logger. This tiny marker separates
-an injection failure from a failure in the dispatch-based log writer.
+before scheduling the normal asynchronous logger. Version `0.1.2` writes both
+the primary file and `/tmp/backlight-flow-probe.log`; the second destination
+distinguishes a SpringBoard sandbox restriction on the primary path from a
+failure to load the tweak.
 
 ## Build and installation gate
 
@@ -73,3 +75,14 @@ SpringBoard remained listed by launchd. This does not yet distinguish a tweak
 injection failure from a sandbox/path write failure. No side-button trace has
 been captured yet, so do not infer anything about the backlight transition
 from this empty log.
+
+## Follow-up user test
+
+After installing `0.1.1`, the user pressed the side button and reported that
+SpringBoard behaved normally (no safe-mode/crash during that attempt). The
+expected log was still absent. The device confirms the package and both probe
+files are installed, and `/var/mobile/Library/NotchNowPlaying` exists and is
+owned by `mobile` with owner-write permission. Because the constructor's
+synchronous marker also did not appear, the attempt yielded no transition
+trace. It is not evidence that the BLS path completed normally: probe loading
+or SpringBoard's ability to write at that path remains unverified.

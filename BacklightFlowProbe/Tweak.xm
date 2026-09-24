@@ -10,13 +10,26 @@
 static dispatch_queue_t NNPProbeWriteQueue;
 static NSString * const NNPProbeDirectory = @"/var/mobile/Library/NotchNowPlaying";
 static NSString * const NNPProbeLogPath = @"/var/mobile/Library/NotchNowPlaying/backlight-flow-probe.log";
+static const char *NNPProbeFallbackLogPath = "/tmp/backlight-flow-probe.log";
+
+static void NNPProbeAppendToPath(const char *path, const void *bytes, size_t length) {
+    int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd < 0) return;
+    const uint8_t *cursor = (const uint8_t *)bytes;
+    size_t remaining = length;
+    while (remaining) {
+        ssize_t written = write(fd, cursor, remaining);
+        if (written <= 0) break;
+        cursor += written;
+        remaining -= (size_t)written;
+    }
+    close(fd);
+}
 
 static void NNPProbeWriteBootstrapMarker(void) {
-    int fd = open(NNPProbeLogPath.UTF8String, O_WRONLY | O_CREAT | O_APPEND, 0644);
-    if (fd < 0) return;
     static const char marker[] = "probe-bootstrap\n";
-    (void)write(fd, marker, sizeof(marker) - 1);
-    close(fd);
+    NNPProbeAppendToPath(NNPProbeLogPath.UTF8String, marker, sizeof(marker) - 1);
+    NNPProbeAppendToPath(NNPProbeFallbackLogPath, marker, sizeof(marker) - 1);
 }
 
 static double NNPProbeMonotonicSeconds(void) {
@@ -43,19 +56,9 @@ static void NNPProbeLog(NSString *event) {
                       NNPProbeMonotonicSeconds(), getpid(), event];
     dispatch_async(NNPProbeWriteQueue, ^{
         mkdir(NNPProbeDirectory.UTF8String, 0755);
-        int fd = open(NNPProbeLogPath.UTF8String,
-                      O_WRONLY | O_CREAT | O_APPEND, 0644);
-        if (fd < 0) return;
         NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
-        const uint8_t *bytes = (const uint8_t *)data.bytes;
-        size_t remaining = data.length;
-        while (remaining) {
-            ssize_t written = write(fd, bytes, remaining);
-            if (written <= 0) break;
-            bytes += written;
-            remaining -= (size_t)written;
-        }
-        close(fd);
+        NNPProbeAppendToPath(NNPProbeLogPath.UTF8String, data.bytes, data.length);
+        NNPProbeAppendToPath(NNPProbeFallbackLogPath, data.bytes, data.length);
     });
 }
 
