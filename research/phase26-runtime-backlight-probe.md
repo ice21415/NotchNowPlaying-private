@@ -57,3 +57,19 @@ display-state transition/watchdog is the next boundary. If target/provider
 modes complete but CA blank/unblank or another callback stalls, the boundary
 is downstream. These are diagnostic interpretations, not assumptions about
 what the phone will emit.
+
+## First device load check
+
+GitHub Actions run `35967754199` built version `0.1.0` on macOS 14 with
+Xcode 15.4 / iOS SDK 17.5. The extracted dylib is arm64e and has the modern
+ABI marker absent from the local Linux link. The package manager installed it
+as `iphoneos-arm64e`, and SpringBoard was resprung.
+
+The expected log was not created after that respring. Version `0.1.1` adds a
+small synchronous `probe-bootstrap` write before starting the asynchronous
+logger; GitHub Actions run `35969142971` rebuilt that package, which was
+installed and resprung as well. The log still did not appear, although
+SpringBoard remained listed by launchd. This does not yet distinguish a tweak
+injection failure from a sandbox/path write failure. No side-button trace has
+been captured yet, so do not infer anything about the backlight transition
+from this empty log.
