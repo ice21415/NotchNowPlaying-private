@@ -142,7 +142,58 @@ SpringBoard boot request (`explanation=boot`); the trace does not yet contain
 `side-button-single-press-action`. No AOD or lock-button conclusion can be
 drawn from this boot sample.
 
-Next capture: with music playing and the display active, press the side button
-once, then leave the phone undisturbed for at least 45 seconds or until the
-failure occurs. The resulting `Trace` preference will preserve the ordered
-SpringBoard/BLS records even if the tweak is disabled after a panic.
+## Side-button baseline capture — 2026-09-25
+
+The user completed the capture with music playing. The probe and
+NotchNowPlaying were both installed in SpringBoard PID `3228`; the diagnostic
+preferences reported `TweakLoaded=1`. The main tweak preferences were:
+
+```text
+Enabled = 1
+ExperimentalLockedVisible = 0
+ExperimentalMaxDuration = 60
+```
+
+Therefore this is a native-lock baseline. It does **not** exercise the
+experimental locked-visible/AOD path.
+
+The recorded sequence was:
+
+```text
+60823.847072 side-button-single-press-action
+60823.850649 springboard-request state=0 sourceEvent=3 explanation="lock button"
+60823.850872 bls-client-request state=0
+60823.851072 bls-host-request state=0
+60823.853080 bls-event eventID=2 state=0 previousState=2
+60823.865936 bls-target-mode mode=0 ramp=0.185
+60823.865984 provider-mode mode=0 duration=0.185
+60824.060661 provider-ca-blanked value=1
+```
+
+The lock-side BLS request began about `3.6 ms` after the side-button marker.
+The state event followed about `6.0 ms` after the marker, the provider was
+asked for mode `0` about `18.9 ms` after it, and CA blanking was recorded about
+`214 ms` after it. This shows the ordinary lock transition completed promptly;
+there is no 33-second delay on this baseline route.
+
+The same SpringBoard process remained alive through a touch wake at
+`60933.099204` and another normal idle-timer lock at `60943.351089`. The trace
+continues through `60943.551008` (about 120 seconds after the side-button
+press) without a watchdog abort or safe-mode transition. This does not explain
+the earlier watchdog incident because the experimental feature was disabled
+for this capture.
+
+The result also rules out a missing side-button marker or a broken probe hook:
+the event, SpringBoard request, BLS client/host handoffs, state transition,
+provider mode and blanking notification were all recorded in order. The
+remaining AOD issue lies beyond this baseline. Phase 7.12 already recorded an
+experimental factor substitution (`0.0 -> 0.05`) while keeping display mode
+`0`, but the user still did not observe the intended AOD. The next analysis
+should focus on what blanks or removes the locked presentation downstream of
+that factor call; changing the side-button action itself is not supported by
+this capture.
+
+For any future active-path capture, first confirm that the installed
+experimental build is present and that `ExperimentalLockedVisible=1` before
+interpreting a direct lock as an AOD-hook failure. Keep the stable rollback
+preference at `0` after a test.
