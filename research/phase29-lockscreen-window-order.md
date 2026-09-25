@@ -46,4 +46,11 @@ SpringBoard presentation container before attempting any hierarchy change.
 
 The read-only diagnostic package is version `0.1.16`. It retains the Phase 28
 60-second experiment bound and the exact BKS blank-request filter. Runtime
-collection on the device remains pending.
+collection during the next lock attempt remains pending.
+
+GitHub Actions run `36122268374` passed on macOS 26 with Xcode `26.6`, Apple
+Clang `21.0.0`, and iPhoneOS SDK `26.5`. The workflow compiled the arm64e
+package and passed its architecture and deployment-target inspection. Version
+`0.1.16` was installed over `0.1.15`, followed by `/usr/bin/sbreload`. The
+device readback reported `TweakLoaded=1`, SpringBoard PID `3847`, and
+`ExperimentalLockedVisible=1`.
