@@ -57,7 +57,8 @@ static NSDictionary *NNPScreenshotImageStats(UIImage *image) {
     size_t sampleWidth = 64;
     size_t sampleHeight = 64;
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-    CGContextRef context = CGBitmapContextCreate(NULL, sampleWidth, sampleHeight, 8, sampleWidth * 4, colorSpace, kCGImageAlphaPremultipliedLast);
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaPremultipliedLast;
+    CGContextRef context = CGBitmapContextCreate(NULL, sampleWidth, sampleHeight, 8, sampleWidth * 4, colorSpace, bitmapInfo);
     CGColorSpaceRelease(colorSpace);
     if (!context) return @{ @"available": @YES, @"width": @(width), @"height": @(height), @"data": @NO };
     CGContextDrawImage(context, CGRectMake(0, 0, sampleWidth, sampleHeight), cgImage);
