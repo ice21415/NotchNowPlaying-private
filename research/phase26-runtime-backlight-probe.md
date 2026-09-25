@@ -85,4 +85,39 @@ files are installed, and `/var/mobile/Library/NotchNowPlaying` exists and is
 owned by `mobile` with owner-write permission. Because the constructor's
 synchronous marker also did not appear, the attempt yielded no transition
 trace. It is not evidence that the BLS path completed normally: probe loading
-or SpringBoard's ability to write at that path remains unverified.
+or SpringBoard's ability to write at that path remained unverified at the time.
+
+## Version 0.1.2 load diagnosis
+
+Version `0.1.2` adds a duplicate output at `/tmp/backlight-flow-probe.log`.
+GitHub Actions run `35970359958` completed successfully with Xcode 15.4 / iOS
+SDK 17.5. Its package metadata is `iphoneos-arm64e`; the extracted dylib is
+Mach-O `arm64e` with PAC support. It was installed over `0.1.1`, and
+`sbreload` completed. Neither the primary file nor the `/tmp` fallback exists
+after reload, including the synchronous constructor marker.
+
+The device's current launchd state identifies the cause. `launchctl print
+system/com.aapl.relaxin.startup` resolves to
+`user/501/com.aapl.relaxin.startup` and reports:
+
+```text
+state = not running
+DISABLE_TWEAKS => 1
+runs = 1
+last exit code = 255
+```
+
+The process is `/.../.jbroot-F8D05C55545CBE97/basebin/jbctl internal startup`.
+`jbctl help` exposes `reboot_userspace` but no supported command to enable
+tweak injection. SpringBoard's current environment has the RootHide
+`systemhook-F8D05C55545CBE97.dylib`, while the Relaxin startup service that
+loads tweaks is stopped. This matches the prior Phase 4A report where the
+InjectionProbe constructor and NotchNowPlaying startup marker also never ran.
+
+Therefore the user's normal side-button attempt did not exercise either
+NotchNowPlaying or this probe. Do not interpret it as a successful AOD or BLS
+transition. The immediate prerequisite for runtime tracing is to re-enable
+tweak injection using Relaxin/RootHide's supported manager control, then
+confirm the startup service is running and that `probe-bootstrap` appears
+before repeating the side-button capture. Do not clear the service environment
+or edit its launchd plist manually.
