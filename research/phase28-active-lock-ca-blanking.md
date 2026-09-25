@@ -83,3 +83,12 @@ The dedicated experimental workflow now runs on macOS 26 and records Xcode,
 Apple Clang, iPhoneOS SDK, and RootHide Theos/SDK revisions. It verifies the
 package architecture is `iphoneos-arm64e` and inspects the dylib build target
 before the package is eligible for device installation.
+
+Run `36120412666` passed with Xcode `26.6`, Apple Clang `21.0.0`, and iOS SDK
+`26.5`. The produced dylib is arm64e with minimum iOS `15.0`; `lipo` and
+`vtool` checks passed. The package is `0.1.15` and is installed on the device.
+After respring, SpringBoard PID `3677` reported `TweakLoaded=1` and the
+experimental preference remained enabled. At the time of the post-install
+check, `PlaybackActive=0`, so no new locked-visible session had armed yet; the
+visual result of the CA-blank suppression experiment is pending an attended
+music-playing side-button press.
