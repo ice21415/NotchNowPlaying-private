@@ -75,6 +75,21 @@ the initial lock transition.
 The code does not change window levels, Cover Sheet controllers, passcode
 views, BacklightServices hooks, or the existing maximum-duration behavior.
 The embedding option is off by default and enabled only by the dedicated
-GitHub Actions experimental build. Runtime visual confirmation on the phone
-is still pending; if the private host classes differ at runtime, diagnostics
-record the failed guard and leave the previous presentation path in place.
+GitHub Actions experimental build. If the private host classes differ at
+runtime, diagnostics record the failed guard and leave the previous
+presentation path in place.
+
+GitHub Actions run `36124504622` passed with Xcode `26.6`, Apple Clang
+`21.0.0`, and iPhoneOS SDK `26.5`. The arm64e and deployment-target checks
+passed. Package `0.1.17` was installed over `0.1.16`, then `sbreload` was
+invoked. The new SpringBoard startup record has PID `3939`.
+
+After the user's lock-screen attempt, the diagnostics plist reported
+`LogicalLockState=1`, `UIVisible=1`, `LockedVisibleLifecycle=3` (active),
+`CoverSheetPresentationActive=1`, and
+`CoverSheetPresentationHost=SBCoverSheetPrimarySlidingViewController`. The
+plugin view was attached to `SBCoverSheetWindow`; the user independently
+confirmed the playback UI is now visible over the same dim Lock Screen.
+The active experiment's timer was configured for 60 seconds, so this build
+still returns to the system's normal display-off behavior at its configured
+maximum duration.
