@@ -80,3 +80,19 @@ getter all reported `2`, with the same event and request pointers through
 `BacklightServices.framework`. Its initially reported IMP offset was PAC-
 signed and therefore invalid. Version `0.1.5` strips pointer authentication
 before calculating the offset.
+
+Version `0.1.5` passed on run `36117670673`: Xcode 26.6, Apple Clang 21.0.0,
+iOS SDK 26.5, minimum iOS 15.0, package architecture `iphoneos-arm64e`, and
+`lipo`/`vtool` checks all succeeded. It replaced `0.1.4`; after respring,
+SpringBoard PID `3483` was alive and the probe wrote `probe-loaded`. The boot
+event's getter resolved to `BacklightServices.framework` at image offset
+`0x1ce88`, after PAC stripping. For the boot request, state argument, raw
+ivar, and getter all equal `2`, and the constructor and consumer use the same
+event/request addresses.
+
+At the time of this check, the main tweak's `ExperimentalLockedVisible`
+preference is `0`. The probe has not yet recorded an active side-button test
+under the experiment. The next useful capture must start with that preference
+enabled while SpringBoard is unlocked and music is playing; press the side
+button once, then wake after a few seconds. That will show whether the active
+feature changes the event state or mode before the native lock completes.
