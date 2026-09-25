@@ -1,29 +1,37 @@
-# Phase 30 — Keep the Unlock Transition Clear
+# Phase 30 — Clear the Plugin Window at Unlock
 
 Date: 2026-09-25
 Target: iPhone 12 mini (`iPhone13,1`), iOS 17.1.2 (21B101), RootHide
 Status: implementation prepared; device verification pending
 
-## User-visible issue
+## Runtime evidence
 
-After the Lock Screen was revealed for wake, an upward unlock swipe briefly
-showed a black overlay. The overlay disappeared as SpringBoard finished
-showing the Home Screen.
+After the user reported that the black frame still appeared during an upward
+unlock, the diagnostics from build 0.1.21 showed this sequence:
 
-## Change
+```text
+11:29:56.919  SpringBoard backlight state=1; Lock Screen masks revealed
+11:29:58.750  logical unlock observed
+11:29:58.751  plugin windowOpaque=YES rootOpaque=YES
+11:29:58.754  Cover Sheet presentation detached
+```
 
-The Cover Sheet host now has a passive `UIPanGestureRecognizer` observer. It
-only begins for a predominantly upward swipe that starts in the bottom 28%
-of the screen while logically locked. It allows simultaneous recognition,
-does not cancel touches, and does not change the gesture's destination.
+The bottom-swipe observer added in 0.1.21 did not log an event. The concrete
+black surface is the plugin's own full-screen window: it remained opaque
+through the logical-unlock snapshot, then the asynchronous reconciliation
+detached the Cover Sheet presentation and applied the transparent appearance.
+This explains the black frame seen immediately before the Home Screen.
 
-When that swipe begins, the tweak marks the unlock transition pending,
-reveals the native Lock Screen, keeps both blackout masks hidden if the
-Cover Sheet is reattached during the animation, and changes the plugin
-window's locked presentation background to transparent. Logical lock and
-authentication state remain owned by SpringBoard. The pending state clears
-when the lock observer reports a lock-state change.
+## Change in 0.1.22
 
-The added diagnostic key `CoverSheetUnlockTransitionPending` and event
-`COVERSHEET upward swipe from bottom detected` make it possible to confirm
-whether the observer sees the gesture. Device verification is pending.
+When the existing lock-state observer first reads `isUILocked == NO`, the
+controller now clears the plugin window, root view, and content background
+synchronously before capturing diagnostics or scheduling reconciliation.
+Lock-state polling now runs every 100 ms in common run-loop modes so touch and
+animation tracking do not defer the observation for a full default-mode
+interval.
+
+This does not alter SpringBoard's lock state, swipe recognizers, or
+authentication. The unused pan observer from 0.1.21 was removed after the
+runtime trace showed it never reported the user's swipe. Device verification
+is pending.

@@ -24,9 +24,10 @@ static BOOL NNPReadLockState(void) {
     _locked = NNPReadLockState();
     NNPDiagnosticLog([NSString stringWithFormat:@"LOCK_OBSERVER started initialLogicalLock=%@", _locked ? @"YES" : @"NO"]);
     __weak typeof(self) weakSelf = self;
-    self.timer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(__unused NSTimer *timer) {
+    self.timer = [NSTimer timerWithTimeInterval:0.1 repeats:YES block:^(__unused NSTimer *timer) {
         [weakSelf poll];
     }];
+    [[NSRunLoop mainRunLoop] addTimer:self.timer forMode:NSRunLoopCommonModes];
 }
 - (void)poll {
     BOOL value = NNPReadLockState();
