@@ -112,11 +112,37 @@ contains `ConstructorReached=YES` (last modified Sep 21). These establish that
 the injection route has worked before, but they do not prove the new
 BacklightFlowProbe constructor ran after the latest reload.
 
-Current diagnosis: the empty files leave two live possibilities: SpringBoard
-did not load this specific dylib, or its sandbox blocked the two direct file
-destinations. Version `0.1.3` adds a synchronous timestamp marker and an
-asynchronous trace sink through the known SpringBoard preferences mechanism
-(`CFPreferences`). After installation, inspect
-`/var/mobile/Library/Preferences/com.user.nnpbacklightflowprobe.plist` first.
-Only after its `Bootstrap` value changes and contains `probe-bootstrap` should
-the side-button trace be treated as valid evidence.
+## Version 0.1.3 runtime load confirmation
+
+GitHub Actions run `36113062064` built version `0.1.3` successfully with
+Xcode 15.4 / iOS SDK 17.5. The package is `iphoneos-arm64e`; the extracted
+dylib is Mach-O `arm64e` with PAC support. It was installed over `0.1.2`, and
+`sbreload` completed.
+
+The direct files at `/var/mobile/Library/NotchNowPlaying` and `/tmp` remain
+absent, but the fallback through `CFPreferences` succeeded. The device created
+`/var/mobile/Library/Preferences/com.user.nnpbacklightflowprobe.plist` at Sep
+25 16:30. Its values include:
+
+```text
+Bootstrap = probe-bootstrap 60650.273399 pid=3228
+Trace = 60650.283178 pid=3228 probe-loaded
+       60652.101416 springboard-request ... explanation=boot
+       60652.101453 bls-client-request ...
+       60652.101475 bls-host-request ...
+       60652.101607 bls-event ... eventID=1 state=2 previousState=2
+       60652.101688 bls-event-request ...
+```
+
+This proves that SpringBoard loaded this probe, its Logos hooks are active,
+and the preferences logger works. It also identifies the reason the earlier
+file-based checks were inconclusive: those two direct file destinations did
+not accept the probe's writes. The captured transition so far is only the
+SpringBoard boot request (`explanation=boot`); the trace does not yet contain
+`side-button-single-press-action`. No AOD or lock-button conclusion can be
+drawn from this boot sample.
+
+Next capture: with music playing and the display active, press the side button
+once, then leave the phone undisturbed for at least 45 seconds or until the
+failure occurs. The resulting `Trace` preference will preserve the ordered
+SpringBoard/BLS records even if the tweak is disabled after a panic.
