@@ -8,6 +8,8 @@
 #import <string.h>
 
 static dispatch_queue_t NNPProbeWriteQueue;
+static NSMutableString *NNPProbePreferenceTrace;
+static CFStringRef const NNPProbePreferencesDomain = CFSTR("com.user.nnpbacklightflowprobe");
 static NSString * const NNPProbeDirectory = @"/var/mobile/Library/NotchNowPlaying";
 static NSString * const NNPProbeLogPath = @"/var/mobile/Library/NotchNowPlaying/backlight-flow-probe.log";
 static const char *NNPProbeFallbackLogPath = "/tmp/backlight-flow-probe.log";
@@ -26,12 +28,6 @@ static void NNPProbeAppendToPath(const char *path, const void *bytes, size_t len
     close(fd);
 }
 
-static void NNPProbeWriteBootstrapMarker(void) {
-    static const char marker[] = "probe-bootstrap\n";
-    NNPProbeAppendToPath(NNPProbeLogPath.UTF8String, marker, sizeof(marker) - 1);
-    NNPProbeAppendToPath(NNPProbeFallbackLogPath, marker, sizeof(marker) - 1);
-}
-
 static double NNPProbeMonotonicSeconds(void) {
     static mach_timebase_info_data_t timebase;
     static dispatch_once_t once;
@@ -39,6 +35,34 @@ static double NNPProbeMonotonicSeconds(void) {
     uint64_t ticks = mach_continuous_time();
     return ((double)ticks * (double)timebase.numer) /
            ((double)timebase.denom * 1000000000.0);
+}
+
+static void NNPProbeWriteBootstrapMarker(void) {
+    NSString *marker = [NSString stringWithFormat:@"probe-bootstrap %.6f pid=%d\n",
+                        NNPProbeMonotonicSeconds(), getpid()];
+    NSData *data = [marker dataUsingEncoding:NSUTF8StringEncoding];
+    NNPProbeAppendToPath(NNPProbeLogPath.UTF8String, data.bytes, data.length);
+    NNPProbeAppendToPath(NNPProbeFallbackLogPath, data.bytes, data.length);
+    CFPreferencesSetAppValue(CFSTR("Bootstrap"), (__bridge CFPropertyListRef)marker,
+                             NNPProbePreferencesDomain);
+    CFPreferencesSetAppValue(CFSTR("Trace"), CFSTR(""), NNPProbePreferencesDomain);
+    (void)CFPreferencesAppSynchronize(NNPProbePreferencesDomain);
+}
+
+static void NNPProbeAppendPreferenceRecord(NSString *line) {
+    if (!NNPProbePreferenceTrace) NNPProbePreferenceTrace = [NSMutableString string];
+    [NNPProbePreferenceTrace appendString:line];
+    if (NNPProbePreferenceTrace.length > 32768) {
+        NSRange nextLine = [NNPProbePreferenceTrace rangeOfString:@"\n"];
+        if (nextLine.location != NSNotFound) {
+            [NNPProbePreferenceTrace deleteCharactersInRange:
+                NSMakeRange(0, nextLine.location + nextLine.length)];
+        }
+    }
+    CFPreferencesSetAppValue(CFSTR("Trace"),
+                             (__bridge CFPropertyListRef)NNPProbePreferenceTrace,
+                             NNPProbePreferencesDomain);
+    (void)CFPreferencesAppSynchronize(NNPProbePreferencesDomain);
 }
 
 static void NNPProbeEnsureWriteQueue(void) {
@@ -59,6 +83,7 @@ static void NNPProbeLog(NSString *event) {
         NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
         NNPProbeAppendToPath(NNPProbeLogPath.UTF8String, data.bytes, data.length);
         NNPProbeAppendToPath(NNPProbeFallbackLogPath, data.bytes, data.length);
+        NNPProbeAppendPreferenceRecord(line);
     });
 }
 

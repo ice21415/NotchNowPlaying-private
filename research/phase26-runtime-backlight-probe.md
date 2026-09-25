@@ -87,37 +87,36 @@ synchronous marker also did not appear, the attempt yielded no transition
 trace. It is not evidence that the BLS path completed normally: probe loading
 or SpringBoard's ability to write at that path remained unverified at the time.
 
-## Version 0.1.2 load diagnosis
+## Version 0.1.2 load diagnosis and correction
 
-Version `0.1.2` adds a duplicate output at `/tmp/backlight-flow-probe.log`.
-GitHub Actions run `35970359958` completed successfully with Xcode 15.4 / iOS
-SDK 17.5. Its package metadata is `iphoneos-arm64e`; the extracted dylib is
-Mach-O `arm64e` with PAC support. It was installed over `0.1.1`, and
-`sbreload` completed. Neither the primary file nor the `/tmp` fallback exists
-after reload, including the synchronous constructor marker.
+Version `0.1.2` added `/tmp/backlight-flow-probe.log`. GitHub Actions run
+`35970359958` built it successfully with Xcode 15.4 / iOS SDK 17.5. The package
+is `iphoneos-arm64e`; the extracted dylib is Mach-O `arm64e` with PAC support.
+It was installed over `0.1.1`, and `sbreload` completed. Neither the primary
+file nor the `/tmp` fallback appeared.
 
-The device's current launchd state identifies the cause. `launchctl print
-system/com.aapl.relaxin.startup` resolves to
-`user/501/com.aapl.relaxin.startup` and reports:
+An earlier interpretation blamed the absent marker on disabled global tweak
+injection because `com.aapl.relaxin.startup` showed `DISABLE_TWEAKS=1` and
+exit 255. That was incorrect. Relaxin's shipped startup plist sets
+`DISABLE_TWEAKS=1` for the one-shot `jbctl internal startup` helper itself;
+its stopped state after running does not establish SpringBoard injection
+status. Relaxin's app code exposes a separate `Tweak Injection` control backed
+by the RootHide `.safe_mode` marker. The device currently has no
+`/var/jb/basebin/.safe_mode`, matching the user's report that injection is on.
 
-```text
-state = not running
-DISABLE_TWEAKS => 1
-runs = 1
-last exit code = 255
-```
+The current RootHide Manager configuration lists third-party app IDs and no
+`com.apple.springboard` entry. SpringBoard has the expected RootHide
+`DYLD_INSERT_LIBRARIES` systemhook. A previous crash report also showed
+`NNPInjectionProbe.dylib` loaded in SpringBoard, and its preferences domain
+contains `ConstructorReached=YES` (last modified Sep 21). These establish that
+the injection route has worked before, but they do not prove the new
+BacklightFlowProbe constructor ran after the latest reload.
 
-The process is `/.../.jbroot-F8D05C55545CBE97/basebin/jbctl internal startup`.
-`jbctl help` exposes `reboot_userspace` but no supported command to enable
-tweak injection. SpringBoard's current environment has the RootHide
-`systemhook-F8D05C55545CBE97.dylib`, while the Relaxin startup service that
-loads tweaks is stopped. This matches the prior Phase 4A report where the
-InjectionProbe constructor and NotchNowPlaying startup marker also never ran.
-
-Therefore the user's normal side-button attempt did not exercise either
-NotchNowPlaying or this probe. Do not interpret it as a successful AOD or BLS
-transition. The immediate prerequisite for runtime tracing is to re-enable
-tweak injection using Relaxin/RootHide's supported manager control, then
-confirm the startup service is running and that `probe-bootstrap` appears
-before repeating the side-button capture. Do not clear the service environment
-or edit its launchd plist manually.
+Current diagnosis: the empty files leave two live possibilities: SpringBoard
+did not load this specific dylib, or its sandbox blocked the two direct file
+destinations. Version `0.1.3` adds a synchronous timestamp marker and an
+asynchronous trace sink through the known SpringBoard preferences mechanism
+(`CFPreferences`). After installation, inspect
+`/var/mobile/Library/Preferences/com.user.nnpbacklightflowprobe.plist` first.
+Only after its `Bootstrap` value changes and contains `probe-bootstrap` should
+the side-button trace be treated as valid evidence.
