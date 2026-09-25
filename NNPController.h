@@ -4,4 +4,5 @@
 - (void)install;
 - (void)refreshDiagnosticUI;
 - (void)setLocked:(BOOL)locked;
+- (void)revealCoverSheetControlsForWake;
 @end

@@ -59,6 +59,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 @property(nonatomic) BOOL locked;
 @property(nonatomic) BOOL installed;
 - (void)revealCoverSheetControls;
+- (void)revealCoverSheetControlsWithReason:(NSString *)reason;
 @end
 
 @implementation NNPController
@@ -266,6 +267,13 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"COVERSHEET blackout=%@ controlsRevealed=%@ reason=player-area-tap", self.coverSheetBlackoutRevealed ? @"NO" : @"YES", self.coverSheetBlackoutRevealed ? @"YES" : @"NO"]);
 }
 - (void)revealCoverSheetControls {
+    [self revealCoverSheetControlsWithReason:@"bottom-center-unlock-gesture"];
+}
+- (void)revealCoverSheetControlsForWake {
+    if (!self.locked || !self.coverSheetHostView || !self.coverSheetBlackoutView) return;
+    [self revealCoverSheetControlsWithReason:@"side-button-wake"];
+}
+- (void)revealCoverSheetControlsWithReason:(NSString *)reason {
     if (!self.coverSheetHostView || !self.coverSheetBlackoutView || self.coverSheetBlackoutRevealed) return;
     self.coverSheetBlackoutRevealed = YES;
     self.coverSheetBlackoutView.hidden = YES;
@@ -273,7 +281,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     NNPDiagnosticSetBool(@"CoverSheetBlackoutActive", NO);
     NNPDiagnosticSetBool(@"StatusBarBlackoutActive", NO);
     NNPDiagnosticSetBool(@"CoverSheetControlsRevealed", YES);
-    NNPDiagnosticLogTransition(@"COVERSHEET blackout=NO controlsRevealed=YES reason=bottom-center-unlock-gesture");
+    NNPDiagnosticLogTransition([NSString stringWithFormat:@"COVERSHEET blackout=NO controlsRevealed=YES reason=%@", reason ?: @"unknown"]);
 }
 - (BOOL)shouldPresentInsideCoverSheet {
 #if NNP_ENABLE_COVERSHEET_PRESENTATION && NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE

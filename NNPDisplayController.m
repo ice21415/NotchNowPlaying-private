@@ -8,15 +8,21 @@
 #define NNP_PHASE7_DRY_RUN 0
 #endif
 
+#if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
+#import "NNPController.h"
+#endif
+
 #if !NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE || NNP_PHASE7_DRY_RUN == 1
 void NNPPhase7SetExperimentArmed(__unused BOOL armed) {}
 void NNPPhase7SetSessionID(__unused NSString *sessionID) {}
 void NNPPhase7NotifyBacklightFactorSubstitution(__unused float originalFactor, __unused float dimmedFactor) {}
+void NNPPhase7NotifyDisplayWake(void) {}
 void NNPPhase7StartIncidentDiagnostics(void) {}
 BOOL NNPPhase7EnsureBacklightFactorHook(void) { return NO; }
 void NNPPhase7UpdateForensicsState(__unused NSInteger lifecycleState, __unused BOOL deviceLocked, __unused BOOL modeSubstitutionObserved, __unused BOOL timerActive) {}
 #elif NNP_PHASE7_DRY_RUN == 2
 void NNPPhase7NotifyBacklightFactorSubstitution(__unused float originalFactor, __unused float dimmedFactor) {}
+void NNPPhase7NotifyDisplayWake(void) {}
 #endif
 
 @interface NNPDisplayController ()
@@ -43,6 +49,14 @@ void NNPPhase7NotifyBacklightFactorSubstitution(float originalFactor, float dimm
     dispatch_async(dispatch_get_main_queue(), ^{
         [weakController noteBacklightFactorSubstitutionFrom:originalFactor to:dimmedFactor];
     });
+}
+
+void NNPPhase7NotifyDisplayWake(void) {
+    void (^reveal)(void) = ^{
+        [[NNPController sharedController] revealCoverSheetControlsForWake];
+    };
+    if ([NSThread isMainThread]) reveal();
+    else dispatch_async(dispatch_get_main_queue(), reveal);
 }
 #endif
 

@@ -27,6 +27,7 @@ static _Atomic(bool) gNNPPhase7DeviceLocked = false;
 static _Atomic(bool) gNNPPhase7ModeSubstitutionObserved = false;
 static _Atomic(bool) gNNPPhase7TimerActive = false;
 static _Atomic(bool) gNNPPhase7BlankRequestSuppressed = false;
+static _Atomic(bool) gNNPPhase7RevealOnWakePending = false;
 static _Atomic(int) gNNPPhase7LastRequestedMode = -1;
 static _Atomic(int) gNNPPhase7LastForwardedMode = -1;
 static _Atomic(uint64_t) gNNPPhase7LastTransitionTicks = 0;
@@ -46,11 +47,14 @@ static _Atomic(float) gNNPPhase7SubstitutedFactor = 0.0f;
 #if NNP_PHASE7_DRY_RUN != 2
 typedef void (*NNPProviderTransitionIMP)(id self, SEL _cmd, long long mode, double duration);
 typedef void (*NNPSetScreenBlankedFunction)(BOOL blanked);
+typedef void (*NNPBacklightStateIMP)(id self, SEL _cmd, NSInteger state, NSInteger source, BOOL animated, id completion);
 static NNPProviderTransitionIMP gNNPOriginalProviderTransition;
 static NNPSetScreenBlankedFunction gNNPOriginalSetScreenBlanked;
+static NNPBacklightStateIMP gNNPOriginalBacklightState;
 static void NNPPhase7BacklightFactorReplacement(int displayID, float factor, float fadeDuration);
 static void NNPPhase7ProviderTransitionReplacement(id self, SEL _cmd, long long mode, double duration);
 static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked);
+static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger state, NSInteger source, BOOL animated, id completion);
 
 BOOL NNPPhase7EnsureBacklightFactorHook(void) {
     static dispatch_once_t onceToken;
@@ -98,6 +102,28 @@ BOOL NNPPhase7EnsureBacklightFactorHook(void) {
             NNPDiagnosticLog(@"PHASE7 BKS screen-blank hook unavailable; experiment remains disarmed");
         }
 
+        Class backlightControllerClass = NSClassFromString(@"SBBacklightController");
+        SEL backlightStateSelector = NSSelectorFromString(@"setBacklightState:source:animated:completion:");
+        Method backlightStateMethod = backlightControllerClass
+            ? class_getInstanceMethod(backlightControllerClass, backlightStateSelector) : NULL;
+        BOOL wakeHookInstalled = NO;
+        if (backlightStateMethod) {
+            IMP original = method_getImplementation(backlightStateMethod);
+            const char *types = method_getTypeEncoding(backlightStateMethod);
+            if (class_addMethod(backlightControllerClass, backlightStateSelector,
+                                (IMP)NNPPhase7BacklightStateReplacement, types)) {
+                gNNPOriginalBacklightState = (NNPBacklightStateIMP)original;
+            } else {
+                gNNPOriginalBacklightState = (NNPBacklightStateIMP)method_setImplementation(
+                    backlightStateMethod, (IMP)NNPPhase7BacklightStateReplacement);
+            }
+            wakeHookInstalled = gNNPOriginalBacklightState != NULL;
+        }
+        NNPDiagnosticSetBool(@"Phase7WakeHookInstalled", wakeHookInstalled);
+        NNPDiagnosticLog([NSString stringWithFormat:@"PHASE7 SpringBoard backlight wake hook %@ selector=%@",
+                          wakeHookInstalled ? @"installed" : @"unavailable",
+                          NSStringFromSelector(backlightStateSelector)]);
+
         Class providerClass = NSClassFromString(@"BLSHBacklightOSInterfaceProvider");
         SEL transitionSelector = NSSelectorFromString(@"transitionToDisplayMode:withDuration:");
         Method transitionMethod = providerClass ? class_getInstanceMethod(providerClass, transitionSelector) : NULL;
@@ -139,6 +165,9 @@ void NNPPhase7UpdateForensicsState(NSInteger lifecycleState, BOOL deviceLocked, 
     atomic_store_explicit(&gNNPPhase7DeviceLocked, deviceLocked, memory_order_relaxed);
     atomic_store_explicit(&gNNPPhase7ModeSubstitutionObserved, modeSubstitutionObserved, memory_order_relaxed);
     atomic_store_explicit(&gNNPPhase7TimerActive, timerActive, memory_order_relaxed);
+    if (!deviceLocked) {
+        atomic_store_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_release);
+    }
 }
 
 void NNPPhase7StartIncidentDiagnostics(void) {
@@ -193,6 +222,7 @@ void NNPPhase7SetExperimentArmed(BOOL armed) {
             original(YES);
         }
     }
+    if (!armed) atomic_store_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_release);
 #endif
     NNPDiagnosticSetBool(@"Phase7ExperimentArmed", armed);
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 armed=%@ session=%@", armed ? @"YES" : @"NO", gNNPPhase7SessionID ?: @"none"]);
@@ -250,6 +280,7 @@ static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
         atomic_load_explicit(&gNNPPhase7Armed, memory_order_relaxed);
     if (suppress) {
         atomic_store_explicit(&gNNPPhase7BlankRequestSuppressed, true, memory_order_release);
+        atomic_store_explicit(&gNNPPhase7RevealOnWakePending, true, memory_order_release);
         uintptr_t callerOffset = callerInfo.dli_fbase
             ? (uintptr_t)caller - (uintptr_t)callerInfo.dli_fbase : 0;
         NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 suppressed BKS screen blank request caller=%s+0x%llx; BLS state and display mode unchanged session=%@",
@@ -260,8 +291,32 @@ static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
     }
     if (!blanked) {
         atomic_store_explicit(&gNNPPhase7BlankRequestSuppressed, false, memory_order_release);
+        bool shouldReveal = fromBacklightServicesHost &&
+            atomic_load_explicit(&gNNPPhase7Armed, memory_order_acquire) &&
+            atomic_load_explicit(&gNNPPhase7DeviceLocked, memory_order_acquire) &&
+            atomic_exchange_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_acq_rel);
+        if (shouldReveal) {
+            NNPDiagnosticLogTransition(@"PHASE7 BLS unblank received after suppressed lock blank; revealing native Lock Screen");
+            NNPPhase7NotifyDisplayWake();
+        }
     }
     original(blanked);
+}
+
+static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger state, NSInteger source, BOOL animated, id completion) {
+    NNPBacklightStateIMP original = gNNPOriginalBacklightState;
+    if (!original) return;
+
+    bool shouldReveal = state == 1 &&
+        atomic_load_explicit(&gNNPPhase7Armed, memory_order_acquire) &&
+        atomic_load_explicit(&gNNPPhase7DeviceLocked, memory_order_acquire) &&
+        atomic_exchange_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_acq_rel);
+    if (shouldReveal) {
+        NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 SpringBoard backlight state=%ld source=%ld; revealing native Lock Screen before wake transition",
+                                   (long)state, (long)source]);
+        NNPPhase7NotifyDisplayWake();
+    }
+    original(self, _cmd, state, source, animated, completion);
 }
 
 static void NNPPhase7ProviderTransitionReplacement(id self, SEL _cmd, long long mode, double duration) {
