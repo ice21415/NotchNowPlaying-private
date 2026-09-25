@@ -10,7 +10,7 @@ construction and consumption so the difference can be localized.
 
 ## Probe changes
 
-Probe version `0.1.4` adds these read-only observations:
+Probe version `0.1.5` adds these read-only observations:
 
 - Request object addresses at SpringBoard, BLS client, BLS host, event
   initializer, and transition-machine boundaries.
@@ -68,3 +68,15 @@ identified the resulting dylib as Mach-O arm64e, but its `lipo` verification
 command used the input argument in the wrong position and stopped before
 upload. The workflow now uses Apple's documented input-first command form;
 the package still has not been installed.
+
+Version `0.1.4` subsequently passed compilation, package metadata validation,
+`lipo` arm64e validation, and `vtool` build-version inspection on run
+`36117007430`. It was installed on the device and SpringBoard PID `3390`
+remained alive; `TweakLoaded` was confirmed by the probe's `probe-loaded`
+record. The boot request had pointer `0x2837a81b0` and
+`requestedActivityState=1`; its event constructor argument, raw `_state`, and
+getter all reported `2`, with the same event and request pointers through
+`performEvent:`. The getter implementation resolved to Apple's
+`BacklightServices.framework`. Its initially reported IMP offset was PAC-
+signed and therefore invalid. Version `0.1.5` strips pointer authentication
+before calculating the offset.

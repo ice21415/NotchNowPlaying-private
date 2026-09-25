@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
+#import <ptrauth.h>
 #import <dlfcn.h>
 #import <fcntl.h>
 #import <mach/mach_time.h>
@@ -177,15 +178,16 @@ static NSString *NNPProbeImplementationSummary(Class cls, SEL selector) {
     if (!method) return @"<missing-method>";
 
     IMP implementation = method_getImplementation(method);
+    IMP strippedImplementation = ptrauth_strip(implementation, ptrauth_key_function_pointer);
     const char *encoding = method_getTypeEncoding(method);
     Dl_info info = {0};
-    BOOL resolved = dladdr((const void *)implementation, &info) != 0;
+    BOOL resolved = dladdr((const void *)strippedImplementation, &info) != 0;
     uintptr_t offset = 0;
     if (resolved && info.dli_fbase) {
-        offset = (uintptr_t)implementation - (uintptr_t)info.dli_fbase;
+        offset = (uintptr_t)strippedImplementation - (uintptr_t)info.dli_fbase;
     }
-    return [NSString stringWithFormat:@"imp=%p types=%s image=%s offset=0x%llx",
-            (void *)implementation, encoding ?: "?",
+    return [NSString stringWithFormat:@"imp=%p strippedIMP=%p types=%s image=%s offset=0x%llx",
+            (void *)implementation, (void *)strippedImplementation, encoding ?: "?",
             (resolved && info.dli_fname) ? info.dli_fname : "<unresolved>",
             (unsigned long long)offset];
 }
