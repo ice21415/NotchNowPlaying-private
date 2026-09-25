@@ -14,6 +14,9 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 #ifndef NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
 #define NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE 0
 #endif
+#ifndef NNP_ENABLE_COVERSHEET_PRESENTATION
+#define NNP_ENABLE_COVERSHEET_PRESENTATION 0
+#endif
 
 @interface NNPController ()
 @property(nonatomic, strong) NNPMediaController *media;
@@ -24,6 +27,8 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 @property(nonatomic, strong) NNPView *view;
 @property(nonatomic, strong) NNPState *state;
 @property(nonatomic, strong) NSTimer *progressTimer;
+@property(nonatomic, weak) UIView *coverSheetHostView;
+@property(nonatomic) BOOL coverSheetHostUnavailableRecorded;
 @property(nonatomic) BOOL locked;
 @property(nonatomic) BOOL installed;
 @end
@@ -90,7 +95,8 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         for (UIView *subview in self.view.subviews) {
             [contentViews addObject:[NSString stringWithFormat:@"%@ hidden=%@ alpha=%.2f frame=%@", NSStringFromClass(subview.class), subview.hidden ? @"YES" : @"NO", subview.alpha, NSStringFromCGRect(subview.frame)]];
         }
-        NNPDiagnosticLogTransition([NSString stringWithFormat:@"WINDOW_DIAGNOSTIC pluginContent attached=%@ viewHidden=%@ viewAlpha=%.2f viewBounds=%@ childViews=[%@]", self.view.window == self.window ? @"YES" : @"NO", self.view.hidden ? @"YES" : @"NO", self.view.alpha, NSStringFromCGRect(self.view.bounds), [contentViews componentsJoinedByString:@" | "]]);
+        NSString *attachment = self.view.window == self.window ? @"plugin-window" : (self.coverSheetHostView && self.view.superview == self.coverSheetHostView ? @"coversheet-root" : @"other-or-detached");
+        NNPDiagnosticLogTransition([NSString stringWithFormat:@"WINDOW_DIAGNOSTIC pluginContent attachment=%@ attachedWindow=%@ viewHidden=%@ viewAlpha=%.2f viewBounds=%@ childViews=[%@]", attachment, self.view.window ? NSStringFromClass(self.view.window.class) : @"none", self.view.hidden ? @"YES" : @"NO", self.view.alpha, NSStringFromCGRect(self.view.bounds), [contentViews componentsJoinedByString:@" | "]]);
     }
 }
 - (void)install {
@@ -122,6 +128,79 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     self.window = scene ? [[UIWindow alloc] initWithWindowScene:scene] : [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds]; self.window.frame = UIScreen.mainScreen.bounds; self.window.windowLevel = UIWindowLevelStatusBar + 1.0; self.window.backgroundColor = UIColor.clearColor; self.window.userInteractionEnabled = NO; self.window.clipsToBounds = YES;
     UIViewController *root = [UIViewController new]; root.view.backgroundColor = UIColor.clearColor; root.view.opaque = NO; root.view.userInteractionEnabled = NO; self.view = [[NNPView alloc] initWithFrame:self.window.bounds]; self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight; [root.view addSubview:self.view]; self.window.rootViewController = root; self.window.hidden = YES;
 }
+- (UIView *)visibleCoverSheetRootView {
+#if NNP_ENABLE_COVERSHEET_PRESENTATION && NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
+    UIWindowScene *scene = self.window.windowScene;
+    if (!scene || scene.activationState == UISceneActivationStateUnattached) return nil;
+    Class expectedControllerClass = NSClassFromString(@"SBCoverSheetPrimarySlidingViewController");
+    if (!expectedControllerClass) return nil;
+    for (UIWindow *candidate in scene.windows) {
+        if (candidate.hidden || candidate.alpha <= 0.01 ||
+            ![NSStringFromClass(candidate.class) isEqualToString:@"SBCoverSheetWindow"] ||
+            ![candidate.rootViewController isKindOfClass:expectedControllerClass] ||
+            !candidate.rootViewController.isViewLoaded) continue;
+        UIView *rootView = candidate.rootViewController.view;
+        if (rootView.window != candidate || CGRectIsEmpty(rootView.bounds)) continue;
+        return rootView;
+    }
+#endif
+    return nil;
+}
+- (BOOL)shouldPresentInsideCoverSheet {
+#if NNP_ENABLE_COVERSHEET_PRESENTATION && NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
+    return self.locked && self.preferences.experimentalLockedVisible && self.preferences.enabled &&
+        self.preferences.showOnLockScreen && self.state.hasTrack && self.state.playing &&
+        [self isAllowedMedia:self.state] && self.display.lifecycleState == NNPDisplayLifecycleStateActive;
+#else
+    return NO;
+#endif
+}
+- (void)updateCoverSheetPresentation {
+#if NNP_ENABLE_COVERSHEET_PRESENTATION && NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
+    BOOL eligible = [self shouldPresentInsideCoverSheet];
+    UIView *target = eligible ? [self visibleCoverSheetRootView] : nil;
+    if (eligible && !target && !self.coverSheetHostUnavailableRecorded) {
+        self.coverSheetHostUnavailableRecorded = YES;
+        NNPDiagnosticSetBool(@"CoverSheetPresentationActive", NO);
+        NNPDiagnosticSetString(@"CoverSheetPresentationHost", @"unavailable-or-unexpected-class");
+        NNPDiagnosticLogTransition(@"COVERSHEET presentation skipped; expected visible SBCoverSheetWindow with SBCoverSheetPrimarySlidingViewController in the plugin scene");
+    } else if (target) {
+        self.coverSheetHostUnavailableRecorded = NO;
+        NNPDiagnosticSetString(@"CoverSheetPresentationHost", @"SBCoverSheetPrimarySlidingViewController");
+    } else if (!eligible) {
+        self.coverSheetHostUnavailableRecorded = NO;
+    }
+    if (target == self.coverSheetHostView && self.view.superview == target) return;
+
+    UIView *previousHost = self.coverSheetHostView;
+    if (self.coverSheetHostView || self.view.superview != self.window.rootViewController.view) {
+        [self.view removeFromSuperview];
+        self.coverSheetHostView = nil;
+        UIView *pluginRoot = self.window.rootViewController.view;
+        self.view.frame = pluginRoot.bounds;
+        self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [pluginRoot addSubview:self.view];
+        if (!target) {
+            NNPDiagnosticSetBool(@"CoverSheetPresentationActive", NO);
+            NNPDiagnosticLogTransition([NSString stringWithFormat:@"COVERSHEET presentation detached reason=%@", previousHost ? @"eligibility-ended-or-host-replaced" : @"host-unavailable"]);
+        }
+    }
+
+    if (target) {
+        [self.view removeFromSuperview];
+        self.view.frame = target.bounds;
+        self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        self.view.backgroundColor = UIColor.clearColor;
+        self.view.userInteractionEnabled = NO;
+        [target addSubview:self.view];
+        self.coverSheetHostView = target;
+        [self.view setNeedsLayout];
+        [self.view layoutIfNeeded];
+        NNPDiagnosticSetBool(@"CoverSheetPresentationActive", YES);
+        NNPDiagnosticLogTransition([NSString stringWithFormat:@"COVERSHEET presentation attached host=%@ hostBounds=%@ viewFrame=%@ interactive=NO", NSStringFromClass(target.window.rootViewController.class), NSStringFromCGRect(target.bounds), NSStringFromCGRect(self.view.frame)]);
+    }
+#endif
+}
 - (void)applyLockedBackground {
     BOOL dedicatedBlackPresentation = self.locked;
     UIColor *background = dedicatedBlackPresentation ? UIColor.blackColor : UIColor.clearColor;
@@ -129,7 +208,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     self.window.backgroundColor = background;
     self.window.rootViewController.view.opaque = dedicatedBlackPresentation;
     self.window.rootViewController.view.backgroundColor = background;
-    self.view.backgroundColor = background;
+    self.view.backgroundColor = self.coverSheetHostView && self.view.superview == self.coverSheetHostView ? UIColor.clearColor : background;
     NNPDiagnosticSetBool(@"PresentationDedicatedBlack", dedicatedBlackPresentation);
     [self recordPresentationDiagnostics:dedicatedBlackPresentation ? @"black-presentation" : @"transparent-presentation"];
 }
@@ -142,17 +221,18 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER reconcile locked=%@ show=%@ experimentEligible=%@ lifecycle=%ld", self.locked ? @"YES" : @"NO", show ? @"YES" : @"NO", experimentEligible ? @"YES" : @"NO", (long)self.display.lifecycleState]);
         if (experimentEligible) { [self.display startLockedVisibleMode]; } else { [self.display stopLockedVisibleMode]; }
 #endif
-        if (!show) { [self hide]; return; } [self makeWindow]; [self applyLockedBackground]; [self applyViewPreferences]; [self.view updateState:self.state];
+        if (!show) { [self hide]; return; } [self makeWindow]; [self applyViewPreferences]; [self.view updateState:self.state]; [self updateCoverSheetPresentation]; [self applyLockedBackground];
         if (self.window.hidden) { self.window.hidden = NO; NSLog(@"%@ overlay shown", NNPLog); NNPDiagnosticLogTransition(@"CONTROLLER window visible=YES"); [self recordPresentationDiagnostics:@"window-visible"]; } [self startProgressTimer]; [self updateProgress]; }); }
 - (void)hide {
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
     [self.display stopLockedVisibleMode];
 #endif
+    [self updateCoverSheetPresentation];
     if (!self.window.hidden) { self.window.hidden = YES; NSLog(@"%@ overlay hidden", NNPLog); NNPDiagnosticLogTransition(@"CONTROLLER window visible=NO cleanup"); }
     [self.progressTimer invalidate]; self.progressTimer = nil;
 }
 - (void)startProgressTimer { if (self.progressTimer) return; __weak typeof(self) weakSelf = self; self.progressTimer = [NSTimer scheduledTimerWithTimeInterval:self.preferences.progressUpdateInterval repeats:YES block:^(__unused NSTimer *timer) { [weakSelf updateProgress]; }]; }
-- (void)updateProgress { if (!self.state || self.window.hidden) return; NSTimeInterval elapsed = self.state.elapsed; if (self.state.playing && self.state.playbackRate > 0.0 && self.state.timestamp > 0.0) elapsed += MAX(0.0, NSDate.date.timeIntervalSince1970 - self.state.timestamp) * self.state.playbackRate; if (self.state.duration > 0.0) elapsed = MIN(self.state.duration, MAX(0.0, elapsed)); [self.view updateElapsed:elapsed duration:self.state.duration playing:self.state.playing]; }
+- (void)updateProgress { if (!self.state || self.window.hidden) return; [self updateCoverSheetPresentation]; NSTimeInterval elapsed = self.state.elapsed; if (self.state.playing && self.state.playbackRate > 0.0 && self.state.timestamp > 0.0) elapsed += MAX(0.0, NSDate.date.timeIntervalSince1970 - self.state.timestamp) * self.state.playbackRate; if (self.state.duration > 0.0) elapsed = MIN(self.state.duration, MAX(0.0, elapsed)); [self.view updateElapsed:elapsed duration:self.state.duration playing:self.state.playing]; }
 - (void)dealloc {
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
     [_display stopLockedVisibleMode];

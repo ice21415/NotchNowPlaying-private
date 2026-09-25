@@ -9,13 +9,13 @@ Input: user photo `IMG_3859.HEIC` after the Phase 28 experiment
 The photographed display shows the iOS Lock Screen: the lock glyph, status
 indicators, bottom flashlight and camera controls, and home indicator are
 visible. No NotchNowPlaying artwork, title, artist, or progress is visible.
-The panel is still faintly emitting light. The photo is consistent with the
-reported later full dim/off transition and does not show a Safe Mode screen.
+The panel is still faintly emitting light. The user reports the latest attempt
+looks the same as the photo. Neither shows a Safe Mode screen.
 
 This confirms that suppressing the BacklightServices-originated CA blank
 request did not replace the regular Lock Screen with the plugin's AOD view.
-It does not by itself distinguish a SpringBoard window layered above the
-plugin from the plugin window being attached to a different scene.
+The runtime window-order data below shows the plugin view is in the same scene
+but behind the Lock Screen window.
 
 The Phase 28 60-second bound ends the experiment and restores the BKS blank
 overlay when the device is still locked. That matches the later transition to
@@ -44,9 +44,14 @@ SpringBoard presentation container before attempting any hierarchy change.
 
 ## Build
 
-The read-only diagnostic package is version `0.1.16`. It retains the Phase 28
-60-second experiment bound and the exact BKS blank-request filter. Runtime
-collection during the next lock attempt remains pending.
+The read-only diagnostic package was version `0.1.16`. Captured runtime data
+confirms there is one application scene and that the plugin view and its music
+content are visible and attached. The visible window order is
+`SBCoverSheetWindow` at level `1050`, secure wallpaper at `1035`, then the
+plugin `UIWindow` at `1001`. The Cover Sheet is the key window and uses
+`SBCoverSheetPrimarySlidingViewController` as its root controller. This
+explains why UIKit reports the plugin UI as visible while it is absent from
+the photographed screen.
 
 GitHub Actions run `36122268374` passed on macOS 26 with Xcode `26.6`, Apple
 Clang `21.0.0`, and iPhoneOS SDK `26.5`. The workflow compiled the arm64e
@@ -54,3 +59,22 @@ package and passed its architecture and deployment-target inspection. Version
 `0.1.16` was installed over `0.1.15`, followed by `/usr/bin/sbreload`. The
 device readback reported `TweakLoaded=1`, SpringBoard PID `3847`, and
 `ExperimentalLockedVisible=1`.
+
+## Phase 30 — bounded Cover Sheet attachment experiment
+
+Version `0.1.17` adds an opt-in presentation path for the Phase 7 experimental
+build. Once the existing dimmed-lock experiment is active, the controller
+looks only in its own scene for a visible, exact `SBCoverSheetWindow` whose
+root controller is `SBCoverSheetPrimarySlidingViewController`. It moves the
+existing transparent, non-interactive `NNPView` into that controller's root
+view, where the higher Lock Screen window can render it. It moves the view
+back to the plugin window when eligibility ends, on hide, and during unlock.
+The progress timer retries discovery if the Lock Screen window appears after
+the initial lock transition.
+
+The code does not change window levels, Cover Sheet controllers, passcode
+views, BacklightServices hooks, or the existing maximum-duration behavior.
+The embedding option is off by default and enabled only by the dedicated
+GitHub Actions experimental build. Runtime visual confirmation on the phone
+is still pending; if the private host classes differ at runtime, diagnostics
+record the failed guard and leave the previous presentation path in place.
