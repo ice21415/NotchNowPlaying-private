@@ -7,6 +7,7 @@
 #import "NNPDisplayController.h"
 #import "NNPDiagnostics.h"
 #import <UIKit/UIKit.h>
+#import <math.h>
 
 static NSString * const NNPLog = @"[NotchNowPlaying]";
 static NSString * const NNPSpotify = @"com.spotify.client";
@@ -40,7 +41,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 }
 @end
 
-@interface NNPController ()
+@interface NNPController () <UIGestureRecognizerDelegate>
 @property(nonatomic, strong) NNPMediaController *media;
 @property(nonatomic, strong) NNPLockStateController *lockState;
 @property(nonatomic, strong) NNPDisplayController *display;
@@ -54,12 +55,15 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 @property(nonatomic, strong) UIView *statusBarBlackoutView;
 @property(nonatomic, weak) UIWindow *statusBarBlackoutWindow;
 @property(nonatomic, strong) UIButton *coverSheetControlsToggle;
+@property(nonatomic, strong) UIPanGestureRecognizer *coverSheetUnlockGestureObserver;
 @property(nonatomic) BOOL coverSheetHostUnavailableRecorded;
 @property(nonatomic) BOOL coverSheetBlackoutRevealed;
+@property(nonatomic) BOOL coverSheetUnlockTransitionPending;
 @property(nonatomic) BOOL locked;
 @property(nonatomic) BOOL installed;
 - (void)revealCoverSheetControls;
 - (void)revealCoverSheetControlsWithReason:(NSString *)reason;
+- (void)observeCoverSheetUnlockGesture:(UIPanGestureRecognizer *)recognizer;
 @end
 
 @implementation NNPController
@@ -147,7 +151,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 }
 - (void)preferencesChanged:(NSNotification *)note { [self.preferences reload]; [self reconcile]; }
 - (void)refreshDiagnosticUI { [self reconcile]; }
-- (void)setLocked:(BOOL)locked { if (_locked == locked) { NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER lock state unchanged value=%@", locked ? @"YES" : @"NO"]); return; } _locked = locked; NNPDiagnosticSetBool(@"LogicalLockState", locked); NSLog(@"%@ device %@", NNPLog, locked ? @"locked" : @"unlocked"); NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER self.locked=%@", locked ? @"YES" : @"NO"]); [self recordPresentationDiagnostics:locked ? @"logical-lock" : @"logical-unlock"]; [self reconcile]; }
+- (void)setLocked:(BOOL)locked { if (_locked == locked) { NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER lock state unchanged value=%@", locked ? @"YES" : @"NO"]); return; } _locked = locked; self.coverSheetUnlockTransitionPending = NO; NNPDiagnosticSetBool(@"CoverSheetUnlockTransitionPending", NO); NNPDiagnosticSetBool(@"LogicalLockState", locked); NSLog(@"%@ device %@", NNPLog, locked ? @"locked" : @"unlocked"); NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER self.locked=%@", locked ? @"YES" : @"NO"]); [self recordPresentationDiagnostics:locked ? @"logical-lock" : @"logical-unlock"]; [self reconcile]; }
 - (void)receive:(NNPState *)state { dispatch_async(dispatch_get_main_queue(), ^{ self.state = state; NNPDiagnosticSetString(@"ActiveMediaBundle", state.bundleIdentifier ?: @""); NNPDiagnosticSetBool(@"SpotifyDetected", [self isAllowedMedia:state]); NNPDiagnosticSetBool(@"PlaybackActive", state.playing); [self reconcile]; }); }
 - (BOOL)isAllowedMedia:(NNPState *)state { if (!state.bundleIdentifier.length) return NO; return !self.preferences.spotifyOnly || [state.bundleIdentifier isEqualToString:NNPSpotify]; }
 - (BOOL)shouldShow { NNPState *state = self.state; if (!self.preferences.enabled || !state.hasTrack || ![self isAllowedMedia:state]) return NO; if (self.locked && !self.preferences.showOnLockScreen) return NO; if (!self.locked && !self.preferences.showWhileUnlocked) return NO; if (!state.playing && self.preferences.hideWhenPaused) return NO; return YES; }
@@ -185,6 +189,10 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     return nil;
 }
 - (void)removeCoverSheetBlackout {
+    if (self.coverSheetUnlockGestureObserver.view) {
+        [self.coverSheetUnlockGestureObserver.view removeGestureRecognizer:self.coverSheetUnlockGestureObserver];
+    }
+    self.coverSheetUnlockGestureObserver = nil;
     [self.coverSheetBlackoutView removeFromSuperview];
     self.coverSheetBlackoutView = nil;
     [self.statusBarBlackoutView removeFromSuperview];
@@ -210,7 +218,8 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     }
     if (self.coverSheetBlackoutView.superview != host) [host addSubview:self.coverSheetBlackoutView];
     self.coverSheetBlackoutView.frame = host.bounds;
-    self.coverSheetBlackoutView.hidden = self.coverSheetBlackoutRevealed;
+    BOOL keepControlsVisible = self.coverSheetBlackoutRevealed || self.coverSheetUnlockTransitionPending;
+    self.coverSheetBlackoutView.hidden = keepControlsVisible;
 
     UIWindow *statusWindow = [self visibleStatusBarWindow];
     if (self.statusBarBlackoutWindow != statusWindow) {
@@ -229,9 +238,9 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         if (self.statusBarBlackoutView.superview != statusWindow) [statusWindow addSubview:self.statusBarBlackoutView];
         CGFloat statusMaskHeight = MIN(40.0, CGRectGetHeight(statusWindow.bounds));
         self.statusBarBlackoutView.frame = CGRectMake(0.0, 0.0, CGRectGetWidth(statusWindow.bounds), statusMaskHeight);
-        self.statusBarBlackoutView.hidden = self.coverSheetBlackoutRevealed;
+        self.statusBarBlackoutView.hidden = keepControlsVisible;
         [statusWindow bringSubviewToFront:self.statusBarBlackoutView];
-        NNPDiagnosticSetBool(@"StatusBarBlackoutActive", !self.coverSheetBlackoutRevealed);
+        NNPDiagnosticSetBool(@"StatusBarBlackoutActive", !keepControlsVisible);
     } else {
         [self.statusBarBlackoutView removeFromSuperview];
         self.statusBarBlackoutView = nil;
@@ -248,16 +257,56 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     }
     self.coverSheetControlsToggle.frame = CGRectMake(0.0, 40.0, CGRectGetWidth(host.bounds), 82.0);
     self.coverSheetControlsToggle.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    self.coverSheetControlsToggle.hidden = self.coverSheetUnlockTransitionPending;
     if (self.coverSheetControlsToggle.superview != host) [host addSubview:self.coverSheetControlsToggle];
+
+    if (!self.coverSheetUnlockGestureObserver) {
+        self.coverSheetUnlockGestureObserver = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(observeCoverSheetUnlockGesture:)];
+        self.coverSheetUnlockGestureObserver.delegate = self;
+        self.coverSheetUnlockGestureObserver.cancelsTouchesInView = NO;
+        self.coverSheetUnlockGestureObserver.delaysTouchesBegan = NO;
+        self.coverSheetUnlockGestureObserver.delaysTouchesEnded = NO;
+    }
+    if (self.coverSheetUnlockGestureObserver.view != host) {
+        [self.coverSheetUnlockGestureObserver.view removeGestureRecognizer:self.coverSheetUnlockGestureObserver];
+        [host addGestureRecognizer:self.coverSheetUnlockGestureObserver];
+    }
 
     [host bringSubviewToFront:self.coverSheetBlackoutView];
     [host bringSubviewToFront:self.view];
     [host bringSubviewToFront:self.coverSheetControlsToggle];
-    NNPDiagnosticSetBool(@"CoverSheetBlackoutActive", !self.coverSheetBlackoutRevealed);
-    NNPDiagnosticSetBool(@"CoverSheetControlsRevealed", self.coverSheetBlackoutRevealed);
+    NNPDiagnosticSetBool(@"CoverSheetBlackoutActive", !keepControlsVisible);
+    NNPDiagnosticSetBool(@"CoverSheetControlsRevealed", keepControlsVisible);
+}
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
+    if (gestureRecognizer != self.coverSheetUnlockGestureObserver || !self.locked || self.coverSheetUnlockTransitionPending) return NO;
+    UIView *host = self.coverSheetHostView;
+    if (!host || gestureRecognizer.view != host) return NO;
+    CGPoint point = [touch locationInView:host];
+    CGFloat height = CGRectGetHeight(host.bounds);
+    CGFloat bottomZoneHeight = MIN(220.0, height * 0.28);
+    return point.y >= height - bottomZoneHeight;
+}
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+    return gestureRecognizer == self.coverSheetUnlockGestureObserver || otherGestureRecognizer == self.coverSheetUnlockGestureObserver;
+}
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
+    if (gestureRecognizer != self.coverSheetUnlockGestureObserver || !self.locked || self.coverSheetUnlockTransitionPending) return NO;
+    UIPanGestureRecognizer *pan = (UIPanGestureRecognizer *)gestureRecognizer;
+    CGPoint velocity = [pan velocityInView:gestureRecognizer.view];
+    return velocity.y < -80.0 && fabs(velocity.y) > fabs(velocity.x) * 1.15;
+}
+- (void)observeCoverSheetUnlockGesture:(UIPanGestureRecognizer *)recognizer {
+    if (recognizer.state != UIGestureRecognizerStateBegan || !self.locked || self.coverSheetUnlockTransitionPending) return;
+    self.coverSheetUnlockTransitionPending = YES;
+    NNPDiagnosticSetBool(@"CoverSheetUnlockTransitionPending", YES);
+    NNPDiagnosticLogTransition(@"COVERSHEET upward swipe from bottom detected; keeping blackout masks hidden through unlock transition");
+    self.coverSheetControlsToggle.hidden = YES;
+    [self revealCoverSheetControlsWithReason:@"bottom-up-unlock-transition"];
+    [self applyLockedBackground];
 }
 - (void)toggleCoverSheetBlackout:(__unused UIButton *)sender {
-    if (!self.coverSheetHostView || !self.coverSheetBlackoutView) return;
+    if (!self.coverSheetHostView || !self.coverSheetBlackoutView || self.coverSheetUnlockTransitionPending) return;
     self.coverSheetBlackoutRevealed = !self.coverSheetBlackoutRevealed;
     self.coverSheetBlackoutView.hidden = self.coverSheetBlackoutRevealed;
     self.statusBarBlackoutView.hidden = self.coverSheetBlackoutRevealed;
@@ -346,7 +395,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 #endif
 }
 - (void)applyLockedBackground {
-    BOOL dedicatedBlackPresentation = self.locked;
+    BOOL dedicatedBlackPresentation = self.locked && !self.coverSheetUnlockTransitionPending;
     UIColor *background = dedicatedBlackPresentation ? UIColor.blackColor : UIColor.clearColor;
     self.window.opaque = dedicatedBlackPresentation;
     self.window.backgroundColor = background;
