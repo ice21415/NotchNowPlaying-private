@@ -93,3 +93,20 @@ confirmed the playback UI is now visible over the same dim Lock Screen.
 The active experiment's timer was configured for 60 seconds, so this build
 still returns to the system's normal display-off behavior at its configured
 maximum duration.
+
+## Phase 31 — black Lock Screen surroundings
+
+Version `0.1.18` adds a black view over the Cover Sheet root and a 40-point
+black strip over the status bar window. The NNP player view is kept above the
+Cover Sheet mask. Tapping the player area toggles the native Lock Screen
+controls and status icons so the user can reveal the passcode UI when needed;
+unlocking or ending the experiment removes both masks. The black view also
+blocks touches on the hidden Flashlight and Camera corners, while allowing
+other Lock Screen gestures through. The display backlight factor is unchanged,
+so the entire panel, including the player pixels, still follows the existing
+dimmed factor.
+
+This is an OLED-oriented mask: hidden Lock Screen pixels become black while
+the player artwork and text remain rendered. It does not hide unrelated
+higher-level system alert or recording-indicator windows. Device validation
+of mask visibility and the tap-to-reveal path is pending.

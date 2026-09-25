@@ -18,6 +18,21 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 #define NNP_ENABLE_COVERSHEET_PRESENTATION 0
 #endif
 
+@interface NNPBlackoutView : UIView
+@end
+
+@implementation NNPBlackoutView
+- (UIView *)hitTest:(CGPoint)point withEvent:(__unused UIEvent *)event {
+    CGFloat width = CGRectGetWidth(self.bounds);
+    CGFloat height = CGRectGetHeight(self.bounds);
+    CGFloat cornerWidth = MIN(120.0, width * 0.34);
+    CGFloat cornerHeight = MIN(170.0, height * 0.24);
+    BOOL bottomCorner = point.y >= height - cornerHeight &&
+        (point.x <= cornerWidth || point.x >= width - cornerWidth);
+    return bottomCorner ? self : nil;
+}
+@end
+
 @interface NNPController ()
 @property(nonatomic, strong) NNPMediaController *media;
 @property(nonatomic, strong) NNPLockStateController *lockState;
@@ -28,7 +43,12 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 @property(nonatomic, strong) NNPState *state;
 @property(nonatomic, strong) NSTimer *progressTimer;
 @property(nonatomic, weak) UIView *coverSheetHostView;
+@property(nonatomic, strong) UIView *coverSheetBlackoutView;
+@property(nonatomic, strong) UIView *statusBarBlackoutView;
+@property(nonatomic, weak) UIWindow *statusBarBlackoutWindow;
+@property(nonatomic, strong) UIButton *coverSheetControlsToggle;
 @property(nonatomic) BOOL coverSheetHostUnavailableRecorded;
+@property(nonatomic) BOOL coverSheetBlackoutRevealed;
 @property(nonatomic) BOOL locked;
 @property(nonatomic) BOOL installed;
 @end
@@ -146,6 +166,95 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 #endif
     return nil;
 }
+- (UIWindow *)visibleStatusBarWindow {
+#if NNP_ENABLE_COVERSHEET_PRESENTATION && NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
+    for (UIWindow *candidate in self.window.windowScene.windows) {
+        if (!candidate.hidden && candidate.alpha > 0.01 &&
+            [NSStringFromClass(candidate.class) isEqualToString:@"SBStatusBarWindow"]) return candidate;
+    }
+#endif
+    return nil;
+}
+- (void)removeCoverSheetBlackout {
+    [self.coverSheetBlackoutView removeFromSuperview];
+    self.coverSheetBlackoutView = nil;
+    [self.statusBarBlackoutView removeFromSuperview];
+    self.statusBarBlackoutView = nil;
+    self.statusBarBlackoutWindow = nil;
+    [self.coverSheetControlsToggle removeFromSuperview];
+    self.coverSheetControlsToggle = nil;
+    self.coverSheetBlackoutRevealed = NO;
+    NNPDiagnosticSetBool(@"CoverSheetBlackoutActive", NO);
+    NNPDiagnosticSetBool(@"StatusBarBlackoutActive", NO);
+    NNPDiagnosticSetBool(@"CoverSheetControlsRevealed", NO);
+}
+- (void)installCoverSheetBlackoutForHost:(UIView *)host {
+    if (!self.coverSheetBlackoutView) {
+        self.coverSheetBlackoutView = [[NNPBlackoutView alloc] initWithFrame:host.bounds];
+        self.coverSheetBlackoutView.backgroundColor = UIColor.blackColor;
+        self.coverSheetBlackoutView.opaque = YES;
+        self.coverSheetBlackoutView.userInteractionEnabled = YES;
+        self.coverSheetBlackoutView.accessibilityElementsHidden = YES;
+        self.coverSheetBlackoutView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    }
+    if (self.coverSheetBlackoutView.superview != host) [host addSubview:self.coverSheetBlackoutView];
+    self.coverSheetBlackoutView.frame = host.bounds;
+    self.coverSheetBlackoutView.hidden = self.coverSheetBlackoutRevealed;
+
+    UIWindow *statusWindow = [self visibleStatusBarWindow];
+    if (self.statusBarBlackoutWindow != statusWindow) {
+        [self.statusBarBlackoutView removeFromSuperview];
+        self.statusBarBlackoutView = nil;
+        self.statusBarBlackoutWindow = statusWindow;
+    }
+    if (statusWindow) {
+        if (!self.statusBarBlackoutView) {
+            self.statusBarBlackoutView = [[UIView alloc] initWithFrame:CGRectZero];
+            self.statusBarBlackoutView.backgroundColor = UIColor.blackColor;
+            self.statusBarBlackoutView.opaque = YES;
+            self.statusBarBlackoutView.userInteractionEnabled = NO;
+            self.statusBarBlackoutView.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+        }
+        if (self.statusBarBlackoutView.superview != statusWindow) [statusWindow addSubview:self.statusBarBlackoutView];
+        CGFloat statusMaskHeight = MIN(40.0, CGRectGetHeight(statusWindow.bounds));
+        self.statusBarBlackoutView.frame = CGRectMake(0.0, 0.0, CGRectGetWidth(statusWindow.bounds), statusMaskHeight);
+        self.statusBarBlackoutView.hidden = self.coverSheetBlackoutRevealed;
+        [statusWindow bringSubviewToFront:self.statusBarBlackoutView];
+        NNPDiagnosticSetBool(@"StatusBarBlackoutActive", !self.coverSheetBlackoutRevealed);
+    } else {
+        [self.statusBarBlackoutView removeFromSuperview];
+        self.statusBarBlackoutView = nil;
+        self.statusBarBlackoutWindow = nil;
+        NNPDiagnosticSetBool(@"StatusBarBlackoutActive", NO);
+    }
+
+    if (!self.coverSheetControlsToggle) {
+        self.coverSheetControlsToggle = [UIButton buttonWithType:UIButtonTypeCustom];
+        self.coverSheetControlsToggle.backgroundColor = UIColor.clearColor;
+        self.coverSheetControlsToggle.accessibilityLabel = @"切換鎖定畫面控制項";
+        self.coverSheetControlsToggle.accessibilityHint = @"點按播放資訊區，顯示或隱藏原鎖定畫面內容";
+        [self.coverSheetControlsToggle addTarget:self action:@selector(toggleCoverSheetBlackout:) forControlEvents:UIControlEventTouchUpInside];
+    }
+    self.coverSheetControlsToggle.frame = CGRectMake(0.0, 40.0, CGRectGetWidth(host.bounds), 82.0);
+    self.coverSheetControlsToggle.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    if (self.coverSheetControlsToggle.superview != host) [host addSubview:self.coverSheetControlsToggle];
+
+    [host bringSubviewToFront:self.coverSheetBlackoutView];
+    [host bringSubviewToFront:self.view];
+    [host bringSubviewToFront:self.coverSheetControlsToggle];
+    NNPDiagnosticSetBool(@"CoverSheetBlackoutActive", !self.coverSheetBlackoutRevealed);
+    NNPDiagnosticSetBool(@"CoverSheetControlsRevealed", self.coverSheetBlackoutRevealed);
+}
+- (void)toggleCoverSheetBlackout:(__unused UIButton *)sender {
+    if (!self.coverSheetHostView || !self.coverSheetBlackoutView) return;
+    self.coverSheetBlackoutRevealed = !self.coverSheetBlackoutRevealed;
+    self.coverSheetBlackoutView.hidden = self.coverSheetBlackoutRevealed;
+    self.statusBarBlackoutView.hidden = self.coverSheetBlackoutRevealed;
+    NNPDiagnosticSetBool(@"CoverSheetBlackoutActive", !self.coverSheetBlackoutRevealed);
+    NNPDiagnosticSetBool(@"StatusBarBlackoutActive", self.statusBarBlackoutView && !self.coverSheetBlackoutRevealed);
+    NNPDiagnosticSetBool(@"CoverSheetControlsRevealed", self.coverSheetBlackoutRevealed);
+    NNPDiagnosticLogTransition([NSString stringWithFormat:@"COVERSHEET blackout=%@ controlsRevealed=%@", self.coverSheetBlackoutRevealed ? @"NO" : @"YES", self.coverSheetBlackoutRevealed ? @"YES" : @"NO"]);
+}
 - (BOOL)shouldPresentInsideCoverSheet {
 #if NNP_ENABLE_COVERSHEET_PRESENTATION && NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
     return self.locked && self.preferences.experimentalLockedVisible && self.preferences.enabled &&
@@ -170,10 +279,14 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     } else if (!eligible) {
         self.coverSheetHostUnavailableRecorded = NO;
     }
-    if (target == self.coverSheetHostView && self.view.superview == target) return;
+    if (target == self.coverSheetHostView && self.view.superview == target) {
+        [self installCoverSheetBlackoutForHost:target];
+        return;
+    }
 
     UIView *previousHost = self.coverSheetHostView;
     if (self.coverSheetHostView || self.view.superview != self.window.rootViewController.view) {
+        [self removeCoverSheetBlackout];
         [self.view removeFromSuperview];
         self.coverSheetHostView = nil;
         UIView *pluginRoot = self.window.rootViewController.view;
@@ -194,10 +307,13 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         self.view.userInteractionEnabled = NO;
         [target addSubview:self.view];
         self.coverSheetHostView = target;
+        [self installCoverSheetBlackoutForHost:target];
         [self.view setNeedsLayout];
         [self.view layoutIfNeeded];
         NNPDiagnosticSetBool(@"CoverSheetPresentationActive", YES);
-        NNPDiagnosticLogTransition([NSString stringWithFormat:@"COVERSHEET presentation attached host=%@ hostBounds=%@ viewFrame=%@ interactive=NO", NSStringFromClass(target.window.rootViewController.class), NSStringFromCGRect(target.bounds), NSStringFromCGRect(self.view.frame)]);
+        NNPDiagnosticLogTransition([NSString stringWithFormat:@"COVERSHEET presentation attached host=%@ hostBounds=%@ viewFrame=%@ interactive=NO blackout=YES statusBarWindow=%@", NSStringFromClass(target.window.rootViewController.class), NSStringFromCGRect(target.bounds), NSStringFromCGRect(self.view.frame), self.statusBarBlackoutWindow ? @"masked-top-40pt" : @"unavailable"]);
+    } else if (previousHost || self.coverSheetBlackoutView || self.statusBarBlackoutView) {
+        [self removeCoverSheetBlackout];
     }
 #endif
 }
