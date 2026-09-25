@@ -62,3 +62,9 @@ SDK 26.5. Clang rejected both a direct Objective-C-to-byte-pointer cast and a
 direct bridge to a typed byte pointer under ARC. The probe now bridges the
 event to `const void *` first, then reads the ivar bytes; neither failed build
 produced an installable package.
+
+The third build compiled and linked successfully. The workflow's `file` check
+identified the resulting dylib as Mach-O arm64e, but its `lipo` verification
+command used the input argument in the wrong position and stopped before
+upload. The workflow now uses Apple's documented input-first command form;
+the package still has not been installed.
