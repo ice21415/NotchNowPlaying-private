@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
+#import <dlfcn.h>
 #import <fcntl.h>
 #import <mach/mach_time.h>
 #import <sys/stat.h>
@@ -154,7 +155,7 @@ static NSString *NNPProbeReadGetter(id object, NSString *name) {
 static void NNPProbeLogRequest(NSString *stage, id request) {
     NSString *className = request ? NSStringFromClass(object_getClass(request)) : @"<nil>";
     if (!request) {
-        NNPProbeLog([NSString stringWithFormat:@"%@ requestClass=%@", stage, className]);
+        NNPProbeLog([NSString stringWithFormat:@"%@ request=%p requestClass=%@", stage, (void *)request, className]);
         return;
     }
     NSArray<NSString *> *fields = @[
@@ -166,8 +167,43 @@ static void NNPProbeLogRequest(NSString *stage, id request) {
         [values addObject:[NSString stringWithFormat:@"%@=%@", field,
                           NNPProbeReadGetter(request, field)]];
     }
-    NNPProbeLog([NSString stringWithFormat:@"%@ requestClass=%@ %@",
-                 stage, className, [values componentsJoinedByString:@" "]]);
+    NNPProbeLog([NSString stringWithFormat:@"%@ request=%p requestClass=%@ %@",
+                 stage, (void *)request, className, [values componentsJoinedByString:@" "]]);
+}
+
+static NSString *NNPProbeImplementationSummary(Class cls, SEL selector) {
+    if (!cls || !selector) return @"<missing-class-or-selector>";
+    Method method = class_getInstanceMethod(cls, selector);
+    if (!method) return @"<missing-method>";
+
+    IMP implementation = method_getImplementation(method);
+    const char *encoding = method_getTypeEncoding(method);
+    Dl_info info = {0};
+    BOOL resolved = dladdr((const void *)implementation, &info) != 0;
+    uintptr_t offset = 0;
+    if (resolved && info.dli_fbase) {
+        offset = (uintptr_t)implementation - (uintptr_t)info.dli_fbase;
+    }
+    return [NSString stringWithFormat:@"imp=%p types=%s image=%s offset=0x%llx",
+            (void *)implementation, encoding ?: "?",
+            (resolved && info.dli_fname) ? info.dli_fname : "<unresolved>",
+            (unsigned long long)offset];
+}
+
+static NSString *NNPProbeRawEventState(id event) {
+    if (!event || ![NSStringFromClass(object_getClass(event)) isEqualToString:@"BLSBacklightChangeEvent"]) {
+        return @"<not-concrete-event>";
+    }
+    Ivar stateIvar = class_getInstanceVariable(object_getClass(event), "_state");
+    const char *stateEncoding = stateIvar ? ivar_getTypeEncoding(stateIvar) : NULL;
+    if (!stateIvar || !stateEncoding || strcmp(stateEncoding, "q") != 0) {
+        return @"<state-ivar-unavailable>";
+    }
+    ptrdiff_t offset = ivar_getOffset(stateIvar);
+    int64_t rawState = 0;
+    memcpy(&rawState, (const uint8_t *)event + offset, sizeof(rawState));
+    return [NSString stringWithFormat:@"%lld@+0x%llx", (long long)rawState,
+            (unsigned long long)offset];
 }
 
 %hook SBBacklightController
@@ -201,14 +237,47 @@ static void NNPProbeLogRequest(NSString *stage, id request) {
 
 - (void)performEvent:(id)event {
     id changeRequest = NNPProbeReadObjectGetter(event, @"changeRequest");
-    NNPProbeLog([NSString stringWithFormat:@"bls-event class=%@ eventID=%@ state=%@ previousState=%@ requestClass=%@",
+    Class eventClass = event ? object_getClass(event) : Nil;
+    NNPProbeLog([NSString stringWithFormat:@"bls-event event=%p class=%@ eventID=%@ state=%@ rawState=%@ previousState=%@ request=%p requestClass=%@ stateGetter={%@}",
+                 (void *)event,
                  event ? NSStringFromClass(object_getClass(event)) : @"<nil>",
                  NNPProbeReadGetter(event, @"eventID"),
                  NNPProbeReadGetter(event, @"state"),
+                 NNPProbeRawEventState(event),
                  NNPProbeReadGetter(event, @"previousState"),
-                 changeRequest ? NSStringFromClass(object_getClass(changeRequest)) : @"<nil>"]);
+                 (void *)changeRequest,
+                 changeRequest ? NSStringFromClass(object_getClass(changeRequest)) : @"<nil>",
+                 NNPProbeImplementationSummary(eventClass, NSSelectorFromString(@"state"))]);
     if (changeRequest) NNPProbeLogRequest(@"bls-event-request", changeRequest);
     %orig;
+}
+
+%end
+
+%hook BLSBacklightChangeEvent
+
+- (id)initWithEventID:(unsigned long long)eventID
+                state:(long long)state
+        previousState:(long long)previousState
+        changeRequest:(id)request {
+    NNPProbeLog([NSString stringWithFormat:
+        @"bls-event-init begin receiver=%p eventID=%llu stateArgument=%lld previousStateArgument=%lld request=%p",
+        (void *)self, eventID, state, previousState, (void *)request]);
+    if (request) NNPProbeLogRequest(@"bls-event-init-request", request);
+
+    id result = %orig(eventID, state, previousState, request);
+    Class eventClass = result ? object_getClass(result) : Nil;
+    NNPProbeLog([NSString stringWithFormat:
+        @"bls-event-init end result=%p class=%@ stateArgument=%lld getterState=%@ rawState=%@ previousState=%@ request=%p stateGetter={%@}",
+        (void *)result,
+        result ? NSStringFromClass(eventClass) : @"<nil>",
+        state,
+        NNPProbeReadGetter(result, @"state"),
+        NNPProbeRawEventState(result),
+        NNPProbeReadGetter(result, @"previousState"),
+        (void *)NNPProbeReadObjectGetter(result, @"changeRequest"),
+        NNPProbeImplementationSummary(eventClass, NSSelectorFromString(@"state"))]);
+    return result;
 }
 
 %end
