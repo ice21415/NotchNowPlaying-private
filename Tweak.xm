@@ -2,6 +2,7 @@
 #import <unistd.h>
 #import "NNPController.h"
 #import "NNPDiagnostics.h"
+#import "NNPDisplayController.h"
 #ifndef NNP_PHASE2J_READONLY_RUNTIME
 #define NNP_PHASE2J_READONLY_RUNTIME 0
 #endif
@@ -85,6 +86,7 @@ static __attribute__((noinline)) void NNPLocalNoop(void) {
 #else
     NNPDiagnosticRecordStartup([NSString stringWithFormat:@"TWEAK_LOADED pid=%d process=%@ bundle=%@", getpid(), NSProcessInfo.processInfo.processName ?: @"unknown", NSBundle.mainBundle.bundleIdentifier ?: @"unknown"]);
 #endif
+    NNPPhase7StartIncidentDiagnostics();
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
 #if NNP_PHASE4A_DELAYED_NOOP_TEST
         return;

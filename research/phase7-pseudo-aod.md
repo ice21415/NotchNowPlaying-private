@@ -1746,3 +1746,37 @@ The device was left locked with the experiment disabled. No further physical
 timeout test was started automatically. The next bounded test, if performed,
 must verify only that the final fail-open timeout no longer enters safe mode;
 it must not be described as proof of pseudo-AOD or panel-power control.
+
+### Phase 7.12 — factor-hook deployment and lock result
+
+Status: RootHide injection correction `PASS`; factor substitution `PASS`;
+visible AOD `FAIL / NOT DEMONSTRATED`.
+
+Build `0.1.14` replaced the additional Logos provider group with an Objective-C
+runtime method replacement and resolves `MSHookFunction` with `dlsym`. This
+removed the experimental dylib's `/Library/Frameworks/CydiaSubstrate.framework`
+load command. The package then loaded in SpringBoard PID `2925`; diagnostics
+reported `TWEAK_LOADED`, `Phase7FactorHookInstalled=1`, and `UIVisible=1`.
+
+During the attended lock attempt, the device log recorded:
+
+```text
+PHASE7 HID backlight factor 0.000000 -> 0.050000; displayMode remained 0
+DISPLAY deviceLocked=YES
+DISPLAY locked-visible active
+CONTROLLER presentation snapshot ... UIKitBrightness=0.4096
+  windowVisible=YES windowOpaque=YES rootOpaque=YES expectedBlack=YES
+```
+
+The user reported that the screen still went directly to the ordinary locked
+state and did not show the intended AOD. The factor hook and logical lock
+transition therefore worked, but a nonzero factor alone did not establish
+visible-after-lock behavior. There is no screenshot or independent panel-power
+measurement for this run, so the exact lower-level blanking owner remains
+unidentified. No mode-4 substitution or additional display-policy setter was
+attempted.
+
+For recovery, `ExperimentalLockedVisible` was set to `0` and SpringBoard was
+restarted. Final diagnostics reported PID `2993` matching `TWEAK_LOADED`,
+`UIVisible=1`, and the experiment preference disabled. The experimental code
+remains installed for further development but is inactive by default.

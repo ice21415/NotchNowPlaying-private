@@ -16,3 +16,4 @@ FOUNDATION_EXPORT BOOL NNPDiagnosticArmExists(BOOL *readable);
 FOUNDATION_EXPORT BOOL NNPDiagnosticConsumeArm(void);
 FOUNDATION_EXPORT NSString *NNPDiagnosticBeginTransition(NSString *reason);
 FOUNDATION_EXPORT void NNPDiagnosticLogTransition(NSString *event);
+FOUNDATION_EXPORT void NNPDiagnosticLogCallStack(NSString *event, NSUInteger maximumFrames);

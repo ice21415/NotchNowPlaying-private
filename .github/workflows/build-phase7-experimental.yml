@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-26
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -22,6 +22,15 @@ jobs:
           export GITHUB_TOKEN="${{ github.token }}"
           "$THEOS/bin/install-sdk" latest
           git -C "$THEOS" rev-parse HEAD | tee theos-commit.txt
+          find "$THEOS/sdks" -maxdepth 1 -type d -name '*.sdk' -print | sort | tee theos-sdks.txt
+
+      - name: Record Apple compiler and SDK versions
+        run: |
+          set -euo pipefail
+          xcodebuild -version | tee xcode-version.txt
+          xcrun --find clang | tee clang-path.txt
+          xcrun clang --version | tee clang-version.txt
+          xcrun --sdk iphoneos --show-sdk-version | tee iphoneos-sdk-version.txt
 
       - name: Build Phase 7 experimental package
         run: |
@@ -39,6 +48,19 @@ jobs:
             NNP_PHASE2J_READONLY_RUNTIME=0 \
             2>&1 | tee build.log
 
+      - name: Verify package architecture
+        run: |
+          set -euo pipefail
+          package=$(find build-packages -maxdepth 1 -name '*.deb' -print -quit)
+          test -n "$package"
+          test "$(dpkg-deb -f "$package" Architecture)" = iphoneos-arm64e
+          dpkg-deb -x "$package" /tmp/notchnowplaying-phase7
+          dylib=$(find /tmp/notchnowplaying-phase7 -name NotchNowPlaying.dylib -print -quit)
+          test -n "$dylib"
+          file "$dylib"
+          xcrun lipo "$dylib" -verify_arch arm64e
+          xcrun vtool -show-build "$dylib"
+
       - name: Upload experimental diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -47,6 +69,11 @@ jobs:
           path: |
             build.log
             theos-commit.txt
+            theos-sdks.txt
+            xcode-version.txt
+            clang-path.txt
+            clang-version.txt
+            iphoneos-sdk-version.txt
           if-no-files-found: ignore
 
       - name: Upload experimental RootHide package

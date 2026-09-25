@@ -16,11 +16,22 @@ compact artwork, title, artist, and progress bar around the notch.
 Continuous locked-screen display retention is not enabled in the current
 release. This is not native AOD.
 
-Phase 5 keeps `NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE` disabled by default.
-The awake-screen presentation remains available, but the locked-visible
-controller reports `UNSUPPORTED` because Phase 4 did not establish a safe,
-reversible way to retain panel visibility after the system's zero-factor
-BackBoard HID handoff. See `research/phase5-locked-visible-experiments.md`.
+`NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE` remains disabled by default. In the
+experimental build, a bounded trial substitutes a dim backlight factor and
+suppresses only BLS Host's black overlay request while the trial is armed.
+The BLS display mode remains `Off`, so a visible result is not yet established
+and this is not native AOD. If the trial ends while locked, it restores the
+black overlay. See
+`research/phase5-locked-visible-experiments.md` and
+`research/phase7-pseudo-aod.md` and
+`research/phase28-active-lock-ca-blanking.md`.
+
+Experimental builds also record a two-minute incident window after a display
+mode transition. Diagnostics include requested/forwarded modes, call stacks,
+lock/lifecycle/timer state, and a five-second background heartbeat with main
+queue responsiveness. Events are stored in the
+`com.user.notchnowplaying.diagnostics` preferences domain under
+`DiagnosticLogEvents`; no process signal handlers are installed.
 
 ## Installation
 

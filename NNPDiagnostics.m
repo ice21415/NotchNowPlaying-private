@@ -138,6 +138,13 @@ void NNPDiagnosticLogTransition(NSString *event) {
     }
 }
 
+void NNPDiagnosticLogCallStack(NSString *event, NSUInteger maximumFrames) {
+    NSArray<NSString *> *frames = NSThread.callStackSymbols;
+    NSUInteger frameCount = MIN(MAX((NSUInteger)1, maximumFrames), frames.count);
+    if (frameCount < frames.count) frames = [frames subarrayWithRange:NSMakeRange(0, frameCount)];
+    NNPDiagnosticLog([NSString stringWithFormat:@"%@ callStack=%@", event ?: @"CALLSTACK", [frames componentsJoinedByString:@" <- "]]);
+}
+
 void NNPDiagnosticRecordStartup(NSString *detail) {
     if (!detail.length) detail = @"TWEAK_LOADED";
     NNPDiagnosticSetBool(@"TweakLoaded", YES);
