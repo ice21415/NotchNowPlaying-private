@@ -12,6 +12,7 @@ typedef NS_ENUM(NSInteger, NNPDisplayLifecycleState) {
 
 @interface NNPDisplayController : NSObject
 @property(nonatomic, readonly) NNPDisplayLifecycleState lifecycleState;
+@property(nonatomic, copy) void (^stateChangedHandler)(void);
 @property(nonatomic) BOOL deviceLocked;
 @property(nonatomic) NSTimeInterval maximumDuration;
 - (BOOL)isLockedVisibleSupported;

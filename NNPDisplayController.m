@@ -87,6 +87,7 @@ void NNPPhase7NotifyDisplayWake(void) {
     NNPPhase7UpdateForensicsState(_lifecycleState, self.deviceLocked, self.modeSubstitutionObserved, self.visibleDurationTimer != nil);
     NNPDiagnosticSetInteger(@"LockedVisibleLifecycle", state);
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY lifecycle state=%ld", (long)state]);
+    if (self.stateChangedHandler) self.stateChangedHandler();
 }
 
 - (void)setDeviceLocked:(BOOL)deviceLocked {

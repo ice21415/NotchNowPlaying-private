@@ -135,6 +135,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(preferencesChanged:) name:NNPPreferencesDidChangeNotification object:self.preferences];
     self.display = [NNPDisplayController new]; self.lockState = [NNPLockStateController new];
     __weak typeof(self) weakSelf = self;
+    self.display.stateChangedHandler = ^{ [weakSelf reconcile]; };
     self.lockState.stateHandler = ^(BOOL locked) { [weakSelf setLocked:locked]; };
     [self.lockState start]; self.locked = self.lockState.isLocked;
     NNPDiagnosticSetBool(@"ControllerInitialized", YES); NNPDiagnosticSetBool(@"LogicalLockState", self.locked);
@@ -163,7 +164,18 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 }
 - (void)receive:(NNPState *)state { dispatch_async(dispatch_get_main_queue(), ^{ self.state = state; NNPDiagnosticSetString(@"ActiveMediaBundle", state.bundleIdentifier ?: @""); NNPDiagnosticSetBool(@"SpotifyDetected", [self isAllowedMedia:state]); NNPDiagnosticSetBool(@"PlaybackActive", state.playing); [self reconcile]; }); }
 - (BOOL)isAllowedMedia:(NNPState *)state { if (!state.bundleIdentifier.length) return NO; return !self.preferences.spotifyOnly || [state.bundleIdentifier isEqualToString:NNPSpotify]; }
-- (BOOL)shouldShow { NNPState *state = self.state; if (!self.preferences.enabled || !state.hasTrack || ![self isAllowedMedia:state]) return NO; if (self.locked && !self.preferences.showOnLockScreen) return NO; if (!self.locked && !self.preferences.showWhileUnlocked) return NO; if (!state.playing && self.preferences.hideWhenPaused) return NO; return YES; }
+- (BOOL)shouldShow {
+    NNPState *state = self.state;
+    if (!self.preferences.enabled || !state.hasTrack || ![self isAllowedMedia:state]) return NO;
+    if (self.locked && !self.preferences.showOnLockScreen) return NO;
+    if (!self.locked && !self.preferences.showWhileUnlocked) return NO;
+    if (!state.playing && self.preferences.hideWhenPaused) return NO;
+#if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
+    if (self.preferences.experimentalLockedVisible &&
+        (!self.locked || self.display.lifecycleState != NNPDisplayLifecycleStateActive)) return NO;
+#endif
+    return YES;
+}
 - (void)makeWindow {
     if (self.window) return;
     UIWindowScene *scene = nil; for (UIScene *candidate in UIApplication.sharedApplication.connectedScenes) { if ([candidate isKindOfClass:UIWindowScene.class] && candidate.activationState != UISceneActivationStateUnattached) { scene = (UIWindowScene *)candidate; break; } }
@@ -321,8 +333,17 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     } else if (!eligible) {
         self.coverSheetHostUnavailableRecorded = NO;
     }
-    if (target == self.coverSheetHostView && self.view.superview == target) {
+    if (target && target == self.coverSheetHostView && self.view.superview == target) {
         [self installCoverSheetBlackoutForHost:target];
+        return;
+    }
+
+    // The AOD experiment is armed while the normal UI remains hidden. In that
+    // state a window may not exist yet, so there is nothing to detach.
+    if (!self.window || !self.view) {
+        [self removeCoverSheetBlackout];
+        self.coverSheetHostView = nil;
+        NNPDiagnosticSetBool(@"CoverSheetPresentationActive", NO);
         return;
     }
 
@@ -380,20 +401,20 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     [self recordPresentationDiagnostics:dedicatedBlackPresentation ? @"black-presentation" : @"transparent-presentation"];
 }
 - (void)applyViewPreferences { self.view.showArtwork = self.preferences.showArtwork; self.view.showArtist = self.preferences.showArtist; self.view.showProgress = self.preferences.showProgress; self.view.artworkSize = self.preferences.artworkSize; self.view.cornerRadius = self.preferences.cornerRadius; self.view.textSize = self.preferences.textSize; self.view.progressHeight = self.preferences.progressHeight; [self.view setNeedsLayout]; }
-- (void)reconcile { dispatch_async(dispatch_get_main_queue(), ^{ BOOL show = [self shouldShow]; NNPDiagnosticSetBool(@"UIVisible", show);
+- (void)reconcile { dispatch_async(dispatch_get_main_queue(), ^{
+        BOOL experimentEligible = NO;
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
         self.display.deviceLocked = self.locked;
         self.display.maximumDuration = self.preferences.experimentalMaxDuration;
-        BOOL experimentEligible = self.preferences.experimentalLockedVisible && self.preferences.enabled && self.state.hasTrack && self.state.playing && [self isAllowedMedia:self.state] && (self.locked ? self.preferences.showOnLockScreen : self.preferences.showWhileUnlocked);
-        NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER reconcile locked=%@ show=%@ experimentEligible=%@ lifecycle=%ld", self.locked ? @"YES" : @"NO", show ? @"YES" : @"NO", experimentEligible ? @"YES" : @"NO", (long)self.display.lifecycleState]);
+        experimentEligible = self.preferences.experimentalLockedVisible && self.preferences.enabled && self.preferences.showOnLockScreen && self.state.hasTrack && self.state.playing && [self isAllowedMedia:self.state];
         if (experimentEligible) { [self.display startLockedVisibleMode]; } else { [self.display stopLockedVisibleMode]; }
 #endif
+        BOOL show = [self shouldShow];
+        NNPDiagnosticSetBool(@"UIVisible", show);
+        NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER reconcile locked=%@ show=%@ experimentEligible=%@ lifecycle=%ld", self.locked ? @"YES" : @"NO", show ? @"YES" : @"NO", experimentEligible ? @"YES" : @"NO", (long)self.display.lifecycleState]);
         if (!show) { [self hide]; return; } [self makeWindow]; [self applyViewPreferences]; [self.view updateState:self.state]; [self updateCoverSheetPresentation]; [self applyLockedBackground];
         if (self.window.hidden) { self.window.hidden = NO; NSLog(@"%@ overlay shown", NNPLog); NNPDiagnosticLogTransition(@"CONTROLLER window visible=YES"); [self recordPresentationDiagnostics:@"window-visible"]; } [self startProgressTimer]; [self updateProgress]; }); }
 - (void)hide {
-#if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
-    [self.display stopLockedVisibleMode];
-#endif
     [self updateCoverSheetPresentation];
     if (!self.window.hidden) { self.window.hidden = YES; NSLog(@"%@ overlay hidden", NNPLog); NNPDiagnosticLogTransition(@"CONTROLLER window visible=NO cleanup"); }
     [self.progressTimer invalidate]; self.progressTimer = nil;
