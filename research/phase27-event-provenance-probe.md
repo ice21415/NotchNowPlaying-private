@@ -57,7 +57,8 @@ It records Xcode, Clang, iPhoneOS SDK, and RootHide Theos revisions alongside
 the package, so the installed compiler/toolchain can be checked before the
 device capture.
 
-The first build used macOS 26.6.2, Xcode 26.6, Apple Clang 21.0.0, and iOS SDK
-26.5. Clang correctly rejected converting the Objective-C event pointer to a
-byte pointer under ARC. The probe now uses an explicit `__bridge` cast for its
-read-only ivar inspection; the failed build produced no installable package.
+The first two builds used macOS 26.6.2, Xcode 26.6, Apple Clang 21.0.0, and iOS
+SDK 26.5. Clang rejected both a direct Objective-C-to-byte-pointer cast and a
+direct bridge to a typed byte pointer under ARC. The probe now bridges the
+event to `const void *` first, then reads the ivar bytes; neither failed build
+produced an installable package.

@@ -201,7 +201,8 @@ static NSString *NNPProbeRawEventState(id event) {
     }
     ptrdiff_t offset = ivar_getOffset(stateIvar);
     int64_t rawState = 0;
-    memcpy(&rawState, (__bridge const uint8_t *)event + offset, sizeof(rawState));
+    const void *eventStorage = (__bridge const void *)event;
+    memcpy(&rawState, (const uint8_t *)eventStorage + offset, sizeof(rawState));
     return [NSString stringWithFormat:@"%lld@+0x%llx", (long long)rawState,
             (unsigned long long)offset];
 }
