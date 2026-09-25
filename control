@@ -1,6 +1,6 @@
 Package: com.user.notchnowplaying
 Name: Notch Now Playing
-Version: 0.1.18
+Version: 0.1.19
 Architecture: iphoneos-arm64e
 Description: A lock-screen Now Playing notch prototype.
 Maintainer: USER

@@ -19,16 +19,23 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 #endif
 
 @interface NNPBlackoutView : UIView
+@property(nonatomic, copy) void (^revealHandler)(void);
 @end
 
 @implementation NNPBlackoutView
-- (UIView *)hitTest:(CGPoint)point withEvent:(__unused UIEvent *)event {
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     CGFloat width = CGRectGetWidth(self.bounds);
     CGFloat height = CGRectGetHeight(self.bounds);
     CGFloat cornerWidth = MIN(120.0, width * 0.34);
     CGFloat cornerHeight = MIN(170.0, height * 0.24);
     BOOL bottomCorner = point.y >= height - cornerHeight &&
         (point.x <= cornerWidth || point.x >= width - cornerWidth);
+    BOOL bottomCenter = point.y >= height - cornerHeight &&
+        point.x > cornerWidth && point.x < width - cornerWidth;
+    if (bottomCenter && !self.hidden && event && event.type == UIEventTypeTouches && self.revealHandler) {
+        self.revealHandler();
+        return nil;
+    }
     return bottomCorner ? self : nil;
 }
 @end
@@ -51,6 +58,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 @property(nonatomic) BOOL coverSheetBlackoutRevealed;
 @property(nonatomic) BOOL locked;
 @property(nonatomic) BOOL installed;
+- (void)revealCoverSheetControls;
 @end
 
 @implementation NNPController
@@ -196,6 +204,8 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         self.coverSheetBlackoutView.userInteractionEnabled = YES;
         self.coverSheetBlackoutView.accessibilityElementsHidden = YES;
         self.coverSheetBlackoutView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        __weak typeof(self) weakSelf = self;
+        ((NNPBlackoutView *)self.coverSheetBlackoutView).revealHandler = ^{ [weakSelf revealCoverSheetControls]; };
     }
     if (self.coverSheetBlackoutView.superview != host) [host addSubview:self.coverSheetBlackoutView];
     self.coverSheetBlackoutView.frame = host.bounds;
@@ -253,7 +263,17 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     NNPDiagnosticSetBool(@"CoverSheetBlackoutActive", !self.coverSheetBlackoutRevealed);
     NNPDiagnosticSetBool(@"StatusBarBlackoutActive", self.statusBarBlackoutView && !self.coverSheetBlackoutRevealed);
     NNPDiagnosticSetBool(@"CoverSheetControlsRevealed", self.coverSheetBlackoutRevealed);
-    NNPDiagnosticLogTransition([NSString stringWithFormat:@"COVERSHEET blackout=%@ controlsRevealed=%@", self.coverSheetBlackoutRevealed ? @"NO" : @"YES", self.coverSheetBlackoutRevealed ? @"YES" : @"NO"]);
+    NNPDiagnosticLogTransition([NSString stringWithFormat:@"COVERSHEET blackout=%@ controlsRevealed=%@ reason=player-area-tap", self.coverSheetBlackoutRevealed ? @"NO" : @"YES", self.coverSheetBlackoutRevealed ? @"YES" : @"NO"]);
+}
+- (void)revealCoverSheetControls {
+    if (!self.coverSheetHostView || !self.coverSheetBlackoutView || self.coverSheetBlackoutRevealed) return;
+    self.coverSheetBlackoutRevealed = YES;
+    self.coverSheetBlackoutView.hidden = YES;
+    self.statusBarBlackoutView.hidden = YES;
+    NNPDiagnosticSetBool(@"CoverSheetBlackoutActive", NO);
+    NNPDiagnosticSetBool(@"StatusBarBlackoutActive", NO);
+    NNPDiagnosticSetBool(@"CoverSheetControlsRevealed", YES);
+    NNPDiagnosticLogTransition(@"COVERSHEET blackout=NO controlsRevealed=YES reason=bottom-center-unlock-gesture");
 }
 - (BOOL)shouldPresentInsideCoverSheet {
 #if NNP_ENABLE_COVERSHEET_PRESENTATION && NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE

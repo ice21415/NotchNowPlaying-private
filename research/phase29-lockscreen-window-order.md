@@ -109,4 +109,13 @@ dimmed factor.
 This is an OLED-oriented mask: hidden Lock Screen pixels become black while
 the player artwork and text remain rendered. It does not hide unrelated
 higher-level system alert or recording-indicator windows. Device validation
-of mask visibility and the tap-to-reveal path is pending.
+of mask visibility and the reveal paths is pending.
+
+## Phase 32 — reveal Lock Screen during the unlock swipe
+
+Version `0.1.19` also reveals the native Lock Screen when the user starts an
+upward gesture in the bottom-center part of the display. The mask then lets
+that same touch continue to SpringBoard so the normal swipe-to-unlock or
+passcode flow can proceed. Touches on the hidden bottom-corner Camera and
+Flashlight controls remain blocked. Tapping the player area remains an
+alternative reveal path.

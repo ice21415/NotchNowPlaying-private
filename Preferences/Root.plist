@@ -17,7 +17,7 @@
         { cell = PSGroupCell; label = "行為"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = HideWhenPaused; label = "暫停時隱藏"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
         { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ProgressUpdateInterval; label = "進度更新間隔"; default = 1; min = 0.5; max = 5; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSGroupCell; label = "鎖定顯示"; footerText = "實驗功能。播放期間將鎖定畫面設為黑底，只顯示播放資訊；點按播放資訊區可切換原鎖定畫面控制項。最長顯示時間依下方設定。"; },
+        { cell = PSGroupCell; label = "鎖定顯示"; footerText = "實驗功能。播放期間將鎖定畫面設為黑底，只顯示播放資訊；點按播放資訊區或從螢幕底部中央上滑，可顯示原鎖定畫面與解鎖控制項。最長顯示時間依下方設定。"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ExperimentalLockedVisible; label = "實驗性鎖定顯示"; default = 0; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
         { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ExperimentalMaxDuration; label = "實驗最長時間"; default = 30; min = 5; max = 60; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
         { cell = PSGroupCell; label = "診斷"; footerText = "執行期診斷資料會另外儲存，不包含帳戶資訊、歌曲紀錄或憑證。"; }
