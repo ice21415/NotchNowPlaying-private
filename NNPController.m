@@ -35,14 +35,22 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     UIScreen *screen = UIScreen.mainScreen;
     NSInteger visibleWindows = 0;
     NSInteger opaqueVisibleWindows = 0;
+    NSMutableArray<UIWindow *> *visibleWindowList = [NSMutableArray array];
+    NSMutableArray<NSString *> *sceneSummaries = [NSMutableArray array];
+    NSUInteger sceneIndex = 0;
     for (UIScene *scene in application.connectedScenes) {
         if (![scene isKindOfClass:UIWindowScene.class]) continue;
-        for (UIWindow *candidate in ((UIWindowScene *)scene).windows) {
+        UIWindowScene *windowScene = (UIWindowScene *)scene;
+        NSString *sceneRole = windowScene.session.role ?: @"unknown";
+        [sceneSummaries addObject:[NSString stringWithFormat:@"%lu:%@ state=%ld windows=%lu key=%@", (unsigned long)sceneIndex, sceneRole, (long)windowScene.activationState, (unsigned long)windowScene.windows.count, windowScene.keyWindow ? NSStringFromClass(windowScene.keyWindow.class) : @"none"]];
+        for (UIWindow *candidate in windowScene.windows) {
             if (candidate.hidden || candidate.alpha <= 0.01) continue;
             visibleWindows += 1;
+            [visibleWindowList addObject:candidate];
             CGFloat backgroundAlpha = candidate.backgroundColor ? CGColorGetAlpha(candidate.backgroundColor.CGColor) : 0.0;
             if (candidate.opaque || backgroundAlpha >= 0.99) opaqueVisibleWindows += 1;
         }
+        sceneIndex += 1;
     }
     NSInteger connectedScenes = application.connectedScenes.count;
     CGFloat screenBrightness = screen.brightness;
@@ -61,6 +69,29 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     NNPDiagnosticSetBool(@"PresentationWindowOpaque", self.window.opaque);
     NNPDiagnosticSetBool(@"PresentationRootOpaque", self.window.rootViewController.view.opaque);
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER presentation snapshot reason=%@ locked=%@ visibleWindows=%ld opaqueWindows=%ld scenes=%ld UIKitBrightness=%.4f sceneState=%ld sceneWindows=%ld windowVisible=%@ windowLevel=%.1f windowOpaque=%@ rootOpaque=%@ expectedBlack=%@", reason ?: @"unknown", self.locked ? @"YES" : @"NO", (long)visibleWindows, (long)opaqueVisibleWindows, (long)connectedScenes, screenBrightness, (long)presentationSceneState, (long)presentationSceneWindowCount, self.window.hidden ? @"NO" : @"YES", self.window.windowLevel, self.window.opaque ? @"YES" : @"NO", self.window.rootViewController.view.opaque ? @"YES" : @"NO", self.locked ? @"YES" : @"NO"]);
+
+    [visibleWindowList sortUsingComparator:^NSComparisonResult(UIWindow *left, UIWindow *right) {
+        if (left.windowLevel > right.windowLevel) return NSOrderedAscending;
+        if (left.windowLevel < right.windowLevel) return NSOrderedDescending;
+        return NSOrderedSame;
+    }];
+    NNPDiagnosticLogTransition([NSString stringWithFormat:@"WINDOW_DIAGNOSTIC scenes=[%@] visibleTopDown=YES", [sceneSummaries componentsJoinedByString:@" | "]]);
+    for (NSUInteger index = 0; index < visibleWindowList.count; index++) {
+        UIWindow *candidate = visibleWindowList[index];
+        UIWindowScene *scene = candidate.windowScene;
+        NSString *marker = candidate == self.window ? @"PLUGIN" : @"SYSTEM";
+        NSString *rootClass = candidate.rootViewController ? NSStringFromClass(candidate.rootViewController.class) : @"none";
+        NSString *sceneRole = scene.session.role ?: @"unknown";
+        NSUInteger rootSubviewCount = candidate.rootViewController.isViewLoaded ? candidate.rootViewController.view.subviews.count : 0;
+        NNPDiagnosticLogTransition([NSString stringWithFormat:@"WINDOW_DIAGNOSTIC order=%lu/%lu kind=%@ class=%@ level=%.1f key=%@ hidden=%@ alpha=%.2f opaque=%@ z=%.1f frame=%@ scene=%@ sceneState=%ld root=%@ rootSubviews=%lu", (unsigned long)(index + 1), (unsigned long)visibleWindowList.count, marker, NSStringFromClass(candidate.class), candidate.windowLevel, candidate.isKeyWindow ? @"YES" : @"NO", candidate.hidden ? @"YES" : @"NO", candidate.alpha, candidate.opaque ? @"YES" : @"NO", candidate.layer.zPosition, NSStringFromCGRect(candidate.frame), sceneRole, (long)scene.activationState, rootClass, (unsigned long)rootSubviewCount]);
+    }
+    if (self.view) {
+        NSMutableArray<NSString *> *contentViews = [NSMutableArray array];
+        for (UIView *subview in self.view.subviews) {
+            [contentViews addObject:[NSString stringWithFormat:@"%@ hidden=%@ alpha=%.2f frame=%@", NSStringFromClass(subview.class), subview.hidden ? @"YES" : @"NO", subview.alpha, NSStringFromCGRect(subview.frame)]];
+        }
+        NNPDiagnosticLogTransition([NSString stringWithFormat:@"WINDOW_DIAGNOSTIC pluginContent attached=%@ viewHidden=%@ viewAlpha=%.2f viewBounds=%@ childViews=[%@]", self.view.window == self.window ? @"YES" : @"NO", self.view.hidden ? @"YES" : @"NO", self.view.alpha, NSStringFromCGRect(self.view.bounds), [contentViews componentsJoinedByString:@" | "]]);
+    }
 }
 - (void)install {
     if (_installed) return; _installed = YES;
