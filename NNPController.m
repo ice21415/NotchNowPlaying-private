@@ -7,6 +7,7 @@
 #import "NNPDisplayController.h"
 #import "NNPDiagnostics.h"
 #import <UIKit/UIKit.h>
+#import <stdlib.h>
 
 static NSString * const NNPLog = @"[NotchNowPlaying]";
 static NSString * const NNPSpotify = @"com.spotify.client";
@@ -49,6 +50,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 @property(nonatomic, strong) NNPView *view;
 @property(nonatomic, strong) NNPState *state;
 @property(nonatomic, strong) NSTimer *progressTimer;
+@property(nonatomic, strong) NSTimer *pixelShiftTimer;
 @property(nonatomic, weak) UIView *coverSheetHostView;
 @property(nonatomic, strong) UIView *coverSheetBlackoutView;
 @property(nonatomic, strong) UIView *statusBarBlackoutView;
@@ -61,6 +63,9 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 - (void)revealCoverSheetControls;
 - (void)revealCoverSheetControlsWithReason:(NSString *)reason;
 - (void)clearLockedPresentationBackgroundForUnlock;
+- (void)startAODPixelShiftTimer;
+- (void)stopAODPixelShiftTimer;
+- (void)applyRandomAODPixelShift;
 @end
 
 @implementation NNPController
@@ -428,12 +433,55 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         BOOL show = [self shouldShow];
         NNPDiagnosticSetBool(@"UIVisible", show);
         NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER reconcile locked=%@ show=%@ experimentEligible=%@ lifecycle=%ld", self.locked ? @"YES" : @"NO", show ? @"YES" : @"NO", experimentEligible ? @"YES" : @"NO", (long)self.display.lifecycleState]);
-        if (!show) { [self hide]; return; } [self makeWindow]; [self applyViewPreferences]; [self.view updateState:self.state]; [self updateCoverSheetPresentation]; [self applyLockedBackground];
-        if (self.window.hidden) { self.window.hidden = NO; NSLog(@"%@ overlay shown", NNPLog); NNPDiagnosticLogTransition(@"CONTROLLER window visible=YES"); [self recordPresentationDiagnostics:@"window-visible"]; } [self startProgressTimer]; [self updateProgress]; }); }
+        if (!show) { [self hide]; return; }
+        [self makeWindow]; [self applyViewPreferences]; [self.view updateState:self.state]; [self updateCoverSheetPresentation]; [self applyLockedBackground];
+        if (self.window.hidden) { self.window.hidden = NO; NSLog(@"%@ overlay shown", NNPLog); NNPDiagnosticLogTransition(@"CONTROLLER window visible=YES"); [self recordPresentationDiagnostics:@"window-visible"]; }
+        [self startProgressTimer]; [self startAODPixelShiftTimer]; [self updateProgress]; }); }
 - (void)hide {
+    [self stopAODPixelShiftTimer];
     [self updateCoverSheetPresentation];
     if (!self.window.hidden) { self.window.hidden = YES; NSLog(@"%@ overlay hidden", NNPLog); NNPDiagnosticLogTransition(@"CONTROLLER window visible=NO cleanup"); }
     [self.progressTimer invalidate]; self.progressTimer = nil;
+}
+- (void)applyRandomAODPixelShift {
+    if (!self.view) return;
+    NSInteger currentX = (NSInteger)llround(self.view.pixelShiftPixels.x);
+    NSInteger currentY = (NSInteger)llround(self.view.pixelShiftPixels.y);
+    NSInteger x = 0, y = 0;
+    do {
+        x = (NSInteger)arc4random_uniform(7) - 3;
+        y = (NSInteger)arc4random_uniform(7) - 3;
+    } while ((x == 0 && y == 0) || (x == currentX && y == currentY));
+    self.view.pixelShiftPixels = CGPointMake((CGFloat)x, (CGFloat)y);
+    NNPDiagnosticSetInteger(@"AODPixelShiftX", x);
+    NNPDiagnosticSetInteger(@"AODPixelShiftY", y);
+    NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER AOD pixel shift x=%ld y=%ld", (long)x, (long)y]);
+}
+- (void)startAODPixelShiftTimer {
+    if (!self.preferences.aodPixelShiftEnabled || !self.display.aodPresentationActive) {
+        [self stopAODPixelShiftTimer];
+        return;
+    }
+    if (self.pixelShiftTimer) return;
+    [self applyRandomAODPixelShift];
+    __weak typeof(self) weakSelf = self;
+    self.pixelShiftTimer = [NSTimer timerWithTimeInterval:30.0 repeats:YES block:^(__unused NSTimer *timer) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        if (!strongSelf.preferences.aodPixelShiftEnabled || !strongSelf.display.aodPresentationActive || ![strongSelf shouldShow]) {
+            [strongSelf stopAODPixelShiftTimer];
+            return;
+        }
+        [strongSelf applyRandomAODPixelShift];
+    }];
+    [[NSRunLoop mainRunLoop] addTimer:self.pixelShiftTimer forMode:NSRunLoopCommonModes];
+}
+- (void)stopAODPixelShiftTimer {
+    [self.pixelShiftTimer invalidate];
+    self.pixelShiftTimer = nil;
+    self.view.pixelShiftPixels = CGPointZero;
+    NNPDiagnosticSetInteger(@"AODPixelShiftX", 0);
+    NNPDiagnosticSetInteger(@"AODPixelShiftY", 0);
 }
 - (void)startProgressTimer { if (self.progressTimer) return; __weak typeof(self) weakSelf = self; self.progressTimer = [NSTimer scheduledTimerWithTimeInterval:self.preferences.progressUpdateInterval repeats:YES block:^(__unused NSTimer *timer) { [weakSelf updateProgress]; }]; }
 - (void)updateProgress { if (!self.state || self.window.hidden) return; [self updateCoverSheetPresentation]; NSTimeInterval elapsed = self.state.elapsed; if (self.state.playing && self.state.playbackRate > 0.0 && self.state.timestamp > 0.0) elapsed += MAX(0.0, NSDate.date.timeIntervalSince1970 - self.state.timestamp) * self.state.playbackRate; if (self.state.duration > 0.0) elapsed = MIN(self.state.duration, MAX(0.0, elapsed)); [self.view updateElapsed:elapsed duration:self.state.duration playing:self.state.playing]; }
@@ -441,6 +489,6 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
     [_display stopLockedVisibleMode];
 #endif
-    [[NSNotificationCenter defaultCenter] removeObserver:self]; [_lockState stop]; [_progressTimer invalidate];
+    [[NSNotificationCenter defaultCenter] removeObserver:self]; [_lockState stop]; [_progressTimer invalidate]; [_pixelShiftTimer invalidate];
 }
 @end

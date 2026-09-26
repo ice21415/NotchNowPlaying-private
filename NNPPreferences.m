@@ -25,6 +25,7 @@ static CGFloat NNPFloat(NSString *key, CGFloat fallback) {
 @property(nonatomic) BOOL showArtist;
 @property(nonatomic) BOOL showProgress;
 @property(nonatomic) BOOL hideWhenPaused;
+@property(nonatomic) BOOL aodPixelShiftEnabled;
 @property(nonatomic) BOOL experimentalLockedVisible;
 @property(nonatomic) NSTimeInterval experimentalMaxDuration;
 @property(nonatomic) NSTimeInterval progressUpdateInterval;
@@ -52,6 +53,7 @@ static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observe
     self.showArtist = NNPBool(@"ShowArtist", YES);
     self.showProgress = NNPBool(@"ShowProgress", YES);
     self.hideWhenPaused = NNPBool(@"HideWhenPaused", YES);
+    self.aodPixelShiftEnabled = NNPBool(@"AODPixelShiftEnabled", YES);
     self.experimentalLockedVisible = NNPBool(@"ExperimentalLockedVisible", NO);
     self.experimentalMaxDuration = MAX(5.0, MIN(60.0, NNPFloat(@"ExperimentalMaxDuration", 30.0)));
     self.progressUpdateInterval = MAX(0.5, MIN(5.0, NNPFloat(@"ProgressUpdateInterval", 1.0)));

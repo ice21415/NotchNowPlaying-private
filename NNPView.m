@@ -32,6 +32,15 @@
 @end
 
 @implementation NNPView
+- (void)setPixelShiftPixels:(CGPoint)pixelShiftPixels {
+    _pixelShiftPixels = pixelShiftPixels;
+    CGFloat scale = MAX(UIScreen.mainScreen.scale, 1.0);
+    // Move only the rendered player subviews. The full-screen host view and
+    // the black Cover Sheet mask remain fixed in place.
+    self.layer.sublayerTransform = CATransform3DMakeTranslation(
+        pixelShiftPixels.x / scale, pixelShiftPixels.y / scale, 0.0);
+}
+
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (!self) return nil;

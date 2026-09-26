@@ -8,6 +8,7 @@
 @property(nonatomic) CGFloat cornerRadius;
 @property(nonatomic) CGFloat textSize;
 @property(nonatomic) CGFloat progressHeight;
+@property(nonatomic) CGPoint pixelShiftPixels;
 - (void)updateState:(NNPState *)state;
 - (void)updateElapsed:(NSTimeInterval)elapsed duration:(NSTimeInterval)duration playing:(BOOL)playing;
 @end
