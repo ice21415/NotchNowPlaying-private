@@ -7,11 +7,20 @@
 #import "NNPDisplayController.h"
 #import "NNPDiagnostics.h"
 #import <UIKit/UIKit.h>
+#import <objc/runtime.h>
 #import <math.h>
 #import <stdlib.h>
 
 static NSString * const NNPLog = @"[NotchNowPlaying]";
 static NSString * const NNPSpotify = @"com.spotify.client";
+@interface NNPController (TouchDiagnostics)
+- (void)observeTouchEvent:(UIEvent *)event;
+@end
+static void (*NNPOriginalApplicationSendEvent)(id, SEL, UIEvent *);
+static void NNPApplicationSendEventReplacement(id application, SEL selector, UIEvent *event) {
+    [[NNPController sharedController] observeTouchEvent:event];
+    if (NNPOriginalApplicationSendEvent) NNPOriginalApplicationSendEvent(application, selector, event);
+}
 
 #ifndef NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
 #define NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE 0
@@ -158,6 +167,12 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 - (void)install {
     if (_installed) return; _installed = YES;
     self.preferences = [NNPPreferences sharedPreferences]; [self.preferences startObserving];
+    Method sendEventMethod = class_getInstanceMethod(UIApplication.class, @selector(sendEvent:));
+    if (sendEventMethod && !NNPOriginalApplicationSendEvent) {
+        NNPOriginalApplicationSendEvent = (void (*)(id, SEL, UIEvent *))method_setImplementation(
+            sendEventMethod, (IMP)NNPApplicationSendEventReplacement);
+        NNPDiagnosticSetBool(@"ApplicationTouchEventHookInstalled", NNPOriginalApplicationSendEvent != NULL);
+    }
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(preferencesChanged:) name:NNPPreferencesDidChangeNotification object:self.preferences];
     self.display = [NNPDisplayController new]; self.lockState = [NNPLockStateController new];
     __weak typeof(self) weakSelf = self;
@@ -181,6 +196,22 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     [self.media start]; NNPDiagnosticSetBool(@"MediaRemoteConnected", YES);
     NSLog(@"%@ loaded, locked=%@", NNPLog, self.locked ? @"YES" : @"NO");
 #endif
+}
+- (void)observeTouchEvent:(UIEvent *)event {
+    if (event.type != UIEventTypeTouches || !self.locked ||
+        !self.preferences.experimentalLockedVisible) return;
+    static NSUInteger observedTouchCount = 0;
+    for (UITouch *touch in event.allTouches) {
+        if (touch.phase != UITouchPhaseBegan) continue;
+        observedTouchCount++;
+        if (observedTouchCount > 24) return;
+        CGPoint location = [touch locationInView:touch.window];
+        NNPDiagnosticLogTransition([NSString stringWithFormat:
+            @"TOUCH UIKit began count=%lu aod=%@ window=%@ view=%@ x=%.1f y=%.1f",
+            (unsigned long)observedTouchCount, self.display.aodPresentationActive ? @"YES" : @"NO",
+            touch.window ? NSStringFromClass(touch.window.class) : @"none",
+            touch.view ? NSStringFromClass(touch.view.class) : @"none", location.x, location.y]);
+    }
 }
 - (void)preferencesChanged:(NSNotification *)note { [self.preferences reload]; [self reconcile]; }
 - (void)refreshDiagnosticUI { [self reconcile]; }
