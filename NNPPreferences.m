@@ -29,6 +29,7 @@ static CGFloat NNPFloat(NSString *key, CGFloat fallback) {
 @property(nonatomic) BOOL aodPixelShiftEnabled;
 @property(nonatomic) float aodBrightnessMultiplier;
 @property(nonatomic) BOOL experimentalLockedVisible;
+@property(nonatomic) BOOL experimentalUnlimitedDuration;
 @property(nonatomic) NSTimeInterval experimentalMaxDuration;
 @property(nonatomic) NSTimeInterval progressUpdateInterval;
 @property(nonatomic) CGFloat artworkSize;
@@ -58,6 +59,7 @@ static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observe
     self.aodPixelShiftEnabled = NNPBool(@"AODPixelShiftEnabled", YES);
     self.aodBrightnessMultiplier = (float)MAX(1.0, MIN(4.0, NNPFloat(@"AODBrightnessMultiplier", 100.0) / 100.0));
     self.experimentalLockedVisible = NNPBool(@"ExperimentalLockedVisible", NO);
+    self.experimentalUnlimitedDuration = NNPBool(@"ExperimentalUnlimitedDuration", NO);
     self.experimentalMaxDuration = MAX(5.0, MIN(60.0, NNPFloat(@"ExperimentalMaxDuration", 30.0)));
     self.progressUpdateInterval = MAX(0.5, MIN(5.0, NNPFloat(@"ProgressUpdateInterval", 1.0)));
     self.artworkSize = MAX(28.0, MIN(56.0, NNPFloat(@"ArtworkSize", 40.0)));

@@ -14,6 +14,7 @@ FOUNDATION_EXPORT NSString * const NNPPreferencesDidChangeNotification;
 @property(nonatomic, readonly) BOOL aodPixelShiftEnabled;
 @property(nonatomic, readonly) float aodBrightnessMultiplier;
 @property(nonatomic, readonly) BOOL experimentalLockedVisible;
+@property(nonatomic, readonly) BOOL experimentalUnlimitedDuration;
 @property(nonatomic, readonly) NSTimeInterval experimentalMaxDuration;
 @property(nonatomic, readonly) NSTimeInterval progressUpdateInterval;
 @property(nonatomic, readonly) CGFloat artworkSize;

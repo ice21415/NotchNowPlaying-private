@@ -39,7 +39,9 @@
         { cell = PSGroupCell; label = "AOD 亮度"; footerText = "100% 保持原本亮度；提高後會在 AOD 期間調整面板亮度，400% 約為 120 nits。喚醒、解鎖或顯示時間結束時會還原。亮度越高耗電越多。"; },
         { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = AODBrightnessMultiplier; label = "亮度（%）"; default = 100; min = 100; max = 400; showValue = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
 
-        { cell = PSGroupCell; label = "AOD 最長顯示時間"; footerText = "設定每次 AOD 顯示的時間上限。時間到後，插件會結束這次實驗性顯示。預設 30 秒，範圍 5 至 60 秒。"; },
+        { cell = PSGroupCell; label = "AOD 顯示時間"; footerText = "開啟後，音樂持續播放時不受下方時間上限限制。解鎖或關閉功能會結束 AOD；音樂停止約 15 秒後也會結束。"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ExperimentalUnlimitedDuration; label = "持續顯示（不限時）"; default = 0; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSGroupCell; label = "AOD 時間上限"; footerText = "只有關閉「持續顯示」時才使用。預設 30 秒，範圍 5 至 60 秒。調整時間後，下次進入 AOD 時生效。"; },
         { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ExperimentalMaxDuration; label = "時間（秒）"; default = 30; min = 5; max = 60; showValue = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
 
         { cell = PSGroupCell; label = "診斷資料"; footerText = "插件會在手機本機儲存執行紀錄，用於排查問題。"; }

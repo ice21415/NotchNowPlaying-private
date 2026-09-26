@@ -51,6 +51,8 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 @property(nonatomic, strong) NNPState *state;
 @property(nonatomic, strong) NSTimer *progressTimer;
 @property(nonatomic, strong) NSTimer *pixelShiftTimer;
+@property(nonatomic) BOOL unlimitedMediaPausePending;
+@property(nonatomic) NSUInteger unlimitedMediaPauseGeneration;
 @property(nonatomic, weak) UIView *coverSheetHostView;
 @property(nonatomic, strong) UIView *coverSheetBlackoutView;
 @property(nonatomic, strong) UIView *statusBarBlackoutView;
@@ -68,6 +70,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 - (void)startAODPixelShiftTimer;
 - (void)stopAODPixelShiftTimer;
 - (void)applyRandomAODPixelShift;
+- (void)updateUnlimitedMediaPauseWithEligibleMedia:(BOOL)mediaEligible activeSession:(BOOL)activeSession;
 @end
 
 @implementation NNPController
@@ -472,14 +475,46 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     [self recordPresentationDiagnostics:dedicatedBlackPresentation ? @"black-presentation" : @"transparent-presentation"];
 }
 - (void)applyViewPreferences { self.view.showArtwork = self.preferences.showArtwork; self.view.showArtist = self.preferences.showArtist; self.view.showProgress = self.preferences.showProgress; self.view.artworkSize = self.preferences.artworkSize; self.view.cornerRadius = self.preferences.cornerRadius; self.view.textSize = self.preferences.textSize; self.view.progressHeight = self.preferences.progressHeight; [self.view setNeedsLayout]; }
+- (void)updateUnlimitedMediaPauseWithEligibleMedia:(BOOL)mediaEligible activeSession:(BOOL)activeSession {
+    BOOL shouldWait = self.preferences.experimentalUnlimitedDuration && activeSession && !mediaEligible;
+    if (!shouldWait) {
+        if (self.unlimitedMediaPausePending) {
+            self.unlimitedMediaPausePending = NO;
+            self.unlimitedMediaPauseGeneration++;
+            NNPDiagnosticLogTransition(@"DISPLAY unlimited media pause cancelled");
+        }
+        return;
+    }
+    if (self.unlimitedMediaPausePending) return;
+    self.unlimitedMediaPausePending = YES;
+    NSUInteger generation = ++self.unlimitedMediaPauseGeneration;
+    NNPDiagnosticLogTransition(@"DISPLAY unlimited media pause grace started duration=15s");
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf || !strongSelf.unlimitedMediaPausePending ||
+            generation != strongSelf.unlimitedMediaPauseGeneration) return;
+        strongSelf.unlimitedMediaPausePending = NO;
+        BOOL stillPaused = !strongSelf.state.hasTrack || !strongSelf.state.playing ||
+            ![strongSelf isAllowedMedia:strongSelf.state];
+        if (!strongSelf.locked || !strongSelf.preferences.experimentalUnlimitedDuration ||
+            !strongSelf.display.aodPresentationActive || !stillPaused) return;
+        NNPDiagnosticLogTransition(@"DISPLAY unlimited session ended after sustained media pause");
+        [strongSelf.display stopLockedVisibleMode];
+        [strongSelf reconcile];
+    });
+}
 - (void)reconcile { dispatch_async(dispatch_get_main_queue(), ^{
         BOOL experimentEligible = NO;
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
         self.display.deviceLocked = self.locked;
         self.display.maximumDuration = self.preferences.experimentalMaxDuration;
+        self.display.unlimitedDuration = self.preferences.experimentalUnlimitedDuration;
         BOOL mediaEligible = self.state.hasTrack && self.state.playing && [self isAllowedMedia:self.state];
         BOOL activeSession = self.locked && self.display.aodPresentationActive &&
             self.display.lifecycleState == NNPDisplayLifecycleStateActive;
+        [self updateUnlimitedMediaPauseWithEligibleMedia:mediaEligible activeSession:activeSession];
         experimentEligible = self.preferences.experimentalLockedVisible && self.preferences.enabled &&
             self.preferences.showOnLockScreen && (mediaEligible || activeSession);
         NNPDiagnosticSetBool(@"MediaSwitchAODSessionRetained", activeSession && !mediaEligible && experimentEligible);
@@ -590,6 +625,8 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
     [_display stopLockedVisibleMode];
 #endif
+    self.unlimitedMediaPausePending = NO;
+    self.unlimitedMediaPauseGeneration++;
     [[NSNotificationCenter defaultCenter] removeObserver:self]; [_lockState stop]; [_progressTimer invalidate]; [_pixelShiftTimer invalidate];
 }
 @end

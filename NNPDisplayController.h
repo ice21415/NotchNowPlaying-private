@@ -16,6 +16,7 @@ typedef NS_ENUM(NSInteger, NNPDisplayLifecycleState) {
 @property(nonatomic, copy) void (^stateChangedHandler)(void);
 @property(nonatomic) BOOL deviceLocked;
 @property(nonatomic) NSTimeInterval maximumDuration;
+@property(nonatomic) BOOL unlimitedDuration;
 @property(nonatomic) float aodBrightnessMultiplier;
 - (BOOL)isLockedVisibleSupported;
 - (BOOL)startLockedVisibleMode;

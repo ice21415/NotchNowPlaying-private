@@ -40,6 +40,8 @@ void NNPPhase7NotifyDisplayWake(void) {}
 - (void)noteBacklightFactorSubstitutionFrom:(float)originalFactor to:(float)dimmedFactor;
 - (void)activateLockedVisibleSessionIfReady;
 - (void)noteDisplayWake;
+- (void)cancelVisibleDurationTimer:(NSString *)reason;
+- (void)startVisibleDurationTimer;
 - (void)stopLockedVisibleModeWithReason:(NSString *)reason;
 @end
 
@@ -47,6 +49,7 @@ void NNPPhase7NotifyDisplayWake(void) {}
 @synthesize lifecycleState = _lifecycleState;
 @synthesize aodPresentationActive = _aodPresentationActive;
 @synthesize maximumDuration = _maximumDuration;
+@synthesize unlimitedDuration = _unlimitedDuration;
 @synthesize aodBrightnessMultiplier = _aodBrightnessMultiplier;
 
 static __weak NNPDisplayController *NNPCurrentDisplayController;
@@ -76,6 +79,7 @@ void NNPPhase7NotifyDisplayWake(void) {
     NNPCurrentDisplayController = self;
     _lifecycleState = NNPDisplayLifecycleStateDisabled;
     _maximumDuration = 30.0;
+    _unlimitedDuration = NO;
     _aodBrightnessMultiplier = 1.0f;
     NNPPhase7SetAODBrightnessMultiplier(_aodBrightnessMultiplier);
     NNPDiagnosticSetInteger(@"LockedVisibleLifecycle", _lifecycleState);
@@ -126,6 +130,16 @@ void NNPPhase7NotifyDisplayWake(void) {
     if (self.stateChangedHandler) self.stateChangedHandler();
 }
 
+- (void)setUnlimitedDuration:(BOOL)unlimitedDuration {
+    if (_unlimitedDuration == unlimitedDuration) return;
+    _unlimitedDuration = unlimitedDuration;
+    NNPDiagnosticSetBool(@"Phase7UnlimitedDuration", unlimitedDuration);
+    if (self.lifecycleState == NNPDisplayLifecycleStateActive) {
+        if (unlimitedDuration) [self cancelVisibleDurationTimer:@"unlimited-enabled"];
+        else [self startVisibleDurationTimer];
+    }
+}
+
 - (void)noteDisplayWake {
     [self setAODPresentationActive:NO];
 }
@@ -149,12 +163,18 @@ void NNPPhase7NotifyDisplayWake(void) {
     if (!self.visibleDurationTimer) return;
     [self.visibleDurationTimer invalidate];
     self.visibleDurationTimer = nil;
+    NNPDiagnosticSetDouble(@"Phase7TimerDeadline", 0.0);
     NNPPhase7UpdateForensicsState(_lifecycleState, self.deviceLocked, self.modeSubstitutionObserved, NO);
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY timer cancelled session=%@ reason=%@", self.sessionIdentifier ?: @"none", reason ?: @"unknown"]);
 }
 
 - (void)startVisibleDurationTimer {
     [self cancelVisibleDurationTimer:@"replace"];
+    if (self.unlimitedDuration) {
+        NNPDiagnosticSetDouble(@"Phase7TimerDeadline", 0.0);
+        NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY time limit disabled session=%@", self.sessionIdentifier ?: @"none"]);
+        return;
+    }
     NSTimeInterval duration = MAX(5.0, MIN(60.0, self.maximumDuration));
     NSUInteger generation = self.sessionGeneration;
     NSString *session = [self.sessionIdentifier copy];
