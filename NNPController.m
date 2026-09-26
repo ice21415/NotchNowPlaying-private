@@ -447,9 +447,11 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         if (!show) { [self hide]; return; }
         [self makeWindow]; [self applyViewPreferences]; [self.view updateState:self.state]; [self updateCoverSheetPresentation]; [self applyLockedBackground];
         if (self.window.hidden) { self.window.hidden = NO; NSLog(@"%@ overlay shown", NNPLog); NNPDiagnosticLogTransition(@"CONTROLLER window visible=YES"); [self recordPresentationDiagnostics:@"window-visible"]; }
+        self.view.playbackVisible = YES;
         [self startProgressTimer]; [self startAODPixelShiftTimer]; [self updateProgress]; }); }
 - (void)hide {
     [self stopAODPixelShiftTimer];
+    self.view.playbackVisible = NO;
     [self updateCoverSheetPresentation];
     if (!self.window.hidden) { self.window.hidden = YES; NSLog(@"%@ overlay hidden", NNPLog); NNPDiagnosticLogTransition(@"CONTROLLER window visible=NO cleanup"); }
     [self.progressTimer invalidate]; self.progressTimer = nil;

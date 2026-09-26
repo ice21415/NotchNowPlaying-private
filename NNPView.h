@@ -9,6 +9,7 @@
 @property(nonatomic) CGFloat textSize;
 @property(nonatomic) CGFloat progressHeight;
 @property(nonatomic) CGPoint pixelShiftPixels;
+@property(nonatomic) BOOL playbackVisible;
 - (void)updateState:(NNPState *)state;
 - (void)updateElapsed:(NSTimeInterval)elapsed duration:(NSTimeInterval)duration playing:(BOOL)playing;
 @end
