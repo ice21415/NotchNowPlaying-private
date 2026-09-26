@@ -102,7 +102,9 @@ void NNPAODNitsBeginSession(NSString *sessionID, float multiplier) {
         if (generation != atomic_load_explicit(&gNNPAODNitsGeneration, memory_order_acquire)) return;
         NNPAODClearBacklightFeatures();
         if (safeMultiplier <= 1.001f) return;
-        float targetNits = 20.0f * safeMultiplier;
+        // The 0.1.35 device test confirmed the 80-nit override is visible.
+        // Raise the full-scale target by 50% while keeping it capped at 120 nits.
+        float targetNits = 30.0f * safeMultiplier;
         NNPDiagnosticSetDouble(@"Phase7FixedBrightnessTargetNits", targetNits);
         BOOL available = NNPAODLoadBacklightFeatures();
         NNPDiagnosticSetBool(@"Phase7FixedBrightnessAPIAvailable", available);
