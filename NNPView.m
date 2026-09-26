@@ -1,5 +1,6 @@
 #import "NNPView.h"
 #import "NNPState.h"
+#import "NNPDiagnostics.h"
 #import <QuartzCore/QuartzCore.h>
 #import <math.h>
 
@@ -30,15 +31,18 @@ static NSString *const NNPTitleMarqueeAnimationKey = @"nnp.titleMarquee";
 @property(nonatomic, strong) UILabel *title;
 @property(nonatomic, strong) UILabel *titleDuplicate;
 @property(nonatomic, strong) UILabel *artist;
-@property(nonatomic, strong) UIView *track;
-@property(nonatomic, strong) UIView *fill;
+@property(nonatomic, strong) CAShapeLayer *track;
+@property(nonatomic, strong) CAShapeLayer *fill;
 @property(nonatomic) CGFloat fraction;
+@property(nonatomic) CGRect lastNotchRect;
+@property(nonatomic) BOOL lastNotchRectPrivate;
 @property(nonatomic, copy) NSString *marqueeText;
 @property(nonatomic) CGFloat marqueeWidth;
 @property(nonatomic) CGFloat marqueeFontSize;
 @property(nonatomic) BOOL marqueeReducedMotion;
 @property(nonatomic) BOOL marqueeAnimating;
 - (void)updateTitleMarquee;
+- (CGRect)notchRectUsingPrivateAPI:(BOOL *)usedPrivateAPI;
 @end
 
 @implementation NNPView
@@ -96,16 +100,22 @@ static NSString *const NNPTitleMarqueeAnimationKey = @"nnp.titleMarquee";
     _artist.textColor = [UIColor colorWithWhite:1.0 alpha:0.72];
     _artist.lineBreakMode = NSLineBreakByTruncatingTail;
 
-    _track = [UIView new];
-    _track.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.20];
-    _fill = [UIView new];
-    _fill.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.92];
-    [_track addSubview:_fill];
+    _track = [CAShapeLayer layer];
+    _track.fillColor = UIColor.clearColor.CGColor;
+    _track.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.20].CGColor;
+    _track.lineCap = kCALineCapRound;
+    _track.lineJoin = kCALineJoinRound;
+    _fill = [CAShapeLayer layer];
+    _fill.fillColor = UIColor.clearColor.CGColor;
+    _fill.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.92].CGColor;
+    _fill.lineCap = kCALineCapRound;
+    _fill.lineJoin = kCALineJoinRound;
 
     [self addSubview:_art];
     [self addSubview:_titleViewport];
     [self addSubview:_artist];
-    [self addSubview:_track];
+    [self.layer addSublayer:_track];
+    [self.layer addSublayer:_fill];
 
     _showArtwork = YES;
     _showArtist = YES;
@@ -125,23 +135,58 @@ static NSString *const NNPTitleMarqueeAnimationKey = @"nnp.titleMarquee";
     [self setNeedsLayout];
 }
 
+- (CGRect)notchRectUsingPrivateAPI:(BOOL *)usedPrivateAPI {
+    CGFloat width = CGRectGetWidth(self.bounds);
+    UIScreen *screen = self.window.screen ?: UIScreen.mainScreen;
+    SEL exclusionSelector = NSSelectorFromString(@"_exclusionArea");
+    if ([screen respondsToSelector:exclusionSelector]) {
+        id (*getArea)(id, SEL) = (id (*)(id, SEL))[screen methodForSelector:exclusionSelector];
+        id area = getArea(screen, exclusionSelector);
+        SEL rectSelector = NSSelectorFromString(@"rect");
+        if ([area respondsToSelector:rectSelector]) {
+            CGRect (*getRect)(id, SEL) = (CGRect (*)(id, SEL))[area methodForSelector:rectSelector];
+            CGRect rect = [self convertRect:getRect(area, rectSelector)
+                       fromCoordinateSpace:screen.coordinateSpace];
+            if (isfinite(rect.origin.x) && isfinite(rect.origin.y) &&
+                isfinite(rect.size.width) && isfinite(rect.size.height) &&
+                rect.size.width >= 100.0 && rect.size.width <= 260.0 &&
+                rect.size.height >= 18.0 && rect.size.height <= 65.0 &&
+                fabs(CGRectGetMidX(rect) - width / 2.0) < 20.0 &&
+                rect.origin.y >= -5.0 && rect.origin.y < 20.0) {
+                if (usedPrivateAPI) *usedPrivateAPI = YES;
+                return rect;
+            }
+        }
+    }
+    if (usedPrivateAPI) *usedPrivateAPI = NO;
+    CGFloat fallbackWidth = MIN(209.0, MAX(140.0, width - 104.0));
+    return CGRectMake((width - fallbackWidth) / 2.0, 0.0, fallbackWidth, 30.0);
+}
+
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat width = CGRectGetWidth(self.bounds);
     UIEdgeInsets safe = self.safeAreaInsets;
     CGFloat side = MAX(12.0, safe.left + 12.0);
-    CGFloat top = MAX(8.0, safe.top - 7.0);
-    CGFloat notchGap = MIN(190.0, MAX(160.0, width * 0.45));
-    CGFloat notchLeft = (width - notchGap) / 2.0;
-    CGFloat notchRight = (width + notchGap) / 2.0;
-    CGFloat leftLaneWidth = MAX(28.0, notchLeft - side);
-    CGFloat artSize = MIN(MAX(28.0, self.artworkSize), leftLaneWidth - 6.0);
+    BOOL privateBoundary = NO;
+    CGRect notch = [self notchRectUsingPrivateAPI:&privateBoundary];
+    if (!CGRectEqualToRect(notch, self.lastNotchRect) || privateBoundary != self.lastNotchRectPrivate) {
+        self.lastNotchRect = notch;
+        self.lastNotchRectPrivate = privateBoundary;
+        NNPDiagnosticSetString(@"NotchBoundarySource", privateBoundary ? @"UIScreen._exclusionArea" : @"iPhone12MiniFallback");
+        NNPDiagnosticSetString(@"NotchBoundaryRect", NSStringFromCGRect(notch));
+    }
+    CGFloat notchLeft = CGRectGetMinX(notch);
+    CGFloat notchRight = CGRectGetMaxX(notch);
+    CGFloat top = MAX(5.0, CGRectGetMinY(notch) + 5.0);
+    CGFloat leftLaneWidth = MAX(28.0, notchLeft - side - 8.0);
+    CGFloat artSize = MIN(MAX(28.0, self.artworkSize), leftLaneWidth);
     BOOL artworkVisible = self.showArtwork;
     self.art.hidden = !artworkVisible;
     self.art.frame = CGRectMake(side + (leftLaneWidth - artSize) / 2.0, top, artSize, artSize);
     self.art.layer.cornerRadius = MIN(self.cornerRadius, artSize / 2.0);
 
-    CGFloat textX = notchRight + 7.0;
+    CGFloat textX = notchRight + 10.0;
     CGFloat textWidth = MAX(1.0, width - side - textX);
     BOOL reducedMotion = UIAccessibilityIsReduceMotionEnabled();
     CGFloat titleHeight = reducedMotion ? MAX(34.0, self.textSize * 2.3) : MAX(20.0, self.textSize + 5.0);
@@ -154,16 +199,29 @@ static NSString *const NNPTitleMarqueeAnimationKey = @"nnp.titleMarquee";
     CGFloat artistTop = CGRectGetMaxY(self.titleViewport.frame) + 1.0;
     self.artist.frame = CGRectMake(textX, artistTop, textWidth, 17.0);
 
-    CGFloat contentBottom = self.showArtist ? CGRectGetMaxY(self.artist.frame) : CGRectGetMaxY(self.titleViewport.frame);
-    CGFloat rowBottom = artworkVisible ? MAX(top + artSize, contentBottom) : contentBottom;
-    CGFloat progressTop = rowBottom + 10.0;
     CGFloat progressHeight = MAX(2.0, self.progressHeight);
-    CGFloat trackX = notchLeft - 10.0;
-    CGFloat trackWidth = notchGap + 20.0;
-    self.track.frame = CGRectMake(trackX, progressTop, trackWidth, progressHeight);
-    self.track.layer.cornerRadius = progressHeight / 2.0;
-    self.fill.frame = CGRectMake(0.0, 0.0, trackWidth * self.fraction, progressHeight);
-    self.fill.layer.cornerRadius = progressHeight / 2.0;
+    CGFloat pathLeft = notchLeft - 4.0;
+    CGFloat pathRight = notchRight + 4.0;
+    CGFloat pathTop = MAX(5.0, CGRectGetMinY(notch) + 5.0);
+    CGFloat pathBottom = CGRectGetMaxY(notch) + 5.0;
+    CGFloat radius = MIN(8.0, (pathBottom - pathTop) / 3.0);
+    UIBezierPath *path = [UIBezierPath bezierPath];
+    [path moveToPoint:CGPointMake(pathLeft, pathTop)];
+    [path addLineToPoint:CGPointMake(pathLeft, pathBottom - radius)];
+    [path addQuadCurveToPoint:CGPointMake(pathLeft + radius, pathBottom)
+                controlPoint:CGPointMake(pathLeft, pathBottom)];
+    [path addLineToPoint:CGPointMake(pathRight - radius, pathBottom)];
+    [path addQuadCurveToPoint:CGPointMake(pathRight, pathBottom - radius)
+                controlPoint:CGPointMake(pathRight, pathBottom)];
+    [path addLineToPoint:CGPointMake(pathRight, pathTop)];
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    self.track.path = path.CGPath;
+    self.fill.path = path.CGPath;
+    self.track.lineWidth = progressHeight;
+    self.fill.lineWidth = progressHeight;
+    self.fill.strokeEnd = self.fraction;
+    [CATransaction commit];
     [self updateTitleMarquee];
 }
 
@@ -243,11 +301,11 @@ static NSString *const NNPTitleMarqueeAnimationKey = @"nnp.titleMarquee";
 
 - (void)updateElapsed:(NSTimeInterval)elapsed duration:(NSTimeInterval)duration playing:(BOOL)playing {
     BOOL valid = duration > 0.0 && isfinite(duration);
-    self.track.hidden = !valid || !self.showProgress;
+    self.track.hidden = self.fill.hidden = !valid || !self.showProgress;
     if (!valid) return;
     elapsed = MIN(duration, MAX(0.0, elapsed));
     self.fraction = elapsed / duration;
-    self.fill.alpha = playing ? 1.0 : 0.55;
+    self.fill.opacity = playing ? 1.0 : 0.55;
     [self setNeedsLayout];
 }
 
