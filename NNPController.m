@@ -55,6 +55,8 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 @property(nonatomic, strong) UIView *coverSheetBlackoutView;
 @property(nonatomic, strong) UIView *statusBarBlackoutView;
 @property(nonatomic, weak) UIWindow *statusBarBlackoutWindow;
+@property(nonatomic, strong) UIView *statusBarPlayerContainer;
+@property(nonatomic, strong) NNPView *statusBarPlayerView;
 @property(nonatomic, strong) UIButton *coverSheetControlsToggle;
 @property(nonatomic) BOOL coverSheetHostUnavailableRecorded;
 @property(nonatomic) BOOL coverSheetBlackoutRevealed;
@@ -234,12 +236,16 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     self.coverSheetBlackoutView = nil;
     [self.statusBarBlackoutView removeFromSuperview];
     self.statusBarBlackoutView = nil;
+    [self.statusBarPlayerContainer removeFromSuperview];
+    self.statusBarPlayerContainer = nil;
+    self.statusBarPlayerView = nil;
     self.statusBarBlackoutWindow = nil;
     [self.coverSheetControlsToggle removeFromSuperview];
     self.coverSheetControlsToggle = nil;
     self.coverSheetBlackoutRevealed = NO;
     NNPDiagnosticSetBool(@"CoverSheetBlackoutActive", NO);
     NNPDiagnosticSetBool(@"StatusBarBlackoutActive", NO);
+    NNPDiagnosticSetBool(@"StatusBarPlayerMirrorActive", NO);
     NNPDiagnosticSetBool(@"CoverSheetControlsRevealed", NO);
 }
 - (void)installCoverSheetBlackoutForHost:(UIView *)host {
@@ -262,6 +268,9 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     if (self.statusBarBlackoutWindow != statusWindow) {
         [self.statusBarBlackoutView removeFromSuperview];
         self.statusBarBlackoutView = nil;
+        [self.statusBarPlayerContainer removeFromSuperview];
+        self.statusBarPlayerContainer = nil;
+        self.statusBarPlayerView = nil;
         self.statusBarBlackoutWindow = statusWindow;
     }
     if (statusWindow) {
@@ -276,13 +285,41 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         CGFloat statusMaskHeight = MIN(40.0, CGRectGetHeight(statusWindow.bounds));
         self.statusBarBlackoutView.frame = CGRectMake(0.0, 0.0, CGRectGetWidth(statusWindow.bounds), statusMaskHeight);
         self.statusBarBlackoutView.hidden = keepControlsVisible;
+        if (!self.statusBarPlayerContainer) {
+            self.statusBarPlayerContainer = [[UIView alloc] initWithFrame:CGRectZero];
+            self.statusBarPlayerContainer.backgroundColor = UIColor.clearColor;
+            self.statusBarPlayerContainer.clipsToBounds = YES;
+            self.statusBarPlayerContainer.userInteractionEnabled = NO;
+            self.statusBarPlayerView = [[NNPView alloc] initWithFrame:statusWindow.bounds];
+            [self.statusBarPlayerContainer addSubview:self.statusBarPlayerView];
+        }
+        if (self.statusBarPlayerContainer.superview != statusWindow) [statusWindow addSubview:self.statusBarPlayerContainer];
+        self.statusBarPlayerContainer.frame = self.statusBarBlackoutView.frame;
+        self.statusBarPlayerContainer.hidden = keepControlsVisible;
+        self.statusBarPlayerView.frame = statusWindow.bounds;
+        self.statusBarPlayerView.showArtwork = self.view.showArtwork;
+        self.statusBarPlayerView.showArtist = self.view.showArtist;
+        self.statusBarPlayerView.showProgress = self.view.showProgress;
+        self.statusBarPlayerView.artworkSize = self.view.artworkSize;
+        self.statusBarPlayerView.cornerRadius = self.view.cornerRadius;
+        self.statusBarPlayerView.textSize = self.view.textSize;
+        self.statusBarPlayerView.progressHeight = self.view.progressHeight;
+        self.statusBarPlayerView.pixelShiftPixels = self.view.pixelShiftPixels;
+        [self.statusBarPlayerView updateState:self.state];
+        self.statusBarPlayerView.playbackVisible = self.view.playbackVisible;
         [statusWindow bringSubviewToFront:self.statusBarBlackoutView];
+        [statusWindow bringSubviewToFront:self.statusBarPlayerContainer];
         NNPDiagnosticSetBool(@"StatusBarBlackoutActive", !keepControlsVisible);
+        NNPDiagnosticSetBool(@"StatusBarPlayerMirrorActive", !keepControlsVisible);
     } else {
         [self.statusBarBlackoutView removeFromSuperview];
         self.statusBarBlackoutView = nil;
+        [self.statusBarPlayerContainer removeFromSuperview];
+        self.statusBarPlayerContainer = nil;
+        self.statusBarPlayerView = nil;
         self.statusBarBlackoutWindow = nil;
         NNPDiagnosticSetBool(@"StatusBarBlackoutActive", NO);
+        NNPDiagnosticSetBool(@"StatusBarPlayerMirrorActive", NO);
     }
 
     if (!self.coverSheetControlsToggle) {
@@ -307,8 +344,10 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     self.coverSheetBlackoutRevealed = !self.coverSheetBlackoutRevealed;
     self.coverSheetBlackoutView.hidden = self.coverSheetBlackoutRevealed;
     self.statusBarBlackoutView.hidden = self.coverSheetBlackoutRevealed;
+    self.statusBarPlayerContainer.hidden = self.coverSheetBlackoutRevealed;
     NNPDiagnosticSetBool(@"CoverSheetBlackoutActive", !self.coverSheetBlackoutRevealed);
     NNPDiagnosticSetBool(@"StatusBarBlackoutActive", self.statusBarBlackoutView && !self.coverSheetBlackoutRevealed);
+    NNPDiagnosticSetBool(@"StatusBarPlayerMirrorActive", self.statusBarPlayerContainer && !self.coverSheetBlackoutRevealed);
     NNPDiagnosticSetBool(@"CoverSheetControlsRevealed", self.coverSheetBlackoutRevealed);
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"COVERSHEET blackout=%@ controlsRevealed=%@ reason=player-area-tap", self.coverSheetBlackoutRevealed ? @"NO" : @"YES", self.coverSheetBlackoutRevealed ? @"YES" : @"NO"]);
 }
@@ -324,8 +363,10 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     self.coverSheetBlackoutRevealed = YES;
     self.coverSheetBlackoutView.hidden = YES;
     self.statusBarBlackoutView.hidden = YES;
+    self.statusBarPlayerContainer.hidden = YES;
     NNPDiagnosticSetBool(@"CoverSheetBlackoutActive", NO);
     NNPDiagnosticSetBool(@"StatusBarBlackoutActive", NO);
+    NNPDiagnosticSetBool(@"StatusBarPlayerMirrorActive", NO);
     NNPDiagnosticSetBool(@"CoverSheetControlsRevealed", YES);
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"COVERSHEET blackout=NO controlsRevealed=YES reason=%@", reason ?: @"unknown"]);
 }
@@ -448,10 +489,12 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         [self makeWindow]; [self applyViewPreferences]; [self.view updateState:self.state]; [self updateCoverSheetPresentation]; [self applyLockedBackground];
         if (self.window.hidden) { self.window.hidden = NO; NSLog(@"%@ overlay shown", NNPLog); NNPDiagnosticLogTransition(@"CONTROLLER window visible=YES"); [self recordPresentationDiagnostics:@"window-visible"]; }
         self.view.playbackVisible = YES;
+        self.statusBarPlayerView.playbackVisible = YES;
         [self startProgressTimer]; [self startAODPixelShiftTimer]; [self updateProgress]; }); }
 - (void)hide {
     [self stopAODPixelShiftTimer];
     self.view.playbackVisible = NO;
+    self.statusBarPlayerView.playbackVisible = NO;
     [self updateCoverSheetPresentation];
     if (!self.window.hidden) { self.window.hidden = YES; NSLog(@"%@ overlay hidden", NNPLog); NNPDiagnosticLogTransition(@"CONTROLLER window visible=NO cleanup"); }
     [self.progressTimer invalidate]; self.progressTimer = nil;
@@ -466,6 +509,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         y = (NSInteger)arc4random_uniform(7) - 3;
     } while ((x == 0 && y == 0) || (x == currentX && y == currentY));
     self.view.pixelShiftPixels = CGPointMake((CGFloat)x, (CGFloat)y);
+    self.statusBarPlayerView.pixelShiftPixels = self.view.pixelShiftPixels;
     NNPDiagnosticSetInteger(@"AODPixelShiftX", x);
     NNPDiagnosticSetInteger(@"AODPixelShiftY", y);
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER AOD pixel shift x=%ld y=%ld", (long)x, (long)y]);
@@ -493,11 +537,12 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     [self.pixelShiftTimer invalidate];
     self.pixelShiftTimer = nil;
     self.view.pixelShiftPixels = CGPointZero;
+    self.statusBarPlayerView.pixelShiftPixels = CGPointZero;
     NNPDiagnosticSetInteger(@"AODPixelShiftX", 0);
     NNPDiagnosticSetInteger(@"AODPixelShiftY", 0);
 }
 - (void)startProgressTimer { if (self.progressTimer) return; __weak typeof(self) weakSelf = self; self.progressTimer = [NSTimer scheduledTimerWithTimeInterval:self.preferences.progressUpdateInterval repeats:YES block:^(__unused NSTimer *timer) { [weakSelf updateProgress]; }]; }
-- (void)updateProgress { if (!self.state || self.window.hidden) return; [self updateCoverSheetPresentation]; NSTimeInterval elapsed = self.state.elapsed; if (self.state.playing && self.state.playbackRate > 0.0 && self.state.timestamp > 0.0) elapsed += MAX(0.0, NSDate.date.timeIntervalSince1970 - self.state.timestamp) * self.state.playbackRate; if (self.state.duration > 0.0) elapsed = MIN(self.state.duration, MAX(0.0, elapsed)); [self.view updateElapsed:elapsed duration:self.state.duration playing:self.state.playing]; }
+- (void)updateProgress { if (!self.state || self.window.hidden) return; [self updateCoverSheetPresentation]; NSTimeInterval elapsed = self.state.elapsed; if (self.state.playing && self.state.playbackRate > 0.0 && self.state.timestamp > 0.0) elapsed += MAX(0.0, NSDate.date.timeIntervalSince1970 - self.state.timestamp) * self.state.playbackRate; if (self.state.duration > 0.0) elapsed = MIN(self.state.duration, MAX(0.0, elapsed)); [self.view updateElapsed:elapsed duration:self.state.duration playing:self.state.playing]; [self.statusBarPlayerView updateElapsed:elapsed duration:self.state.duration playing:self.state.playing]; }
 - (void)dealloc {
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
     [_display stopLockedVisibleMode];

@@ -1,6 +1,6 @@
 Package: com.user.notchnowplaying
 Name: 瀏海音樂播放器
-Version: 0.1.39
+Version: 0.1.40
 Architecture: iphoneos-arm64e
 Description: 在螢幕瀏海附近顯示正在播放的音樂資訊。
 Maintainer: USER
