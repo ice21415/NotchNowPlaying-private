@@ -1,5 +1,6 @@
 #import "NNPDisplayController.h"
 #import "NNPDiagnostics.h"
+#import <math.h>
 
 #ifndef NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
 #define NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE 0
@@ -15,6 +16,7 @@
 #if !NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE || NNP_PHASE7_DRY_RUN == 1
 void NNPPhase7SetExperimentArmed(__unused BOOL armed) {}
 void NNPPhase7SetSessionID(__unused NSString *sessionID) {}
+void NNPPhase7SetAODBrightnessMultiplier(__unused float multiplier) {}
 void NNPPhase7NotifyBacklightFactorSubstitution(__unused float originalFactor, __unused float dimmedFactor) {}
 void NNPPhase7NotifyDisplayWake(void) {}
 void NNPPhase7StartIncidentDiagnostics(void) {}
@@ -42,6 +44,7 @@ void NNPPhase7NotifyDisplayWake(void) {}
 @synthesize lifecycleState = _lifecycleState;
 @synthesize aodPresentationActive = _aodPresentationActive;
 @synthesize maximumDuration = _maximumDuration;
+@synthesize aodBrightnessMultiplier = _aodBrightnessMultiplier;
 
 static __weak NNPDisplayController *NNPCurrentDisplayController;
 static NSUInteger NNPNextSessionGeneration;
@@ -70,11 +73,21 @@ void NNPPhase7NotifyDisplayWake(void) {
     NNPCurrentDisplayController = self;
     _lifecycleState = NNPDisplayLifecycleStateDisabled;
     _maximumDuration = 30.0;
+    _aodBrightnessMultiplier = 1.0f;
+    NNPPhase7SetAODBrightnessMultiplier(_aodBrightnessMultiplier);
     NNPDiagnosticSetInteger(@"LockedVisibleLifecycle", _lifecycleState);
     NNPDiagnosticSetBool(@"Phase7AODPresentationActive", NO);
     NNPDiagnosticSetBool(@"Phase7BacklightFactorSubstitution", NO);
     NNPPhase7UpdateForensicsState(_lifecycleState, self.deviceLocked, self.modeSubstitutionObserved, NO);
     return self;
+}
+
+- (void)setAODBrightnessMultiplier:(float)multiplier {
+    float clamped = (float)MAX(1.0, MIN(4.0, multiplier));
+    if (fabsf(_aodBrightnessMultiplier - clamped) < 0.001f) return;
+    _aodBrightnessMultiplier = clamped;
+    NNPPhase7SetAODBrightnessMultiplier(clamped);
+    NNPDiagnosticSetDouble(@"Phase7AODBrightnessMultiplier", clamped);
 }
 
 - (BOOL)isLockedVisibleSupported {

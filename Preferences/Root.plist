@@ -17,8 +17,9 @@
         { cell = PSGroupCell; label = "行為"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = HideWhenPaused; label = "暫停時隱藏"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
         { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ProgressUpdateInterval; label = "進度更新間隔"; default = 1; min = 0.5; max = 5; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSGroupCell; label = "鎖定顯示"; footerText = "實驗功能。播放期間將鎖定畫面設為黑底，只顯示播放資訊；點按播放資訊區或從螢幕底部中央上滑，可顯示原鎖定畫面與解鎖控制項。像素位移每 30 秒移動播放器內容 1–3 個實體像素，以分散固定像素的使用；不能保證完全避免烙印。最長顯示時間依下方設定。"; },
+        { cell = PSGroupCell; label = "鎖定顯示"; footerText = "實驗功能。播放期間將鎖定畫面設為黑底，只顯示播放資訊；點按播放資訊區或從螢幕底部中央上滑，可顯示原鎖定畫面與解鎖控制項。像素位移每 30 秒移動播放器內容 1–3 個實體像素，以分散固定像素的使用；不能保證完全避免烙印。亮度以系統低亮因子為基準，100% 維持目前亮度、最高 400%；調高會提高整體背光，未遮罩的系統畫面可能變亮且較耗電，於下次 AOD 啟動生效。最長顯示時間依下方設定。"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = AODPixelShiftEnabled; label = "AOD 像素位移（減少烙印）"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = AODBrightnessMultiplier; label = "AOD 亮度（%）"; default = 100; min = 100; max = 400; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ExperimentalLockedVisible; label = "實驗性鎖定顯示"; default = 0; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
         { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ExperimentalMaxDuration; label = "實驗最長時間"; default = 30; min = 5; max = 60; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
         { cell = PSGroupCell; label = "診斷"; footerText = "執行期診斷資料會另外儲存，不包含帳戶資訊、歌曲紀錄或憑證。"; }

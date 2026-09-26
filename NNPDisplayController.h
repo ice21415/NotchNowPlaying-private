@@ -16,6 +16,7 @@ typedef NS_ENUM(NSInteger, NNPDisplayLifecycleState) {
 @property(nonatomic, copy) void (^stateChangedHandler)(void);
 @property(nonatomic) BOOL deviceLocked;
 @property(nonatomic) NSTimeInterval maximumDuration;
+@property(nonatomic) float aodBrightnessMultiplier;
 - (BOOL)isLockedVisibleSupported;
 - (BOOL)startLockedVisibleMode;
 - (void)stopLockedVisibleMode;
@@ -25,6 +26,7 @@ typedef NS_ENUM(NSInteger, NNPDisplayLifecycleState) {
 // the production implementation.
 FOUNDATION_EXPORT void NNPPhase7SetExperimentArmed(BOOL armed);
 FOUNDATION_EXPORT void NNPPhase7SetSessionID(NSString *sessionID);
+FOUNDATION_EXPORT void NNPPhase7SetAODBrightnessMultiplier(float multiplier);
 FOUNDATION_EXPORT void NNPPhase7NotifyBacklightFactorSubstitution(float originalFactor, float dimmedFactor);
 FOUNDATION_EXPORT void NNPPhase7NotifyDisplayWake(void);
 FOUNDATION_EXPORT void NNPPhase7StartIncidentDiagnostics(void);

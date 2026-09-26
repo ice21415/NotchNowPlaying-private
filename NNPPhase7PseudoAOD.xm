@@ -26,6 +26,8 @@ static _Atomic(int) gNNPPhase7Lifecycle = NNPDisplayLifecycleStateDisabled;
 static _Atomic(bool) gNNPPhase7DeviceLocked = false;
 static _Atomic(bool) gNNPPhase7ModeSubstitutionObserved = false;
 static _Atomic(bool) gNNPPhase7TimerActive = false;
+static _Atomic(float) gNNPPhase7AODBrightnessMultiplier = 1.0f;
+static _Atomic(float) gNNPPhase7BaseDimmedFactor = 0.0f;
 static _Atomic(bool) gNNPPhase7BlankRequestSuppressed = false;
 static _Atomic(bool) gNNPPhase7RevealOnWakePending = false;
 static _Atomic(int) gNNPPhase7LastRequestedMode = -1;
@@ -233,6 +235,12 @@ void NNPPhase7SetSessionID(NSString *sessionID) {
     NNPDiagnosticSetString(@"Phase7SessionID", gNNPPhase7SessionID);
 }
 
+void NNPPhase7SetAODBrightnessMultiplier(float multiplier) {
+    float safeMultiplier = isfinite(multiplier) ? fminf(4.0f, fmaxf(1.0f, multiplier)) : 1.0f;
+    atomic_store_explicit(&gNNPPhase7AODBrightnessMultiplier, safeMultiplier, memory_order_release);
+    NNPDiagnosticSetDouble(@"Phase7AODBrightnessMultiplier", safeMultiplier);
+}
+
 #if NNP_PHASE7_DRY_RUN != 2
 static BOOL NNPPhase7ReadDimmedFactor(void *providerObject, float *factorOut) {
     if (!providerObject || !factorOut) return NO;
@@ -255,10 +263,14 @@ static void NNPPhase7BacklightFactorReplacement(int displayID, float factor, flo
     if (shouldSubstitute) {
         float dimmedFactor = 0.0f;
         if (NNPPhase7ReadDimmedFactor(provider, &dimmedFactor)) {
+            float multiplier = atomic_load_explicit(&gNNPPhase7AODBrightnessMultiplier, memory_order_acquire);
+            float aodFactor = fminf(dimmedFactor * multiplier, 0.20f);
+            if (!isfinite(aodFactor) || aodFactor <= 0.0f) aodFactor = dimmedFactor;
+            atomic_store_explicit(&gNNPPhase7BaseDimmedFactor, dimmedFactor, memory_order_relaxed);
             atomic_store_explicit(&gNNPPhase7FactorWasSubstituted, true, memory_order_release);
             atomic_store_explicit(&gNNPPhase7OriginalFactor, factor, memory_order_relaxed);
-            atomic_store_explicit(&gNNPPhase7SubstitutedFactor, dimmedFactor, memory_order_relaxed);
-            factor = dimmedFactor;
+            atomic_store_explicit(&gNNPPhase7SubstitutedFactor, aodFactor, memory_order_relaxed);
+            factor = aodFactor;
         }
     }
     if (gNNPOriginalBacklightFactorFunction) {
@@ -347,11 +359,13 @@ static void NNPPhase7ProviderTransitionReplacement(id self, SEL _cmd, long long 
     float originalFactor = atomic_load_explicit(&gNNPPhase7OriginalFactor, memory_order_relaxed);
     float substitutedFactor = atomic_load_explicit(&gNNPPhase7SubstitutedFactor, memory_order_relaxed);
     if (factorWasSubstituted) {
+        NNPDiagnosticSetDouble(@"Phase7SystemDimmedBacklightFactor", atomic_load_explicit(&gNNPPhase7BaseDimmedFactor, memory_order_relaxed));
         NNPDiagnosticSetDouble(@"Phase7OriginalBacklightFactor", originalFactor);
         NNPDiagnosticSetDouble(@"Phase7DimmedBacklightFactor", substitutedFactor);
+        NNPDiagnosticSetDouble(@"Phase7AODBrightnessMultiplier", atomic_load_explicit(&gNNPPhase7AODBrightnessMultiplier, memory_order_relaxed));
         NNPDiagnosticSetBool(@"Phase7BacklightFactorSubstitution", YES);
-        NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 HID backlight factor %.6f -> %.6f; displayMode remained 0 duration=%.3f session=%@",
-                                    originalFactor, substitutedFactor, duration, gNNPPhase7SessionID ?: @"none"]);
+        NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 HID backlight factor %.6f -> %.6f (systemDim=%.6f multiplier=%.2fx); displayMode remained 0 duration=%.3f session=%@",
+                                    originalFactor, substitutedFactor, atomic_load_explicit(&gNNPPhase7BaseDimmedFactor, memory_order_relaxed), atomic_load_explicit(&gNNPPhase7AODBrightnessMultiplier, memory_order_relaxed), duration, gNNPPhase7SessionID ?: @"none"]);
         NNPPhase7NotifyBacklightFactorSubstitution(originalFactor, substitutedFactor);
     } else {
         NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 native mode 0 passed through; dim factor unavailable or not applied duration=%.3f", duration]);
