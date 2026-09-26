@@ -264,7 +264,10 @@ static void NNPPhase7BacklightFactorReplacement(int displayID, float factor, flo
         float dimmedFactor = 0.0f;
         if (NNPPhase7ReadDimmedFactor(provider, &dimmedFactor)) {
             float multiplier = atomic_load_explicit(&gNNPPhase7AODBrightnessMultiplier, memory_order_acquire);
-            float aodFactor = fminf(dimmedFactor * multiplier, 0.20f);
+            // Keep the system's dim factor for the AOD transition. The iOS 17.1.2
+            // CoreBrightness trace does not prove this factor drives panel nits;
+            // the user multiplier is applied through SpringBoard's UIScreen brightness.
+            float aodFactor = dimmedFactor;
             if (!isfinite(aodFactor) || aodFactor <= 0.0f) aodFactor = dimmedFactor;
             atomic_store_explicit(&gNNPPhase7BaseDimmedFactor, dimmedFactor, memory_order_relaxed);
             atomic_store_explicit(&gNNPPhase7FactorWasSubstituted, true, memory_order_release);
@@ -364,7 +367,7 @@ static void NNPPhase7ProviderTransitionReplacement(id self, SEL _cmd, long long 
         NNPDiagnosticSetDouble(@"Phase7DimmedBacklightFactor", substitutedFactor);
         NNPDiagnosticSetDouble(@"Phase7AODBrightnessMultiplier", atomic_load_explicit(&gNNPPhase7AODBrightnessMultiplier, memory_order_relaxed));
         NNPDiagnosticSetBool(@"Phase7BacklightFactorSubstitution", YES);
-        NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 HID backlight factor %.6f -> %.6f (systemDim=%.6f multiplier=%.2fx); displayMode remained 0 duration=%.3f session=%@",
+        NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 HID backlight factor %.6f -> %.6f (systemDim=%.6f UIScreenMultiplier=%.2fx); displayMode remained 0 duration=%.3f session=%@",
                                     originalFactor, substitutedFactor, atomic_load_explicit(&gNNPPhase7BaseDimmedFactor, memory_order_relaxed), atomic_load_explicit(&gNNPPhase7AODBrightnessMultiplier, memory_order_relaxed), duration, gNNPPhase7SessionID ?: @"none"]);
         NNPPhase7NotifyBacklightFactorSubstitution(originalFactor, substitutedFactor);
     } else {
