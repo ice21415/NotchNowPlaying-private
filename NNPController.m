@@ -236,7 +236,16 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     self.coverSheetBlackoutView = nil;
     [self.statusBarBlackoutView removeFromSuperview];
     self.statusBarBlackoutView = nil;
-    [self.statusBarPlayerContainer removeFromSuperview];
+    UIView *departingPlayer = self.statusBarPlayerContainer;
+    if (departingPlayer.superview && !departingPlayer.hidden) {
+        NSTimeInterval duration = UIAccessibilityIsReduceMotionEnabled() ? 0.10 : 0.18;
+        [UIView animateWithDuration:duration delay:0.0
+                            options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState
+                         animations:^{ departingPlayer.alpha = 0.0; }
+                         completion:^(__unused BOOL finished) { [departingPlayer removeFromSuperview]; }];
+    } else {
+        [departingPlayer removeFromSuperview];
+    }
     self.statusBarPlayerContainer = nil;
     self.statusBarPlayerView = nil;
     self.statusBarBlackoutWindow = nil;
@@ -291,6 +300,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
             self.statusBarPlayerContainer.clipsToBounds = YES;
             self.statusBarPlayerContainer.userInteractionEnabled = NO;
             self.statusBarPlayerView = [[NNPView alloc] initWithFrame:statusWindow.bounds];
+            self.statusBarPlayerView.contentOpacity = self.view.contentOpacity;
             [self.statusBarPlayerContainer addSubview:self.statusBarPlayerView];
         }
         if (self.statusBarPlayerContainer.superview != statusWindow) [statusWindow addSubview:self.statusBarPlayerContainer];
@@ -486,13 +496,32 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         NNPDiagnosticSetBool(@"UIVisible", show);
         NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER reconcile locked=%@ show=%@ experimentEligible=%@ lifecycle=%ld", self.locked ? @"YES" : @"NO", show ? @"YES" : @"NO", experimentEligible ? @"YES" : @"NO", (long)self.display.lifecycleState]);
         if (!show) { [self hide]; return; }
-        [self makeWindow]; [self applyViewPreferences]; [self.view updateState:self.state]; [self updateCoverSheetPresentation]; [self applyLockedBackground];
+        [self makeWindow];
+        BOOL becomingVisible = self.window.hidden;
+        if (becomingVisible) {
+            [self.view stopContentAnimation];
+            self.view.contentOpacity = 0.0;
+        }
+        [self applyViewPreferences]; [self.view updateState:self.state]; [self updateCoverSheetPresentation]; [self applyLockedBackground];
         if (self.window.hidden) { self.window.hidden = NO; NSLog(@"%@ overlay shown", NNPLog); NNPDiagnosticLogTransition(@"CONTROLLER window visible=YES"); [self recordPresentationDiagnostics:@"window-visible"]; }
         self.view.playbackVisible = YES;
         self.statusBarPlayerView.playbackVisible = YES;
+        if (becomingVisible) {
+            [self.statusBarPlayerView stopContentAnimation];
+            self.statusBarPlayerView.contentOpacity = 0.0;
+            NSTimeInterval duration = UIAccessibilityIsReduceMotionEnabled() ? 0.16 : 0.32;
+            [UIView animateWithDuration:duration delay:0.04
+                                options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState
+                             animations:^{
+                                 self.view.contentOpacity = 1.0;
+                                 self.statusBarPlayerView.contentOpacity = 1.0;
+                             } completion:nil];
+        }
         [self startProgressTimer]; [self startAODPixelShiftTimer]; [self updateProgress]; }); }
 - (void)hide {
     [self stopAODPixelShiftTimer];
+    [self.view stopContentAnimation];
+    self.view.contentOpacity = 0.0;
     self.view.playbackVisible = NO;
     self.statusBarPlayerView.playbackVisible = NO;
     [self updateCoverSheetPresentation];

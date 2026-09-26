@@ -10,6 +10,8 @@
 @property(nonatomic) CGFloat progressHeight;
 @property(nonatomic) CGPoint pixelShiftPixels;
 @property(nonatomic) BOOL playbackVisible;
+@property(nonatomic) CGFloat contentOpacity;
 - (void)updateState:(NNPState *)state;
 - (void)updateElapsed:(NSTimeInterval)elapsed duration:(NSTimeInterval)duration playing:(BOOL)playing;
+- (void)stopContentAnimation;
 @end

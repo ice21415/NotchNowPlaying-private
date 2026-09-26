@@ -67,6 +67,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 }
 
 @interface NNPView ()
+@property(nonatomic, strong) UIView *contentContainer;
 @property(nonatomic, strong) UIImageView *art;
 @property(nonatomic, strong) UIView *titleViewport;
 @property(nonatomic, strong) UILabel *title;
@@ -98,6 +99,15 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         pixelShiftPixels.x / scale, pixelShiftPixels.y / scale, 0.0);
 }
 
+- (void)setContentOpacity:(CGFloat)contentOpacity {
+    _contentOpacity = MIN(1.0, MAX(0.0, contentOpacity));
+    self.contentContainer.alpha = _contentOpacity;
+}
+
+- (void)stopContentAnimation {
+    [self.contentContainer.layer removeAllAnimations];
+}
+
 - (void)setPlaybackVisible:(BOOL)playbackVisible {
     if (_playbackVisible == playbackVisible) return;
     _playbackVisible = playbackVisible;
@@ -114,6 +124,12 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     if (!self) return nil;
     self.backgroundColor = UIColor.clearColor;
     self.userInteractionEnabled = NO;
+    _contentOpacity = 1.0;
+    _contentContainer = [[UIView alloc] initWithFrame:self.bounds];
+    _contentContainer.backgroundColor = UIColor.clearColor;
+    _contentContainer.userInteractionEnabled = NO;
+    _contentContainer.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self addSubview:_contentContainer];
 
     _art = [UIImageView new];
     _art.contentMode = UIViewContentModeScaleAspectFill;
@@ -154,11 +170,11 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     _fill.lineCap = kCALineCapRound;
     _fill.lineJoin = kCALineJoinRound;
 
-    [self addSubview:_art];
-    [self addSubview:_titleViewport];
-    [self addSubview:_artist];
-    [self.layer addSublayer:_track];
-    [self.layer addSublayer:_fill];
+    [_contentContainer addSubview:_art];
+    [_contentContainer addSubview:_titleViewport];
+    [_contentContainer addSubview:_artist];
+    [_contentContainer.layer addSublayer:_track];
+    [_contentContainer.layer addSublayer:_fill];
 
     _showArtwork = YES;
     _showArtist = YES;
@@ -209,6 +225,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 
 - (void)layoutSubviews {
     [super layoutSubviews];
+    self.contentContainer.frame = self.bounds;
     CGFloat width = CGRectGetWidth(self.bounds);
     UIEdgeInsets safe = self.safeAreaInsets;
     CGFloat side = MAX(12.0, safe.left + 12.0);
