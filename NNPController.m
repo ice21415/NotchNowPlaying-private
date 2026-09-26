@@ -383,8 +383,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 - (BOOL)shouldPresentInsideCoverSheet {
 #if NNP_ENABLE_COVERSHEET_PRESENTATION && NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
     return self.locked && self.preferences.experimentalLockedVisible && self.preferences.enabled &&
-        self.preferences.showOnLockScreen && self.state.hasTrack && self.state.playing &&
-        [self isAllowedMedia:self.state] && self.display.aodPresentationActive &&
+        self.preferences.showOnLockScreen && self.display.aodPresentationActive &&
         self.display.lifecycleState == NNPDisplayLifecycleStateActive;
 #else
     return NO;
@@ -478,7 +477,12 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
         self.display.deviceLocked = self.locked;
         self.display.maximumDuration = self.preferences.experimentalMaxDuration;
-        experimentEligible = self.preferences.experimentalLockedVisible && self.preferences.enabled && self.preferences.showOnLockScreen && self.state.hasTrack && self.state.playing && [self isAllowedMedia:self.state];
+        BOOL mediaEligible = self.state.hasTrack && self.state.playing && [self isAllowedMedia:self.state];
+        BOOL activeSession = self.locked && self.display.aodPresentationActive &&
+            self.display.lifecycleState == NNPDisplayLifecycleStateActive;
+        experimentEligible = self.preferences.experimentalLockedVisible && self.preferences.enabled &&
+            self.preferences.showOnLockScreen && (mediaEligible || activeSession);
+        NNPDiagnosticSetBool(@"MediaSwitchAODSessionRetained", activeSession && !mediaEligible && experimentEligible);
         if (experimentEligible) {
             [self.preferences reloadAODBrightnessMultiplier];
             float brightnessMultiplier = self.preferences.aodBrightnessMultiplier;
@@ -520,8 +524,18 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         [self startProgressTimer]; [self startAODPixelShiftTimer]; [self updateProgress]; }); }
 - (void)hide {
     [self stopAODPixelShiftTimer];
-    [self.view stopContentAnimation];
-    self.view.contentOpacity = 0.0;
+    BOOL keepAmbient = [self shouldPresentInsideCoverSheet];
+    if (keepAmbient) {
+        [UIView animateWithDuration:UIAccessibilityIsReduceMotionEnabled() ? 0.10 : 0.18
+                              delay:0.0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState
+                         animations:^{
+                             self.view.contentOpacity = 0.0;
+                             self.statusBarPlayerView.contentOpacity = 0.0;
+                         } completion:nil];
+    } else {
+        [self.view stopContentAnimation];
+        self.view.contentOpacity = 0.0;
+    }
     self.view.playbackVisible = NO;
     self.statusBarPlayerView.playbackVisible = NO;
     [self updateCoverSheetPresentation];

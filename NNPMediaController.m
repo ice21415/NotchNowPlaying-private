@@ -1,20 +1,25 @@
 #import "NNPMediaController.h"
 #import "NNPState.h"
+#import "NNPDiagnostics.h"
 #import <UIKit/UIKit.h>
 #import <MediaRemote/MediaRemote.h>
 #import <objc/message.h>
 #import <math.h>
-#if NNP_PHASE2D2_DIAGNOSTIC
-#import "NNPDiagnostics.h"
-#endif
 
 static NSString * const NNPLog = @"[Lilywhite/NowPlaying]";
+static const NSTimeInterval NNPTransientPlaybackGrace = 2.5;
 
 @interface NNPMediaController ()
 @property(nonatomic) BOOL started;
 @property(nonatomic) int pid;
 @property(nonatomic, strong) NSDictionary *info;
 @property(nonatomic, strong) NSMutableArray *observerTokens;
+@property(nonatomic) NSUInteger refreshGeneration;
+@property(nonatomic) NSUInteger transientGeneration;
+@property(nonatomic) BOOL transientPending;
+@property(nonatomic, strong) NNPState *pendingTransientState;
+@property(nonatomic, strong) NNPState *publishedState;
+- (void)deliverState:(NNPState *)state;
 @end
 
 static id NNPValue(NSDictionary *info, CFStringRef key) {
@@ -79,18 +84,31 @@ static UIImage *NNPArtwork(NSDictionary *info) {
 - (void)refresh {
     if (!self.started) return;
     __weak typeof(self) weakSelf = self;
+    NSUInteger generation = ++self.refreshGeneration;
+    __block BOOL receivedPID = NO, receivedInfo = NO;
+    __block int nextPID = 0;
+    __block NSDictionary *nextInfo = nil;
+    void (^finishIfReady)(void) = ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf || generation != strongSelf.refreshGeneration || !receivedPID || !receivedInfo) return;
+        strongSelf.pid = nextPID;
+        strongSelf.info = nextInfo;
+        [strongSelf publish];
+    };
     MRMediaRemoteGetNowPlayingApplicationPID(dispatch_get_main_queue(), ^(int pid) {
-        weakSelf.pid = pid;
-        [weakSelf publish];
+        nextPID = pid;
+        receivedPID = YES;
+        finishIfReady();
     });
     MRMediaRemoteGetNowPlayingInfo(dispatch_get_main_queue(), ^(CFDictionaryRef rawInfo) {
-        weakSelf.info = rawInfo ? CFBridgingRelease(CFRetain(rawInfo)) : nil;
-        [weakSelf publish];
+        nextInfo = rawInfo ? CFBridgingRelease(CFRetain(rawInfo)) : nil;
+        receivedInfo = YES;
+        finishIfReady();
     });
 }
 - (void)publish {
-    if (!self.started || !self.info) return;
-    NSDictionary *info = self.info;
+    if (!self.started) return;
+    NSDictionary *info = self.info ?: @{};
     NNPState *state = [NNPState new];
     state.title = NNPString(info, kMRMediaRemoteNowPlayingInfoTitle);
     state.artist = NNPString(info, kMRMediaRemoteNowPlayingInfoArtist);
@@ -115,6 +133,43 @@ static UIImage *NNPArtwork(NSDictionary *info) {
         lastBundle = [bundle copy];
     }
 #endif
+    BOOL ready = state.playing && state.hasTrack && state.bundleIdentifier.length > 0;
+    if (ready) {
+        if (self.transientPending) NNPDiagnosticLogTransition(@"MEDIA transient playback state recovered before grace period ended");
+        self.transientPending = NO;
+        self.pendingTransientState = nil;
+        self.transientGeneration++;
+        [self deliverState:state];
+        return;
+    }
+    if (self.transientPending) {
+        self.pendingTransientState = [state copyState];
+        return;
+    }
+    if (self.publishedState.playing) {
+        self.transientPending = YES;
+        self.pendingTransientState = [state copyState];
+        NSUInteger generation = ++self.transientGeneration;
+        NNPDiagnosticLogTransition(@"MEDIA transient playback state held for 2.5s");
+        __weak typeof(self) weakSelf = self;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(NNPTransientPlaybackGrace * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf || !strongSelf.transientPending || generation != strongSelf.transientGeneration) return;
+            NNPState *pending = strongSelf.pendingTransientState;
+            strongSelf.transientPending = NO;
+            strongSelf.pendingTransientState = nil;
+            NNPDiagnosticLogTransition(@"MEDIA transient playback state persisted after grace period");
+            [strongSelf deliverState:pending];
+        });
+        return;
+    }
+    [self deliverState:state];
+}
+
+- (void)deliverState:(NNPState *)state {
+    if (!state) return;
+    self.publishedState = [state copyState];
     if (state.bundleIdentifier.length) NSLog(@"%@ Now Playing application: %@", NNPLog, state.bundleIdentifier);
     if (self.stateHandler) self.stateHandler([state copyState]);
 }
