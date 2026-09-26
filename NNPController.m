@@ -8,6 +8,7 @@
 #import "NNPDiagnostics.h"
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
 #import <math.h>
 #import <stdlib.h>
 
@@ -17,9 +18,37 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 - (void)observeTouchEvent:(UIEvent *)event;
 @end
 static void (*NNPOriginalApplicationSendEvent)(id, SEL, UIEvent *);
+static id (*NNPOriginalRequestUISensorMode)(id, SEL, id);
 static void NNPApplicationSendEventReplacement(id application, SEL selector, UIEvent *event) {
     [[NNPController sharedController] observeTouchEvent:event];
     if (NNPOriginalApplicationSendEvent) NNPOriginalApplicationSendEvent(application, selector, event);
+}
+static BOOL NNPSensorModeBool(id mode, const char *selectorName) {
+    SEL selector = sel_registerName(selectorName);
+    return mode && [mode respondsToSelector:selector]
+        ? ((BOOL (*)(id, SEL))objc_msgSend)(mode, selector) : NO;
+}
+static long long NNPSensorModeInteger(id mode, const char *selectorName) {
+    SEL selector = sel_registerName(selectorName);
+    return mode && [mode respondsToSelector:selector]
+        ? ((long long (*)(id, SEL))objc_msgSend)(mode, selector) : -1;
+}
+static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
+    id result = NNPOriginalRequestUISensorMode ? NNPOriginalRequestUISensorMode(service, selector, mode) : nil;
+    static NSUInteger requestCount = 0;
+    if (++requestCount <= 30) {
+        NSString *reason = [mode respondsToSelector:@selector(reason)] ? [mode reason] : @"unknown";
+        NNPDiagnosticLogTransition([NSString stringWithFormat:
+            @"TOUCH sensor mode request count=%lu reason=%@ display=%lld digitizer=%@ alwaysOn=%@ tapToWake=%@ wakeOnSwipe=%@ swipeThrough=%@ assertion=%@",
+            (unsigned long)requestCount, reason, NNPSensorModeInteger(mode, "displayState"),
+            NNPSensorModeBool(mode, "digitizerEnabled") ? @"YES" : @"NO",
+            NNPSensorModeBool(mode, "alwaysOnGesturesEnabled") ? @"YES" : @"NO",
+            NNPSensorModeBool(mode, "tapToWakeEnabled") ? @"YES" : @"NO",
+            NNPSensorModeBool(mode, "wakeOnSwipeEnabled") ? @"YES" : @"NO",
+            NNPSensorModeBool(mode, "wakeOnSwipeThroughEnabled") ? @"YES" : @"NO",
+            result ? @"YES" : @"NO"]);
+    }
+    return result;
 }
 
 #ifndef NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
@@ -172,6 +201,16 @@ static void NNPApplicationSendEventReplacement(id application, SEL selector, UIE
         NNPOriginalApplicationSendEvent = (void (*)(id, SEL, UIEvent *))method_setImplementation(
             sendEventMethod, (IMP)NNPApplicationSendEventReplacement);
         NNPDiagnosticSetBool(@"ApplicationTouchEventHookInstalled", NNPOriginalApplicationSendEvent != NULL);
+    }
+    Class sensorServiceClass = NSClassFromString(@"BKSHIDUISensorService");
+    Method sensorRequestMethod = sensorServiceClass
+        ? class_getInstanceMethod(sensorServiceClass, NSSelectorFromString(@"requestUISensorMode:")) : NULL;
+    if (sensorRequestMethod && !NNPOriginalRequestUISensorMode) {
+        NNPOriginalRequestUISensorMode = (id (*)(id, SEL, id))method_setImplementation(
+            sensorRequestMethod, (IMP)NNPRequestUISensorModeReplacement);
+        NNPDiagnosticSetBool(@"SensorModeRequestHookInstalled", NNPOriginalRequestUISensorMode != NULL);
+    } else {
+        NNPDiagnosticSetBool(@"SensorModeRequestHookInstalled", NO);
     }
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(preferencesChanged:) name:NNPPreferencesDidChangeNotification object:self.preferences];
     self.display = [NNPDisplayController new]; self.lockState = [NNPLockStateController new];
