@@ -26,6 +26,7 @@ void NNPPhase7NotifyDisplayWake(void) {}
 #endif
 
 @interface NNPDisplayController ()
+@property(nonatomic) BOOL aodPresentationActive;
 @property(nonatomic, strong) NSTimer *visibleDurationTimer;
 @property(nonatomic) NSUInteger sessionGeneration;
 @property(nonatomic, copy) NSString *sessionIdentifier;
@@ -33,11 +34,13 @@ void NNPPhase7NotifyDisplayWake(void) {}
 @property(nonatomic) BOOL lockedVisibleActivated;
 - (void)noteBacklightFactorSubstitutionFrom:(float)originalFactor to:(float)dimmedFactor;
 - (void)activateLockedVisibleSessionIfReady;
+- (void)noteDisplayWake;
 - (void)stopLockedVisibleModeWithReason:(NSString *)reason;
 @end
 
 @implementation NNPDisplayController
 @synthesize lifecycleState = _lifecycleState;
+@synthesize aodPresentationActive = _aodPresentationActive;
 @synthesize maximumDuration = _maximumDuration;
 
 static __weak NNPDisplayController *NNPCurrentDisplayController;
@@ -53,6 +56,7 @@ void NNPPhase7NotifyBacklightFactorSubstitution(float originalFactor, float dimm
 
 void NNPPhase7NotifyDisplayWake(void) {
     void (^reveal)(void) = ^{
+        [NNPCurrentDisplayController noteDisplayWake];
         [[NNPController sharedController] revealCoverSheetControlsForWake];
     };
     if ([NSThread isMainThread]) reveal();
@@ -67,6 +71,7 @@ void NNPPhase7NotifyDisplayWake(void) {
     _lifecycleState = NNPDisplayLifecycleStateDisabled;
     _maximumDuration = 30.0;
     NNPDiagnosticSetInteger(@"LockedVisibleLifecycle", _lifecycleState);
+    NNPDiagnosticSetBool(@"Phase7AODPresentationActive", NO);
     NNPDiagnosticSetBool(@"Phase7BacklightFactorSubstitution", NO);
     NNPPhase7UpdateForensicsState(_lifecycleState, self.deviceLocked, self.modeSubstitutionObserved, NO);
     return self;
@@ -88,6 +93,18 @@ void NNPPhase7NotifyDisplayWake(void) {
     NNPDiagnosticSetInteger(@"LockedVisibleLifecycle", state);
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY lifecycle state=%ld", (long)state]);
     if (self.stateChangedHandler) self.stateChangedHandler();
+}
+
+- (void)setAODPresentationActive:(BOOL)active {
+    if (_aodPresentationActive == active) return;
+    _aodPresentationActive = active;
+    NNPDiagnosticSetBool(@"Phase7AODPresentationActive", active);
+    NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY AOD presentation active=%@", active ? @"YES" : @"NO"]);
+    if (self.stateChangedHandler) self.stateChangedHandler();
+}
+
+- (void)noteDisplayWake {
+    [self setAODPresentationActive:NO];
 }
 
 - (void)setDeviceLocked:(BOOL)deviceLocked {
@@ -139,6 +156,7 @@ void NNPPhase7NotifyDisplayWake(void) {
 - (void)activateLockedVisibleSessionIfReady {
     if (self.lifecycleState != NNPDisplayLifecycleStatePreparing || !self.deviceLocked || !self.modeSubstitutionObserved) return;
     self.lockedVisibleActivated = YES;
+    [self setAODPresentationActive:YES];
     NNPDiagnosticSetBool(@"Phase7LockedVisibleActive", YES);
     NNPDiagnosticSetDouble(@"Phase7LockedTimestamp", NSDate.date.timeIntervalSince1970);
     self.lifecycleState = NNPDisplayLifecycleStateActive;
@@ -152,6 +170,9 @@ void NNPPhase7NotifyDisplayWake(void) {
     NNPPhase7UpdateForensicsState(_lifecycleState, self.deviceLocked, self.modeSubstitutionObserved, self.visibleDurationTimer != nil);
     NNPDiagnosticSetBool(@"Phase7BacklightFactorSubstitution", YES);
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY backlight factor adjusted session=%@ original=%.6f dimmed=%.6f deviceLocked=%@", self.sessionIdentifier ?: @"none", originalFactor, dimmedFactor, self.deviceLocked ? @"YES" : @"NO"]);
+    if (self.deviceLocked && self.lifecycleState == NNPDisplayLifecycleStateActive) {
+        [self setAODPresentationActive:YES];
+    }
     [self activateLockedVisibleSessionIfReady];
 }
 
@@ -209,6 +230,7 @@ void NNPPhase7NotifyDisplayWake(void) {
     if (_lifecycleState == NNPDisplayLifecycleStateStopping) return;
     NSString *session = [self.sessionIdentifier copy] ?: @"none";
     BOOL substitutedDuringLockedSession = self.deviceLocked && self.modeSubstitutionObserved;
+    [self setAODPresentationActive:NO];
     // Disarm before any other cleanup so a nested/native transition cannot be
     // intercepted while this session is being torn down.
     NNPPhase7SetExperimentArmed(NO);

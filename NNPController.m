@@ -135,7 +135,16 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(preferencesChanged:) name:NNPPreferencesDidChangeNotification object:self.preferences];
     self.display = [NNPDisplayController new]; self.lockState = [NNPLockStateController new];
     __weak typeof(self) weakSelf = self;
-    self.display.stateChangedHandler = ^{ [weakSelf reconcile]; };
+    self.display.stateChangedHandler = ^{
+        NNPController *controller = weakSelf;
+        if (!controller) return;
+        void (^update)(void) = ^{
+            if (!controller.display.aodPresentationActive) [controller hide];
+            [controller reconcile];
+        };
+        if ([NSThread isMainThread]) update();
+        else dispatch_async(dispatch_get_main_queue(), update);
+    };
     self.lockState.stateHandler = ^(BOOL locked) { [weakSelf setLocked:locked]; };
     [self.lockState start]; self.locked = self.lockState.isLocked;
     NNPDiagnosticSetBool(@"ControllerInitialized", YES); NNPDiagnosticSetBool(@"LogicalLockState", self.locked);
@@ -155,7 +164,13 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         return;
     }
     _locked = locked;
-    if (!locked) [self clearLockedPresentationBackgroundForUnlock];
+    if (!locked) {
+        [self clearLockedPresentationBackgroundForUnlock];
+#if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
+        self.display.deviceLocked = NO;
+#endif
+        [self hide];
+    }
     NNPDiagnosticSetBool(@"LogicalLockState", locked);
     NSLog(@"%@ device %@", NNPLog, locked ? @"locked" : @"unlocked");
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER self.locked=%@", locked ? @"YES" : @"NO"]);
@@ -172,7 +187,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     if (!state.playing && self.preferences.hideWhenPaused) return NO;
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
     if (self.preferences.experimentalLockedVisible &&
-        (!self.locked || self.display.lifecycleState != NNPDisplayLifecycleStateActive)) return NO;
+        (!self.locked || !self.display.aodPresentationActive || self.display.lifecycleState != NNPDisplayLifecycleStateActive)) return NO;
 #endif
     return YES;
 }
@@ -313,7 +328,8 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 #if NNP_ENABLE_COVERSHEET_PRESENTATION && NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
     return self.locked && self.preferences.experimentalLockedVisible && self.preferences.enabled &&
         self.preferences.showOnLockScreen && self.state.hasTrack && self.state.playing &&
-        [self isAllowedMedia:self.state] && self.display.lifecycleState == NNPDisplayLifecycleStateActive;
+        [self isAllowedMedia:self.state] && self.display.aodPresentationActive &&
+        self.display.lifecycleState == NNPDisplayLifecycleStateActive;
 #else
     return NO;
 #endif
