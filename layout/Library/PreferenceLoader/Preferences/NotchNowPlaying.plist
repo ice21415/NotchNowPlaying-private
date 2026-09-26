@@ -1,27 +1,47 @@
 {
-    entry = { cell = PSLinkCell; label = "凹槽音樂資訊"; };
-    title = "凹槽音樂資訊";
+    entry = { cell = PSLinkCell; label = "瀏海音樂播放器"; };
+    title = "瀏海音樂播放器";
     items = (
-        { cell = PSGroupCell; label = "一般"; },
-        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = Enabled; label = "啟用"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = SpotifyOnly; label = "僅限 Spotify"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowWhileUnlocked; label = "解鎖時顯示"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowOnLockScreen; label = "鎖定畫面顯示"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSGroupCell; label = "外觀"; },
+        { cell = PSGroupCell; label = "顯示"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = Enabled; label = "啟用播放器"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = SpotifyOnly; label = "只顯示 Spotify 播放內容"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowWhileUnlocked; label = "解鎖時顯示播放器"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowOnLockScreen; label = "鎖定畫面顯示播放器"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+
+        { cell = PSGroupCell; label = "播放器外觀"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowArtwork; label = "顯示專輯封面"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowArtist; label = "顯示歌手"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowArtist; label = "顯示歌手名稱"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowProgress; label = "顯示播放進度"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ArtworkSize; label = "封面大小"; default = 40; min = 28; max = 56; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = CornerRadius; label = "圓角大小"; default = 9; min = 4; max = 16; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = TextSize; label = "文字大小"; default = 14; min = 10; max = 20; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSGroupCell; label = "行為"; },
-        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = HideWhenPaused; label = "暫停時隱藏"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ProgressUpdateInterval; label = "進度更新間隔"; default = 1; min = 0.5; max = 5; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSGroupCell; label = "鎖定顯示"; footerText = "實驗功能。播放期間將鎖定畫面設為黑底，只顯示播放資訊；點按播放資訊區或從螢幕底部中央上滑，可顯示原鎖定畫面與解鎖控制項。像素位移每 30 秒移動播放器內容 1–3 個實體像素，以分散固定像素的使用；不能保證完全避免烙印。亮度以系統低亮因子為基準，100% 維持目前亮度、最高 400%；調高會提高整體背光，未遮罩的系統畫面可能變亮且較耗電，於下次 AOD 啟動生效。最長顯示時間依下方設定。"; },
-        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = AODPixelShiftEnabled; label = "AOD 像素位移（減少烙印）"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = AODBrightnessMultiplier; label = "AOD 亮度（%）"; default = 100; min = 100; max = 400; showValue = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ExperimentalLockedVisible; label = "實驗性鎖定顯示"; default = 0; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ExperimentalMaxDuration; label = "實驗最長時間"; default = 30; min = 5; max = 60; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSGroupCell; label = "診斷"; footerText = "執行期診斷資料會另外儲存，不包含帳戶資訊、歌曲紀錄或憑證。"; }
+
+        { cell = PSGroupCell; label = "播放進度條粗細"; footerText = "調整播放器進度條的粗細。數值越大，進度條越醒目。預設 3 pt，範圍 2 至 6 pt。"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ProgressHeight; label = "粗細（pt）"; default = 3; min = 2; max = 6; showValue = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+
+        { cell = PSGroupCell; label = "專輯封面大小"; footerText = "調整專輯封面的邊長。數值越大，封面越大；實際尺寸仍會依螢幕寬度限制。預設 40 pt，範圍 28 至 56 pt。"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ArtworkSize; label = "大小（pt）"; default = 40; min = 28; max = 56; showValue = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+
+        { cell = PSGroupCell; label = "專輯封面圓角"; footerText = "調整封面四角的弧度。數值越大，邊角越圓。預設 9 pt，範圍 4 至 16 pt。"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = CornerRadius; label = "圓角（pt）"; default = 9; min = 4; max = 16; showValue = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+
+        { cell = PSGroupCell; label = "歌曲名稱字級"; footerText = "只調整歌曲名稱的字級，歌手名稱大小不受影響。預設 14 pt，範圍 10 至 20 pt。"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = TextSize; label = "字級（pt）"; default = 14; min = 10; max = 20; showValue = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+
+        { cell = PSGroupCell; label = "播放行為"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = HideWhenPaused; label = "暫停時隱藏播放器"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSGroupCell; label = "播放進度更新頻率"; footerText = "設定播放器更新進度的間隔。間隔越短，更新越頻繁。預設 1 秒，範圍 0.5 至 5 秒。"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ProgressUpdateInterval; label = "更新間隔（秒）"; default = 1; min = 0.5; max = 5; showValue = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+
+        { cell = PSGroupCell; label = "鎖定畫面 AOD"; footerText = "開啟後，播放中的音樂可在鎖定後以黑底顯示播放器。此功能仍在實驗階段，也需要開啟「鎖定畫面顯示播放器」。請先解鎖手機並開始播放，再按側邊按鈕鎖定螢幕。"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ExperimentalLockedVisible; label = "啟用實驗性 AOD 播放器"; default = 0; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+
+        { cell = PSGroupCell; label = "播放器位置微移"; footerText = "每 30 秒隨機微移播放器內容，水平與垂直方向各不超過 3 個螢幕像素，以降低 OLED 長時間顯示固定圖樣造成烙印的風險；無法保證完全避免。"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = AODPixelShiftEnabled; label = "微移播放器內容"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+
+        { cell = PSGroupCell; label = "AOD 亮度倍率"; footerText = "100% 維持目前的 AOD 亮度；數值越高畫面越亮，最高 400%。實際背光因子上限為 0.20。調高後，黑色遮罩以外的畫面也可能變亮並增加耗電；新設定會在下次啟動 AOD 時套用。"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = AODBrightnessMultiplier; label = "亮度（%）"; default = 100; min = 100; max = 400; showValue = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+
+        { cell = PSGroupCell; label = "AOD 最長顯示時間"; footerText = "設定每次 AOD 顯示的時間上限。時間到後，插件會結束這次實驗性顯示。預設 30 秒，範圍 5 至 60 秒。"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ExperimentalMaxDuration; label = "時間（秒）"; default = 30; min = 5; max = 60; showValue = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+
+        { cell = PSGroupCell; label = "診斷資料"; footerText = "插件會在手機本機儲存執行紀錄，用於排查問題。"; }
     );
 }

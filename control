@@ -1,8 +1,8 @@
 Package: com.user.notchnowplaying
-Name: Notch Now Playing
-Version: 0.1.27
+Name: 瀏海音樂播放器
+Version: 0.1.28
 Architecture: iphoneos-arm64e
-Description: A lock-screen Now Playing notch prototype.
+Description: 在螢幕瀏海附近顯示正在播放的音樂資訊。
 Maintainer: USER
 Author: USER
 Section: Tweaks
