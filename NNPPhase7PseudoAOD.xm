@@ -28,6 +28,10 @@ static _Atomic(bool) gNNPPhase7ModeSubstitutionObserved = false;
 static _Atomic(bool) gNNPPhase7TimerActive = false;
 static _Atomic(float) gNNPPhase7AODBrightnessMultiplier = 1.0f;
 static _Atomic(float) gNNPPhase7BaseDimmedFactor = 0.0f;
+static _Atomic(uint64_t) gNNPPhase7FactorCallCount = 0;
+static _Atomic(float) gNNPPhase7LastFactorInput = 0.0f;
+static _Atomic(float) gNNPPhase7LastFactorOutput = 0.0f;
+static _Atomic(bool) gNNPPhase7LastFactorHadProvider = false;
 static _Atomic(bool) gNNPPhase7BlankRequestSuppressed = false;
 static _Atomic(bool) gNNPPhase7RevealOnWakePending = false;
 static _Atomic(int) gNNPPhase7LastRequestedMode = -1;
@@ -191,7 +195,11 @@ void NNPPhase7StartIncidentDiagnostics(void) {
             int requested = atomic_load_explicit(&gNNPPhase7LastRequestedMode, memory_order_relaxed);
             int forwarded = atomic_load_explicit(&gNNPPhase7LastForwardedMode, memory_order_relaxed);
             uint64_t transitionTicks = atomic_load_explicit(&gNNPPhase7LastTransitionTicks, memory_order_relaxed);
-            NNPDiagnosticLog([NSString stringWithFormat:@"PHASE7_FORENSICS heartbeat uptime=%.3f armed=%@ lifecycle=%@ locked=%@ substituted=%@ timerActive=%@ lastMode=%d->%d lastModeAge=%.3f mainQueueAge=%.3f",
+            uint64_t factorCalls = atomic_load_explicit(&gNNPPhase7FactorCallCount, memory_order_relaxed);
+            float factorInput = atomic_load_explicit(&gNNPPhase7LastFactorInput, memory_order_relaxed);
+            float factorOutput = atomic_load_explicit(&gNNPPhase7LastFactorOutput, memory_order_relaxed);
+            bool factorHadProvider = atomic_load_explicit(&gNNPPhase7LastFactorHadProvider, memory_order_relaxed);
+            NNPDiagnosticLog([NSString stringWithFormat:@"PHASE7_FORENSICS heartbeat uptime=%.3f armed=%@ lifecycle=%@ locked=%@ substituted=%@ timerActive=%@ lastMode=%d->%d lastModeAge=%.3f mainQueueAge=%.3f factorCalls=%llu lastFactor=%.5f->%.5f provider=%@",
                               NNPPhase7SecondsForTicks(now),
                               atomic_load_explicit(&gNNPPhase7Armed, memory_order_relaxed) ? @"YES" : @"NO",
                               NNPPhase7LifecycleName(atomic_load_explicit(&gNNPPhase7Lifecycle, memory_order_relaxed)),
@@ -200,7 +208,9 @@ void NNPPhase7StartIncidentDiagnostics(void) {
                               atomic_load_explicit(&gNNPPhase7TimerActive, memory_order_relaxed) ? @"YES" : @"NO",
                               requested, forwarded,
                               transitionTicks ? NNPPhase7SecondsForTicks(now - transitionTicks) : -1.0,
-                              mainTicks ? NNPPhase7SecondsForTicks(now - mainTicks) : -1.0]);
+                              mainTicks ? NNPPhase7SecondsForTicks(now - mainTicks) : -1.0,
+                              (unsigned long long)factorCalls, factorInput, factorOutput,
+                              factorHadProvider ? @"YES" : @"NO"]);
 
             dispatch_async(dispatch_get_main_queue(), ^{
                 atomic_store_explicit(&gNNPPhase7LastMainHeartbeatTicks, mach_absolute_time(), memory_order_relaxed);
@@ -213,6 +223,13 @@ void NNPPhase7StartIncidentDiagnostics(void) {
 
 void NNPPhase7SetExperimentArmed(BOOL armed) {
     bool wasArmed = atomic_exchange_explicit(&gNNPPhase7Armed, armed, memory_order_acq_rel);
+    if (armed && !wasArmed) {
+        atomic_store_explicit(&gNNPPhase7BaseDimmedFactor, 0.0f, memory_order_relaxed);
+        atomic_store_explicit(&gNNPPhase7FactorCallCount, 0, memory_order_relaxed);
+        atomic_store_explicit(&gNNPPhase7LastFactorInput, 0.0f, memory_order_relaxed);
+        atomic_store_explicit(&gNNPPhase7LastFactorOutput, 0.0f, memory_order_relaxed);
+        atomic_store_explicit(&gNNPPhase7LastFactorHadProvider, false, memory_order_relaxed);
+    }
 #if NNP_PHASE7_DRY_RUN != 2
     if (!armed && wasArmed &&
         atomic_exchange_explicit(&gNNPPhase7BlankRequestSuppressed, false, memory_order_acq_rel) &&
@@ -258,22 +275,48 @@ static BOOL NNPPhase7ReadDimmedFactor(void *providerObject, float *factorOut) {
 
 static void NNPPhase7BacklightFactorReplacement(int displayID, float factor, float fadeDuration) {
     void *provider = atomic_load_explicit(&gNNPPhase7ProviderForFactorHook, memory_order_acquire);
-    BOOL shouldSubstitute = provider && displayID == 1 && factor == 0.0f &&
-        atomic_load_explicit(&gNNPPhase7Armed, memory_order_relaxed);
+    bool armed = atomic_load_explicit(&gNNPPhase7Armed, memory_order_acquire);
+    uint64_t callCount = armed
+        ? atomic_fetch_add_explicit(&gNNPPhase7FactorCallCount, 1, memory_order_relaxed) + 1
+        : 0;
+    float incomingFactor = factor;
+    BOOL shouldSubstitute = displayID == 1 && factor == 0.0f && armed;
     if (shouldSubstitute) {
         float dimmedFactor = 0.0f;
-        if (NNPPhase7ReadDimmedFactor(provider, &dimmedFactor)) {
-            // Keep the system's dim factor for the AOD transition. The iOS 17.1.2
-            // CoreBrightness trace does not prove this factor drives panel nits;
-            // the user multiplier is applied through SpringBoard's UIScreen brightness.
-            float aodFactor = dimmedFactor;
-            if (!isfinite(aodFactor) || aodFactor <= 0.0f) aodFactor = dimmedFactor;
+        if (!NNPPhase7ReadDimmedFactor(provider, &dimmedFactor)) {
+            dimmedFactor = atomic_load_explicit(&gNNPPhase7BaseDimmedFactor, memory_order_relaxed);
+        } else {
             atomic_store_explicit(&gNNPPhase7BaseDimmedFactor, dimmedFactor, memory_order_relaxed);
+        }
+        if (isfinite(dimmedFactor) && dimmedFactor > 0.0f && dimmedFactor < 1.0f) {
+            float multiplier = atomic_load_explicit(&gNNPPhase7AODBrightnessMultiplier, memory_order_acquire);
+            float aodFactor = fminf(0.20f, dimmedFactor * multiplier);
             atomic_store_explicit(&gNNPPhase7FactorWasSubstituted, true, memory_order_release);
             atomic_store_explicit(&gNNPPhase7OriginalFactor, factor, memory_order_relaxed);
             atomic_store_explicit(&gNNPPhase7SubstitutedFactor, aodFactor, memory_order_relaxed);
             factor = aodFactor;
+
+            float previousOutput = atomic_exchange_explicit(&gNNPPhase7LastFactorOutput, factor, memory_order_relaxed);
+            atomic_store_explicit(&gNNPPhase7LastFactorInput, incomingFactor, memory_order_relaxed);
+            atomic_store_explicit(&gNNPPhase7LastFactorHadProvider, provider != NULL, memory_order_relaxed);
+            if (callCount <= 8 || fabsf(previousOutput - factor) > 0.0001f) {
+                NNPDiagnosticLog([NSString stringWithFormat:@"PHASE7 factor callback #%llu display=%d input=%.6f output=%.6f baseDim=%.6f multiplier=%.2fx provider=%@ armed=YES",
+                                  (unsigned long long)callCount, displayID, incomingFactor, factor,
+                                  dimmedFactor, multiplier, provider ? @"YES" : @"NO"]);
+            }
+        } else {
+            atomic_store_explicit(&gNNPPhase7LastFactorInput, incomingFactor, memory_order_relaxed);
+            atomic_store_explicit(&gNNPPhase7LastFactorOutput, factor, memory_order_relaxed);
+            atomic_store_explicit(&gNNPPhase7LastFactorHadProvider, provider != NULL, memory_order_relaxed);
+            if (callCount <= 8) {
+                NNPDiagnosticLog([NSString stringWithFormat:@"PHASE7 factor callback #%llu display=%d input=%.6f passed through; dimmed factor unavailable provider=%@",
+                                  (unsigned long long)callCount, displayID, incomingFactor, provider ? @"YES" : @"NO"]);
+            }
         }
+    } else if (armed) {
+        atomic_store_explicit(&gNNPPhase7LastFactorInput, incomingFactor, memory_order_relaxed);
+        atomic_store_explicit(&gNNPPhase7LastFactorOutput, factor, memory_order_relaxed);
+        atomic_store_explicit(&gNNPPhase7LastFactorHadProvider, provider != NULL, memory_order_relaxed);
     }
     if (gNNPOriginalBacklightFactorFunction) {
         gNNPOriginalBacklightFactorFunction(displayID, factor, fadeDuration);
@@ -366,7 +409,7 @@ static void NNPPhase7ProviderTransitionReplacement(id self, SEL _cmd, long long 
         NNPDiagnosticSetDouble(@"Phase7DimmedBacklightFactor", substitutedFactor);
         NNPDiagnosticSetDouble(@"Phase7AODBrightnessMultiplier", atomic_load_explicit(&gNNPPhase7AODBrightnessMultiplier, memory_order_relaxed));
         NNPDiagnosticSetBool(@"Phase7BacklightFactorSubstitution", YES);
-        NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 HID backlight factor %.6f -> %.6f (systemDim=%.6f UIScreenMultiplier=%.2fx); displayMode remained 0 duration=%.3f session=%@",
+        NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 HID backlight factor %.6f -> %.6f (systemDim=%.6f AODMultiplier=%.2fx); displayMode remained 0 duration=%.3f session=%@",
                                     originalFactor, substitutedFactor, atomic_load_explicit(&gNNPPhase7BaseDimmedFactor, memory_order_relaxed), atomic_load_explicit(&gNNPPhase7AODBrightnessMultiplier, memory_order_relaxed), duration, gNNPPhase7SessionID ?: @"none"]);
         NNPPhase7NotifyBacklightFactorSubstitution(originalFactor, substitutedFactor);
     } else {

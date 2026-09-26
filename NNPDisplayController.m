@@ -1,6 +1,5 @@
 #import "NNPDisplayController.h"
 #import "NNPDiagnostics.h"
-#import <UIKit/UIKit.h>
 #import <math.h>
 
 #ifndef NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
@@ -35,14 +34,9 @@ void NNPPhase7NotifyDisplayWake(void) {}
 @property(nonatomic, copy) NSString *sessionIdentifier;
 @property(nonatomic) BOOL modeSubstitutionObserved;
 @property(nonatomic) BOOL lockedVisibleActivated;
-@property(nonatomic) CGFloat screenBrightnessBeforeAOD;
-@property(nonatomic) BOOL hasScreenBrightnessSnapshot;
-@property(nonatomic) BOOL screenBrightnessOverridden;
 - (void)noteBacklightFactorSubstitutionFrom:(float)originalFactor to:(float)dimmedFactor;
 - (void)activateLockedVisibleSessionIfReady;
 - (void)noteDisplayWake;
-- (void)applyAODScreenBrightness;
-- (void)restoreScreenBrightnessAfterAOD;
 - (void)stopLockedVisibleModeWithReason:(NSString *)reason;
 @end
 
@@ -94,13 +88,9 @@ void NNPPhase7NotifyDisplayWake(void) {
     // hook owns a separate atomic value, which can be reset during controller
     // reinitialization while this object's cached property remains unchanged.
     NNPPhase7SetAODBrightnessMultiplier(clamped);
-    if (fabsf(_aodBrightnessMultiplier - clamped) < 0.001f) {
-        if (self.aodPresentationActive) [self applyAODScreenBrightness];
-        return;
-    }
+    if (fabsf(_aodBrightnessMultiplier - clamped) < 0.001f) return;
     _aodBrightnessMultiplier = clamped;
     NNPDiagnosticSetDouble(@"Phase7AODBrightnessMultiplier", clamped);
-    if (self.aodPresentationActive) [self applyAODScreenBrightness];
 }
 
 - (BOOL)isLockedVisibleSupported {
@@ -122,38 +112,11 @@ void NNPPhase7NotifyDisplayWake(void) {
 }
 
 - (void)setAODPresentationActive:(BOOL)active {
-    if (_aodPresentationActive == active) {
-        if (!active) [self restoreScreenBrightnessAfterAOD];
-        return;
-    }
+    if (_aodPresentationActive == active) return;
     _aodPresentationActive = active;
     NNPDiagnosticSetBool(@"Phase7AODPresentationActive", active);
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY AOD presentation active=%@", active ? @"YES" : @"NO"]);
-    if (active) [self applyAODScreenBrightness];
-    else [self restoreScreenBrightnessAfterAOD];
     if (self.stateChangedHandler) self.stateChangedHandler();
-}
-
-- (void)applyAODScreenBrightness {
-    if (!self.hasScreenBrightnessSnapshot) return;
-    CGFloat multiplier = MAX(1.0, MIN(4.0, self.aodBrightnessMultiplier));
-    CGFloat target = MIN(1.0, MAX(0.0, self.screenBrightnessBeforeAOD * multiplier));
-    UIScreen.mainScreen.brightness = target;
-    self.screenBrightnessOverridden = YES;
-    NNPDiagnosticSetDouble(@"Phase7ScreenBrightnessTarget", target);
-    NNPDiagnosticSetDouble(@"Phase7ScreenBrightnessMultiplier", multiplier);
-    NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY applied temporary UIScreen brightness %.3f -> %.3f multiplier=%.2fx", self.screenBrightnessBeforeAOD, target, multiplier]);
-}
-
-- (void)restoreScreenBrightnessAfterAOD {
-    if (self.hasScreenBrightnessSnapshot && self.screenBrightnessOverridden) {
-        UIScreen.mainScreen.brightness = self.screenBrightnessBeforeAOD;
-        NNPDiagnosticSetDouble(@"Phase7ScreenBrightnessRestoredTo", self.screenBrightnessBeforeAOD);
-        NNPDiagnosticSetBool(@"Phase7ScreenBrightnessRestored", YES);
-        NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY restored UIScreen brightness to %.3f after AOD", self.screenBrightnessBeforeAOD]);
-    }
-    self.screenBrightnessOverridden = NO;
-    self.hasScreenBrightnessSnapshot = NO;
 }
 
 - (void)noteDisplayWake {
@@ -256,12 +219,6 @@ void NNPPhase7NotifyDisplayWake(void) {
         NNPDiagnosticLogTransition(@"DISPLAY experimental hook unavailable; no session armed");
         return NO;
     }
-    [self restoreScreenBrightnessAfterAOD];
-    self.screenBrightnessBeforeAOD = UIScreen.mainScreen.brightness;
-    self.hasScreenBrightnessSnapshot = YES;
-    self.screenBrightnessOverridden = NO;
-    NNPDiagnosticSetDouble(@"Phase7ScreenBrightnessBeforeAOD", self.screenBrightnessBeforeAOD);
-    NNPDiagnosticSetBool(@"Phase7ScreenBrightnessRestored", NO);
     self.sessionGeneration = ++NNPNextSessionGeneration;
     self.sessionIdentifier = [NSString stringWithFormat:@"S%lu", (unsigned long)self.sessionGeneration];
     self.modeSubstitutionObserved = NO;

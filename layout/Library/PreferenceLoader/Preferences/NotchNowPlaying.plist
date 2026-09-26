@@ -36,7 +36,7 @@
         { cell = PSGroupCell; label = "播放器位置微移"; footerText = "每 30 秒隨機微移播放器內容，水平與垂直方向各不超過 3 個螢幕像素，以降低 OLED 長時間顯示固定圖樣造成烙印的風險；無法保證完全避免。"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = AODPixelShiftEnabled; label = "微移播放器內容"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
 
-        { cell = PSGroupCell; label = "AOD 亮度倍率"; footerText = "100% 保持進入前的螢幕亮度；倍率越高，AOD 越亮，最高 400%。喚醒或解鎖後會還原原亮度。這會調整整個螢幕，可能增加耗電，不只影響插件區域。"; },
+        { cell = PSGroupCell; label = "AOD 亮度倍率"; footerText = "調整 AOD 期間送往系統的背光因子，最高 400%（factor 上限 0.20）。實際亮度取決於 iOS 是否把這個因子套用到面板；若畫面沒有變化，代表系統可能忽略了這條亮度路徑。調高可能增加耗電，設定會在下次 AOD 開始時套用。"; },
         { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = AODBrightnessMultiplier; label = "亮度（%）"; default = 100; min = 100; max = 400; showValue = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
 
         { cell = PSGroupCell; label = "AOD 最長顯示時間"; footerText = "設定每次 AOD 顯示的時間上限。時間到後，插件會結束這次實驗性顯示。預設 30 秒，範圍 5 至 60 秒。"; },
