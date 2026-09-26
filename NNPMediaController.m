@@ -106,6 +106,12 @@ static UIImage *NNPArtwork(NSDictionary *info) {
         finishIfReady();
     });
 }
+- (BOOL)skipToPreviousTrack {
+    return MRMediaRemoteSendCommand(MRMediaRemoteCommandPreviousTrack, nil);
+}
+- (BOOL)skipToNextTrack {
+    return MRMediaRemoteSendCommand(MRMediaRemoteCommandNextTrack, nil);
+}
 - (void)publish {
     if (!self.started) return;
     NSDictionary *info = self.info ?: @{};

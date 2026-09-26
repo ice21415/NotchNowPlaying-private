@@ -7,6 +7,7 @@
 #import "NNPDisplayController.h"
 #import "NNPDiagnostics.h"
 #import <UIKit/UIKit.h>
+#import <math.h>
 #import <stdlib.h>
 
 static NSString * const NNPLog = @"[NotchNowPlaying]";
@@ -41,7 +42,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 }
 @end
 
-@interface NNPController ()
+@interface NNPController () <UIGestureRecognizerDelegate>
 @property(nonatomic, strong) NNPMediaController *media;
 @property(nonatomic, strong) NNPLockStateController *lockState;
 @property(nonatomic, strong) NNPDisplayController *display;
@@ -60,6 +61,8 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 @property(nonatomic, strong) UIView *statusBarPlayerContainer;
 @property(nonatomic, strong) NNPView *statusBarPlayerView;
 @property(nonatomic, strong) UIButton *coverSheetControlsToggle;
+@property(nonatomic, strong) UISwipeGestureRecognizer *previousTrackSwipe;
+@property(nonatomic, strong) UISwipeGestureRecognizer *nextTrackSwipe;
 @property(nonatomic) BOOL coverSheetHostUnavailableRecorded;
 @property(nonatomic) BOOL coverSheetBlackoutRevealed;
 @property(nonatomic) BOOL locked;
@@ -71,6 +74,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 - (void)stopAODPixelShiftTimer;
 - (void)applyRandomAODPixelShift;
 - (void)updateUnlimitedMediaPauseWithEligibleMedia:(BOOL)mediaEligible activeSession:(BOOL)activeSession;
+- (void)handleNotchTrackSwipe:(UISwipeGestureRecognizer *)gesture;
 @end
 
 @implementation NNPController
@@ -339,8 +343,16 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         self.coverSheetControlsToggle = [UIButton buttonWithType:UIButtonTypeCustom];
         self.coverSheetControlsToggle.backgroundColor = UIColor.clearColor;
         self.coverSheetControlsToggle.accessibilityLabel = @"切換鎖定畫面控制項";
-        self.coverSheetControlsToggle.accessibilityHint = @"點按播放資訊區，顯示或隱藏原鎖定畫面內容";
+        self.coverSheetControlsToggle.accessibilityHint = @"點按顯示鎖定畫面；在瀏海下方左滑上一首，右滑下一首";
         [self.coverSheetControlsToggle addTarget:self action:@selector(toggleCoverSheetBlackout:) forControlEvents:UIControlEventTouchUpInside];
+        self.previousTrackSwipe = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(handleNotchTrackSwipe:)];
+        self.previousTrackSwipe.direction = UISwipeGestureRecognizerDirectionLeft;
+        self.previousTrackSwipe.delegate = self;
+        [self.coverSheetControlsToggle addGestureRecognizer:self.previousTrackSwipe];
+        self.nextTrackSwipe = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(handleNotchTrackSwipe:)];
+        self.nextTrackSwipe.direction = UISwipeGestureRecognizerDirectionRight;
+        self.nextTrackSwipe.delegate = self;
+        [self.coverSheetControlsToggle addGestureRecognizer:self.nextTrackSwipe];
     }
     self.coverSheetControlsToggle.frame = CGRectMake(0.0, 40.0, CGRectGetWidth(host.bounds), 82.0);
     self.coverSheetControlsToggle.autoresizingMask = UIViewAutoresizingFlexibleWidth;
@@ -351,6 +363,24 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     [host bringSubviewToFront:self.coverSheetControlsToggle];
     NNPDiagnosticSetBool(@"CoverSheetBlackoutActive", !keepControlsVisible);
     NNPDiagnosticSetBool(@"CoverSheetControlsRevealed", keepControlsVisible);
+}
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
+    if (gestureRecognizer != self.previousTrackSwipe && gestureRecognizer != self.nextTrackSwipe) return YES;
+    if (![self shouldPresentInsideCoverSheet] || self.coverSheetBlackoutRevealed ||
+        !self.view.playbackVisible || !self.state.hasTrack || ![self isAllowedMedia:self.state]) return NO;
+    CGPoint start = [touch locationInView:self.coverSheetControlsToggle];
+    CGFloat middle = CGRectGetMidX(self.coverSheetControlsToggle.bounds);
+    return fabs(start.x - middle) <= MIN(110.0, middle - 12.0) &&
+        start.y >= 0.0 && start.y <= 48.0;
+}
+- (void)handleNotchTrackSwipe:(UISwipeGestureRecognizer *)gesture {
+    if (gesture.state != UIGestureRecognizerStateRecognized ||
+        ![self shouldPresentInsideCoverSheet] || self.coverSheetBlackoutRevealed ||
+        !self.view.playbackVisible) return;
+    BOOL previous = gesture.direction == UISwipeGestureRecognizerDirectionLeft;
+    BOOL sent = previous ? [self.media skipToPreviousTrack] : [self.media skipToNextTrack];
+    NNPDiagnosticLogTransition([NSString stringWithFormat:@"MEDIA notch swipe direction=%@ command=%@ sent=%@",
+        previous ? @"left" : @"right", previous ? @"previous" : @"next", sent ? @"YES" : @"NO"]);
 }
 - (void)toggleCoverSheetBlackout:(__unused UIButton *)sender {
     if (!self.coverSheetHostView || !self.coverSheetBlackoutView) return;

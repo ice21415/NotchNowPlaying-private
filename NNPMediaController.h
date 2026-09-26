@@ -5,4 +5,6 @@ typedef void (^NNPStateHandler)(NNPState *state);
 @property(nonatomic, copy) NNPStateHandler stateHandler;
 - (void)start;
 - (void)refresh;
+- (BOOL)skipToPreviousTrack;
+- (BOOL)skipToNextTrack;
 @end
