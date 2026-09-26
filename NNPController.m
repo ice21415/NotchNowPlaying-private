@@ -430,7 +430,12 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         experimentEligible = self.preferences.experimentalLockedVisible && self.preferences.enabled && self.preferences.showOnLockScreen && self.state.hasTrack && self.state.playing && [self isAllowedMedia:self.state];
         if (experimentEligible) {
             [self.preferences reloadAODBrightnessMultiplier];
-            self.display.aodBrightnessMultiplier = self.preferences.aodBrightnessMultiplier;
+            float brightnessMultiplier = self.preferences.aodBrightnessMultiplier;
+            self.display.aodBrightnessMultiplier = brightnessMultiplier;
+            // Publish directly on every eligible reconcile so the hook's
+            // atomic value cannot lag behind a cached display-controller value.
+            NNPPhase7SetAODBrightnessMultiplier(brightnessMultiplier);
+            NNPDiagnosticSetDouble(@"Phase7RequestedAODBrightnessMultiplier", brightnessMultiplier);
             [self.display startLockedVisibleMode];
         } else {
             [self.display stopLockedVisibleMode];

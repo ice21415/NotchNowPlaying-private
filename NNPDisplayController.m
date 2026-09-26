@@ -84,9 +84,12 @@ void NNPPhase7NotifyDisplayWake(void) {
 
 - (void)setAODBrightnessMultiplier:(float)multiplier {
     float clamped = (float)MAX(1.0, MIN(4.0, multiplier));
+    // Re-publish even when the Objective-C property is unchanged. The native
+    // hook owns a separate atomic value, which can be reset during controller
+    // reinitialization while this object's cached property remains unchanged.
+    NNPPhase7SetAODBrightnessMultiplier(clamped);
     if (fabsf(_aodBrightnessMultiplier - clamped) < 0.001f) return;
     _aodBrightnessMultiplier = clamped;
-    NNPPhase7SetAODBrightnessMultiplier(clamped);
     NNPDiagnosticSetDouble(@"Phase7AODBrightnessMultiplier", clamped);
 }
 
