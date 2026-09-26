@@ -25,6 +25,47 @@
 
 static NSString *const NNPTitleMarqueeAnimationKey = @"nnp.titleMarquee";
 
+static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
+    CGImageRef image = artwork.CGImage;
+    if (!image) return [UIColor colorWithWhite:0.88 alpha:1.0];
+
+    enum { sampleSide = 12 };
+    uint8_t pixels[sampleSide * sampleSide * 4] = {0};
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = CGBitmapContextCreate(pixels, sampleSide, sampleSide, 8,
+        sampleSide * 4, colorSpace, kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    CGColorSpaceRelease(colorSpace);
+    if (!context) return [UIColor colorWithWhite:0.88 alpha:1.0];
+    CGContextSetInterpolationQuality(context, kCGInterpolationMedium);
+    CGContextDrawImage(context, CGRectMake(0, 0, sampleSide, sampleSide), image);
+    CGContextRelease(context);
+
+    double hueX = 0.0, hueY = 0.0, saturationSum = 0.0, totalWeight = 0.0;
+    double strongestWeight = 0.0, strongestHue = 0.0;
+    for (NSUInteger index = 0; index < sampleSide * sampleSide; index++) {
+        const uint8_t *pixel = pixels + index * 4;
+        CGFloat alpha = pixel[3] / 255.0;
+        if (alpha < 0.35) continue;
+        UIColor *color = [UIColor colorWithRed:pixel[0] / 255.0
+                                       green:pixel[1] / 255.0
+                                        blue:pixel[2] / 255.0 alpha:1.0];
+        CGFloat hue = 0.0, saturation = 0.0, brightness = 0.0;
+        if (![color getHue:&hue saturation:&saturation brightness:&brightness alpha:NULL] ||
+            saturation < 0.2 || brightness < 0.12) continue;
+        double weight = saturation * saturation * (0.4 + brightness) * alpha;
+        hueX += cos(hue * 2.0 * M_PI) * weight;
+        hueY += sin(hue * 2.0 * M_PI) * weight;
+        saturationSum += saturation * weight;
+        totalWeight += weight;
+        if (weight > strongestWeight) { strongestWeight = weight; strongestHue = hue; }
+    }
+    if (totalWeight < 0.01) return [UIColor colorWithWhite:0.88 alpha:1.0];
+    CGFloat hue = hypot(hueX, hueY) < totalWeight * 0.12 ? strongestHue : atan2(hueY, hueX) / (2.0 * M_PI);
+    if (hue < 0.0) hue += 1.0;
+    CGFloat saturation = MIN(0.72, MAX(0.38, saturationSum / totalWeight * 0.82));
+    return [UIColor colorWithHue:hue saturation:saturation brightness:0.90 alpha:1.0];
+}
+
 @interface NNPView ()
 @property(nonatomic, strong) UIImageView *art;
 @property(nonatomic, strong) UIView *titleViewport;
@@ -41,6 +82,8 @@ static NSString *const NNPTitleMarqueeAnimationKey = @"nnp.titleMarquee";
 @property(nonatomic) CGFloat marqueeFontSize;
 @property(nonatomic) BOOL marqueeReducedMotion;
 @property(nonatomic) BOOL marqueeAnimating;
+@property(nonatomic, strong) UIImage *accentArtwork;
+@property(nonatomic, strong) UIColor *accentColor;
 - (void)updateTitleMarquee;
 - (CGRect)notchRectUsingPrivateAPI:(BOOL *)usedPrivateAPI;
 @end
@@ -84,7 +127,7 @@ static NSString *const NNPTitleMarqueeAnimationKey = @"nnp.titleMarquee";
     _titleViewport.isAccessibilityElement = YES;
     _title = [UILabel new];
     _title.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightSemibold];
-    _title.textColor = UIColor.whiteColor;
+    _title.textColor = [UIColor colorWithWhite:1.0 alpha:0.94];
     _title.lineBreakMode = NSLineBreakByTruncatingTail;
     _title.isAccessibilityElement = NO;
     _titleDuplicate = [UILabel new];
@@ -102,7 +145,7 @@ static NSString *const NNPTitleMarqueeAnimationKey = @"nnp.titleMarquee";
 
     _track = [CAShapeLayer layer];
     _track.fillColor = UIColor.clearColor.CGColor;
-    _track.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.20].CGColor;
+    _track.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.12].CGColor;
     _track.lineCap = kCALineCapRound;
     _track.lineJoin = kCALineJoinRound;
     _fill = [CAShapeLayer layer];
@@ -124,6 +167,7 @@ static NSString *const NNPTitleMarqueeAnimationKey = @"nnp.titleMarquee";
     _cornerRadius = 9.0;
     _textSize = 14.0;
     _progressHeight = 3.0;
+    _accentColor = [UIColor colorWithWhite:0.88 alpha:1.0];
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(reduceMotionChanged:)
                                                  name:UIAccessibilityReduceMotionStatusDidChangeNotification
@@ -200,26 +244,29 @@ static NSString *const NNPTitleMarqueeAnimationKey = @"nnp.titleMarquee";
     self.artist.frame = CGRectMake(textX, artistTop, textWidth, 17.0);
 
     CGFloat progressHeight = MAX(2.0, self.progressHeight);
-    CGFloat pathLeft = notchLeft - 4.0;
-    CGFloat pathRight = notchRight + 4.0;
-    CGFloat pathTop = MAX(5.0, CGRectGetMinY(notch) + 5.0);
-    CGFloat pathBottom = CGRectGetMaxY(notch) + 5.0;
-    CGFloat radius = MIN(8.0, (pathBottom - pathTop) / 3.0);
+    CGFloat pathLeft = notchLeft - 4.5;
+    CGFloat pathRight = notchRight + 4.5;
+    CGFloat pathTop = MAX(9.0, CGRectGetMinY(notch) + 9.0);
+    CGFloat pathBottom = CGRectGetMaxY(notch) + 4.0;
+    CGFloat radius = MIN(16.0, (pathBottom - pathTop) * 0.65);
+    CGFloat arcControl = radius * 0.55228475;
     UIBezierPath *path = [UIBezierPath bezierPath];
     [path moveToPoint:CGPointMake(pathLeft, pathTop)];
     [path addLineToPoint:CGPointMake(pathLeft, pathBottom - radius)];
-    [path addQuadCurveToPoint:CGPointMake(pathLeft + radius, pathBottom)
-                controlPoint:CGPointMake(pathLeft, pathBottom)];
+    [path addCurveToPoint:CGPointMake(pathLeft + radius, pathBottom)
+           controlPoint1:CGPointMake(pathLeft, pathBottom - radius + arcControl)
+           controlPoint2:CGPointMake(pathLeft + radius - arcControl, pathBottom)];
     [path addLineToPoint:CGPointMake(pathRight - radius, pathBottom)];
-    [path addQuadCurveToPoint:CGPointMake(pathRight, pathBottom - radius)
-                controlPoint:CGPointMake(pathRight, pathBottom)];
+    [path addCurveToPoint:CGPointMake(pathRight, pathBottom - radius)
+           controlPoint1:CGPointMake(pathRight - radius + arcControl, pathBottom)
+           controlPoint2:CGPointMake(pathRight, pathBottom - radius + arcControl)];
     [path addLineToPoint:CGPointMake(pathRight, pathTop)];
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     self.track.path = path.CGPath;
     self.fill.path = path.CGPath;
-    self.track.lineWidth = progressHeight;
-    self.fill.lineWidth = progressHeight;
+    self.track.lineWidth = MAX(1.0, progressHeight * 0.52);
+    self.fill.lineWidth = MAX(1.5, progressHeight * 0.78);
     self.fill.strokeEnd = self.fraction;
     [CATransaction commit];
     [self updateTitleMarquee];
@@ -292,6 +339,14 @@ static NSString *const NNPTitleMarqueeAnimationKey = @"nnp.titleMarquee";
     if (![self.title.text isEqualToString:title]) self.title.text = title;
     self.artist.text = state.artist.length ? state.artist : (state.album ?: @"");
     UIImage *artwork = state.artwork;
+    if (self.accentArtwork != artwork) {
+        self.accentArtwork = artwork;
+        self.accentColor = NNPAccentColorForArtwork(artwork);
+        self.art.layer.borderColor = [self.accentColor colorWithAlphaComponent:0.38].CGColor;
+        self.artist.textColor = [self.accentColor colorWithAlphaComponent:0.82];
+        self.track.strokeColor = [self.accentColor colorWithAlphaComponent:0.17].CGColor;
+        self.fill.strokeColor = [self.accentColor colorWithAlphaComponent:0.94].CGColor;
+    }
     self.art.image = artwork ?: [UIImage systemImageNamed:@"music.note"];
     self.art.contentMode = artwork ? UIViewContentModeScaleAspectFill : UIViewContentModeCenter;
     self.art.backgroundColor = artwork ? UIColor.clearColor : [UIColor colorWithWhite:1.0 alpha:0.11];
