@@ -17,6 +17,26 @@ static _Atomic(uint64_t) gNNPAODNitsGeneration = 0;
 static id<NNPAODBrightnessClient> gNNPAODBrightnessClient;
 static id gNNPAODOriginalBrightnessProperty;
 
+static void NNPAODRecordBrightnessReadback(id<NNPAODBrightnessClient> client,
+                                            NSString *session,
+                                            NSString *stage,
+                                            NSString *diagnosticKey) {
+    id property = nil;
+    @try {
+        property = [client copyPropertyForKey:NNPAODDisplayBrightnessKey];
+    } @catch (NSException *exception) {
+        NNPDiagnosticLog([NSString stringWithFormat:@"AOD_NITS session=%@ %@ readback exception=%@",
+                          session, stage, exception.name]);
+    }
+    NSNumber *nits = [property isKindOfClass:NSDictionary.class]
+        ? ((NSDictionary *)property)[@"Nits"] : nil;
+    if ([nits isKindOfClass:NSNumber.class]) {
+        NNPDiagnosticSetDouble(diagnosticKey, nits.doubleValue);
+    }
+    NNPDiagnosticLog([NSString stringWithFormat:@"AOD_NITS session=%@ %@ DisplayBrightness=%@",
+                      session, stage, property ?: @"nil"]);
+}
+
 static dispatch_queue_t NNPAODNitsQueue(void) {
     dispatch_once(&gNNPAODNitsQueueOnce, ^{
         gNNPAODNitsQueue = dispatch_queue_create("com.user.notchnowplaying.aod-nits", DISPATCH_QUEUE_SERIAL);
@@ -89,6 +109,8 @@ void NNPAODNitsBeginSession(NSString *sessionID, float multiplier) {
         BOOL restorable = [original isKindOfClass:NSNumber.class] || [original isKindOfClass:NSDictionary.class];
         NNPDiagnosticSetBool(@"Phase7NitsSnapshotAvailable", restorable);
         NNPDiagnosticSetString(@"Phase7NitsSnapshotClass", original ? NSStringFromClass([original class]) : @"none");
+        NNPDiagnosticLog([NSString stringWithFormat:@"AOD_NITS session=%@ original DisplayBrightness=%@",
+                          session, original ?: @"nil"]);
         if (!restorable || generation != atomic_load_explicit(&gNNPAODNitsGeneration, memory_order_acquire)) {
             NNPDiagnosticLog([NSString stringWithFormat:@"AOD_NITS session=%@ skipped: %@",
                               session, restorable ? @"session ended" : @"no restorable DisplayBrightness snapshot"]);
@@ -113,19 +135,15 @@ void NNPAODNitsBeginSession(NSString *sessionID, float multiplier) {
             return;
         }
 
+        NNPAODRecordBrightnessReadback(client, session, @"immediate", @"Phase7NitsImmediateReadback");
+
         if (generation != atomic_load_explicit(&gNNPAODNitsGeneration, memory_order_acquire)) {
             NNPAODRestoreOriginalBrightness();
             return;
         }
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), NNPAODNitsQueue(), ^{
             if (generation != atomic_load_explicit(&gNNPAODNitsGeneration, memory_order_acquire)) return;
-            id readback = nil;
-            @try {
-                readback = [client copyPropertyForKey:NNPAODDisplayBrightnessKey];
-            } @catch (NSException *exception) {
-                NNPDiagnosticLog([NSString stringWithFormat:@"AOD_NITS session=%@ readback exception=%@", session, exception.name]);
-            }
-            NNPDiagnosticLog([NSString stringWithFormat:@"AOD_NITS session=%@ DisplayBrightness readback=%@", session, readback ?: @"nil"]);
+            NNPAODRecordBrightnessReadback(client, session, @"after-0.5s", @"Phase7NitsDelayedReadback");
         });
     });
 }
