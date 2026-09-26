@@ -1,4 +1,5 @@
 #import "NNPPreferences.h"
+#import "NNPDiagnostics.h"
 #import <CoreFoundation/CoreFoundation.h>
 
 NSString * const NNPPreferencesDidChangeNotification = @"com.user.notchnowplaying.preferences.changed";
@@ -63,6 +64,11 @@ static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observe
     self.cornerRadius = MAX(4.0, MIN(16.0, NNPFloat(@"CornerRadius", 9.0)));
     self.textSize = MAX(10.0, MIN(20.0, NNPFloat(@"TextSize", 14.0)));
     self.progressHeight = MAX(2.0, MIN(6.0, NNPFloat(@"ProgressHeight", 3.0)));
+}
+- (void)reloadAODBrightnessMultiplier {
+    CFPreferencesAppSynchronize(NNPPreferencesDomain);
+    self.aodBrightnessMultiplier = (float)MAX(1.0, MIN(4.0, NNPFloat(@"AODBrightnessMultiplier", 100.0) / 100.0));
+    NNPDiagnosticSetDouble(@"PreferenceAODBrightnessMultiplier", self.aodBrightnessMultiplier);
 }
 - (void)startObserving {
     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), (__bridge const void *)(self), NNPPreferencesCallback, (__bridge CFStringRef)NNPPreferencesDidChangeNotification, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);

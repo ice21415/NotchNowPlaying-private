@@ -427,9 +427,14 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
         self.display.deviceLocked = self.locked;
         self.display.maximumDuration = self.preferences.experimentalMaxDuration;
-        self.display.aodBrightnessMultiplier = self.preferences.aodBrightnessMultiplier;
         experimentEligible = self.preferences.experimentalLockedVisible && self.preferences.enabled && self.preferences.showOnLockScreen && self.state.hasTrack && self.state.playing && [self isAllowedMedia:self.state];
-        if (experimentEligible) { [self.display startLockedVisibleMode]; } else { [self.display stopLockedVisibleMode]; }
+        if (experimentEligible) {
+            [self.preferences reloadAODBrightnessMultiplier];
+            self.display.aodBrightnessMultiplier = self.preferences.aodBrightnessMultiplier;
+            [self.display startLockedVisibleMode];
+        } else {
+            [self.display stopLockedVisibleMode];
+        }
 #endif
         BOOL show = [self shouldShow];
         NNPDiagnosticSetBool(@"UIVisible", show);
