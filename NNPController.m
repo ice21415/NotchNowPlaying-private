@@ -42,7 +42,17 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 }
 @end
 
-@interface NNPController () <UIGestureRecognizerDelegate>
+@interface NNPNotchGestureWindow : UIWindow
+@property(nonatomic) CGRect touchRegion;
+@end
+
+@implementation NNPNotchGestureWindow
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+    return CGRectContainsPoint(self.touchRegion, point) && [super pointInside:point withEvent:event];
+}
+@end
+
+@interface NNPController ()
 @property(nonatomic, strong) NNPMediaController *media;
 @property(nonatomic, strong) NNPLockStateController *lockState;
 @property(nonatomic, strong) NNPDisplayController *display;
@@ -61,8 +71,8 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 @property(nonatomic, strong) UIView *statusBarPlayerContainer;
 @property(nonatomic, strong) NNPView *statusBarPlayerView;
 @property(nonatomic, strong) UIButton *coverSheetControlsToggle;
-@property(nonatomic, strong) UISwipeGestureRecognizer *previousTrackSwipe;
-@property(nonatomic, strong) UISwipeGestureRecognizer *nextTrackSwipe;
+@property(nonatomic, strong) NNPNotchGestureWindow *notchGestureWindow;
+@property(nonatomic) BOOL notchPanHandled;
 @property(nonatomic) BOOL coverSheetHostUnavailableRecorded;
 @property(nonatomic) BOOL coverSheetBlackoutRevealed;
 @property(nonatomic) BOOL locked;
@@ -74,7 +84,9 @@ static NSString * const NNPSpotify = @"com.spotify.client";
 - (void)stopAODPixelShiftTimer;
 - (void)applyRandomAODPixelShift;
 - (void)updateUnlimitedMediaPauseWithEligibleMedia:(BOOL)mediaEligible activeSession:(BOOL)activeSession;
-- (void)handleNotchTrackSwipe:(UISwipeGestureRecognizer *)gesture;
+- (void)updateNotchGestureWindow;
+- (void)removeNotchGestureWindow;
+- (void)handleNotchTrackPan:(UIPanGestureRecognizer *)gesture;
 @end
 
 @implementation NNPController
@@ -239,6 +251,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     return nil;
 }
 - (void)removeCoverSheetBlackout {
+    [self removeNotchGestureWindow];
     [self.coverSheetBlackoutView removeFromSuperview];
     self.coverSheetBlackoutView = nil;
     [self.statusBarBlackoutView removeFromSuperview];
@@ -343,16 +356,8 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         self.coverSheetControlsToggle = [UIButton buttonWithType:UIButtonTypeCustom];
         self.coverSheetControlsToggle.backgroundColor = UIColor.clearColor;
         self.coverSheetControlsToggle.accessibilityLabel = @"切換鎖定畫面控制項";
-        self.coverSheetControlsToggle.accessibilityHint = @"點按顯示鎖定畫面；在瀏海下方左滑上一首，右滑下一首";
+        self.coverSheetControlsToggle.accessibilityHint = @"點按顯示或隱藏鎖定畫面內容";
         [self.coverSheetControlsToggle addTarget:self action:@selector(toggleCoverSheetBlackout:) forControlEvents:UIControlEventTouchUpInside];
-        self.previousTrackSwipe = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(handleNotchTrackSwipe:)];
-        self.previousTrackSwipe.direction = UISwipeGestureRecognizerDirectionLeft;
-        self.previousTrackSwipe.delegate = self;
-        [self.coverSheetControlsToggle addGestureRecognizer:self.previousTrackSwipe];
-        self.nextTrackSwipe = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(handleNotchTrackSwipe:)];
-        self.nextTrackSwipe.direction = UISwipeGestureRecognizerDirectionRight;
-        self.nextTrackSwipe.delegate = self;
-        [self.coverSheetControlsToggle addGestureRecognizer:self.nextTrackSwipe];
     }
     self.coverSheetControlsToggle.frame = CGRectMake(0.0, 40.0, CGRectGetWidth(host.bounds), 82.0);
     self.coverSheetControlsToggle.autoresizingMask = UIViewAutoresizingFlexibleWidth;
@@ -364,23 +369,61 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     NNPDiagnosticSetBool(@"CoverSheetBlackoutActive", !keepControlsVisible);
     NNPDiagnosticSetBool(@"CoverSheetControlsRevealed", keepControlsVisible);
 }
-- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
-    if (gestureRecognizer != self.previousTrackSwipe && gestureRecognizer != self.nextTrackSwipe) return YES;
-    if (![self shouldPresentInsideCoverSheet] || self.coverSheetBlackoutRevealed ||
-        !self.view.playbackVisible || !self.state.hasTrack || ![self isAllowedMedia:self.state]) return NO;
-    CGPoint start = [touch locationInView:self.coverSheetControlsToggle];
-    CGFloat middle = CGRectGetMidX(self.coverSheetControlsToggle.bounds);
-    return fabs(start.x - middle) <= MIN(110.0, middle - 12.0) &&
-        start.y >= 0.0 && start.y <= 48.0;
+- (void)removeNotchGestureWindow {
+    if (!self.notchGestureWindow || self.notchGestureWindow.hidden) return;
+    self.notchGestureWindow.hidden = YES;
+    self.notchPanHandled = NO;
+    NNPDiagnosticLogTransition(@"MEDIA notch gesture window removed");
 }
-- (void)handleNotchTrackSwipe:(UISwipeGestureRecognizer *)gesture {
-    if (gesture.state != UIGestureRecognizerStateRecognized ||
-        ![self shouldPresentInsideCoverSheet] || self.coverSheetBlackoutRevealed ||
+- (void)updateNotchGestureWindow {
+    BOOL eligible = [self shouldPresentInsideCoverSheet] && !self.coverSheetBlackoutRevealed &&
+        self.view.playbackVisible && self.state.hasTrack && [self isAllowedMedia:self.state];
+    UIWindowScene *scene = self.coverSheetHostView.window.windowScene;
+    if (!eligible || !scene) { [self removeNotchGestureWindow]; return; }
+    if (!self.notchGestureWindow || self.notchGestureWindow.windowScene != scene) {
+        [self removeNotchGestureWindow];
+        NNPNotchGestureWindow *window = [[NNPNotchGestureWindow alloc] initWithWindowScene:scene];
+        window.backgroundColor = UIColor.clearColor;
+        window.opaque = NO;
+        window.windowLevel = UIWindowLevelStatusBar + 80.0;
+        UIViewController *root = [UIViewController new];
+        root.view.backgroundColor = UIColor.clearColor;
+        root.view.opaque = NO;
+        UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleNotchTrackPan:)];
+        pan.maximumNumberOfTouches = 1;
+        [root.view addGestureRecognizer:pan];
+        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(toggleCoverSheetBlackout:)];
+        [tap requireGestureRecognizerToFail:pan];
+        [root.view addGestureRecognizer:tap];
+        window.rootViewController = root;
+        self.notchGestureWindow = window;
+        NNPDiagnosticLogTransition(@"MEDIA notch gesture window installed");
+    }
+    CGFloat width = CGRectGetWidth(scene.coordinateSpace.bounds);
+    CGFloat height = CGRectGetHeight(scene.coordinateSpace.bounds);
+    self.notchGestureWindow.frame = CGRectMake(0.0, 0.0, width, height);
+    self.notchGestureWindow.touchRegion = CGRectMake(width * 0.5 - 110.0, 30.0, 220.0, 66.0);
+    self.notchGestureWindow.hidden = NO;
+}
+- (void)handleNotchTrackPan:(UIPanGestureRecognizer *)gesture {
+    if (gesture.state == UIGestureRecognizerStateBegan) {
+        self.notchPanHandled = NO;
+        NNPDiagnosticLogTransition(@"MEDIA notch pan began");
+        return;
+    }
+    if (gesture.state == UIGestureRecognizerStateEnded || gesture.state == UIGestureRecognizerStateCancelled ||
+        gesture.state == UIGestureRecognizerStateFailed) { self.notchPanHandled = NO; return; }
+    if (gesture.state != UIGestureRecognizerStateChanged || self.notchPanHandled) return;
+    CGPoint translation = [gesture translationInView:gesture.view];
+    if (fabs(translation.x) < 38.0 || fabs(translation.x) < fabs(translation.y) * 1.4) return;
+    self.notchPanHandled = YES;
+    if (![self shouldPresentInsideCoverSheet] || self.coverSheetBlackoutRevealed ||
         !self.view.playbackVisible) return;
-    BOOL previous = gesture.direction == UISwipeGestureRecognizerDirectionLeft;
+    BOOL previous = translation.x < 0.0;
     BOOL sent = previous ? [self.media skipToPreviousTrack] : [self.media skipToNextTrack];
-    NNPDiagnosticLogTransition([NSString stringWithFormat:@"MEDIA notch swipe direction=%@ command=%@ sent=%@",
-        previous ? @"left" : @"right", previous ? @"previous" : @"next", sent ? @"YES" : @"NO"]);
+    NNPDiagnosticLogTransition([NSString stringWithFormat:@"MEDIA notch pan direction=%@ command=%@ sent=%@ dx=%.1f dy=%.1f",
+        previous ? @"left" : @"right", previous ? @"previous" : @"next", sent ? @"YES" : @"NO",
+        translation.x, translation.y]);
 }
 - (void)toggleCoverSheetBlackout:(__unused UIButton *)sender {
     if (!self.coverSheetHostView || !self.coverSheetBlackoutView) return;
@@ -393,6 +436,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     NNPDiagnosticSetBool(@"StatusBarPlayerMirrorActive", self.statusBarPlayerContainer && !self.coverSheetBlackoutRevealed);
     NNPDiagnosticSetBool(@"CoverSheetControlsRevealed", self.coverSheetBlackoutRevealed);
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"COVERSHEET blackout=%@ controlsRevealed=%@ reason=player-area-tap", self.coverSheetBlackoutRevealed ? @"NO" : @"YES", self.coverSheetBlackoutRevealed ? @"YES" : @"NO"]);
+    [self updateNotchGestureWindow];
 }
 - (void)revealCoverSheetControls {
     [self revealCoverSheetControlsWithReason:@"bottom-center-unlock-gesture"];
@@ -412,6 +456,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     NNPDiagnosticSetBool(@"StatusBarPlayerMirrorActive", NO);
     NNPDiagnosticSetBool(@"CoverSheetControlsRevealed", YES);
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"COVERSHEET blackout=NO controlsRevealed=YES reason=%@", reason ?: @"unknown"]);
+    [self removeNotchGestureWindow];
 }
 - (BOOL)shouldPresentInsideCoverSheet {
 #if NNP_ENABLE_COVERSHEET_PRESENTATION && NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
@@ -575,6 +620,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
         if (self.window.hidden) { self.window.hidden = NO; NSLog(@"%@ overlay shown", NNPLog); NNPDiagnosticLogTransition(@"CONTROLLER window visible=YES"); [self recordPresentationDiagnostics:@"window-visible"]; }
         self.view.playbackVisible = YES;
         self.statusBarPlayerView.playbackVisible = YES;
+        [self updateNotchGestureWindow];
         if (becomingVisible) {
             [self.statusBarPlayerView stopContentAnimation];
             self.statusBarPlayerView.contentOpacity = 0.0;
@@ -603,6 +649,7 @@ static NSString * const NNPSpotify = @"com.spotify.client";
     }
     self.view.playbackVisible = NO;
     self.statusBarPlayerView.playbackVisible = NO;
+    [self removeNotchGestureWindow];
     [self updateCoverSheetPresentation];
     if (!self.window.hidden) { self.window.hidden = YES; NSLog(@"%@ overlay hidden", NNPLog); NNPDiagnosticLogTransition(@"CONTROLLER window visible=NO cleanup"); }
     [self.progressTimer invalidate]; self.progressTimer = nil;
