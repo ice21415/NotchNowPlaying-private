@@ -25,6 +25,15 @@
 
 static NSString *const NNPTitleMarqueeAnimationKey = @"nnp.titleMarquee";
 
+static NSString *NNPPlaybackTimeString(NSTimeInterval seconds) {
+    NSInteger wholeSeconds = (NSInteger)MAX(0.0, floor(seconds));
+    NSInteger hours = wholeSeconds / 3600;
+    NSInteger minutes = (wholeSeconds / 60) % 60;
+    NSInteger remainder = wholeSeconds % 60;
+    if (hours > 0) return [NSString stringWithFormat:@"%ld:%02ld:%02ld", (long)hours, (long)minutes, (long)remainder];
+    return [NSString stringWithFormat:@"%ld:%02ld", (long)(wholeSeconds / 60), (long)remainder];
+}
+
 static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     CGImageRef image = artwork.CGImage;
     if (!image) return [UIColor colorWithWhite:0.88 alpha:1.0];
@@ -75,6 +84,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 @property(nonatomic, strong) UILabel *artist;
 @property(nonatomic, strong) CAShapeLayer *track;
 @property(nonatomic, strong) CAShapeLayer *fill;
+@property(nonatomic, strong) UILabel *playbackTime;
 @property(nonatomic) CGFloat fraction;
 @property(nonatomic) CGRect lastNotchRect;
 @property(nonatomic) BOOL lastNotchRectPrivate;
@@ -170,9 +180,15 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     _fill.lineCap = kCALineCapRound;
     _fill.lineJoin = kCALineJoinRound;
 
+    _playbackTime = [UILabel new];
+    _playbackTime.font = [UIFont monospacedDigitSystemFontOfSize:10.5 weight:UIFontWeightMedium];
+    _playbackTime.textAlignment = NSTextAlignmentCenter;
+    _playbackTime.hidden = YES;
+
     [_contentContainer addSubview:_art];
     [_contentContainer addSubview:_titleViewport];
     [_contentContainer addSubview:_artist];
+    [_contentContainer addSubview:_playbackTime];
     [_contentContainer.layer addSublayer:_track];
     [_contentContainer.layer addSublayer:_fill];
 
@@ -278,6 +294,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
            controlPoint1:CGPointMake(pathRight - radius + arcControl, pathBottom)
            controlPoint2:CGPointMake(pathRight, pathBottom - radius + arcControl)];
     [path addLineToPoint:CGPointMake(pathRight, pathTop)];
+    self.playbackTime.frame = CGRectMake(pathLeft + radius, pathBottom + 3.0,
+                                         MAX(1.0, pathRight - pathLeft - radius * 2.0), 15.0);
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     self.track.path = path.CGPath;
@@ -374,8 +392,23 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 - (void)updateElapsed:(NSTimeInterval)elapsed duration:(NSTimeInterval)duration playing:(BOOL)playing {
     BOOL valid = duration > 0.0 && isfinite(duration);
     self.track.hidden = self.fill.hidden = !valid || !self.showProgress;
+    self.playbackTime.hidden = !valid || !self.showProgress;
     if (!valid) return;
     elapsed = MIN(duration, MAX(0.0, elapsed));
+    NSString *played = NNPPlaybackTimeString(elapsed);
+    NSString *remaining = [@"−" stringByAppendingString:NNPPlaybackTimeString(ceil(duration - elapsed))];
+    NSString *display = [NSString stringWithFormat:@"%@  ·  %@", played, remaining];
+    NSMutableAttributedString *styled = [[NSMutableAttributedString alloc] initWithString:display
+        attributes:@{ NSFontAttributeName: self.playbackTime.font,
+                      NSForegroundColorAttributeName: [UIColor colorWithWhite:1.0 alpha:0.9] }];
+    [styled addAttribute:NSForegroundColorAttributeName
+                   value:[self.accentColor colorWithAlphaComponent:0.95]
+                   range:NSMakeRange(0, played.length)];
+    [styled addAttribute:NSForegroundColorAttributeName
+                   value:[UIColor colorWithWhite:1.0 alpha:0.48]
+                   range:NSMakeRange(played.length, display.length - played.length)];
+    self.playbackTime.attributedText = styled;
+    self.playbackTime.accessibilityLabel = [NSString stringWithFormat:@"已播放 %@，剩餘 %@", played, remaining];
     self.fraction = elapsed / duration;
     self.fill.opacity = playing ? 1.0 : 0.55;
     [self setNeedsLayout];
