@@ -12,6 +12,9 @@
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
 #import "NNPController.h"
 #endif
+#if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE && NNP_PHASE7_DRY_RUN == 0
+#import "NNPAODNitsController.h"
+#endif
 
 #if !NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE || NNP_PHASE7_DRY_RUN == 1
 void NNPPhase7SetExperimentArmed(__unused BOOL armed) {}
@@ -116,6 +119,10 @@ void NNPPhase7NotifyDisplayWake(void) {
     _aodPresentationActive = active;
     NNPDiagnosticSetBool(@"Phase7AODPresentationActive", active);
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY AOD presentation active=%@", active ? @"YES" : @"NO"]);
+#if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE && NNP_PHASE7_DRY_RUN == 0
+    if (active) NNPAODNitsBeginSession(self.sessionIdentifier, self.aodBrightnessMultiplier);
+    else NNPAODNitsEndSession();
+#endif
     if (self.stateChangedHandler) self.stateChangedHandler();
 }
 

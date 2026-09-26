@@ -92,7 +92,7 @@ endif
 
 ifeq ($(NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE),1)
 ifneq ($(NNP_PHASE7_DRY_RUN),1)
-NotchNowPlaying_FILES += NNPPhase7PseudoAOD.xm
+NotchNowPlaying_FILES += NNPPhase7PseudoAOD.xm NNPAODNitsController.m
 endif
 endif
 
