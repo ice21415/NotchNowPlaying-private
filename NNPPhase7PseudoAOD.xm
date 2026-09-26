@@ -263,7 +263,6 @@ static void NNPPhase7BacklightFactorReplacement(int displayID, float factor, flo
     if (shouldSubstitute) {
         float dimmedFactor = 0.0f;
         if (NNPPhase7ReadDimmedFactor(provider, &dimmedFactor)) {
-            float multiplier = atomic_load_explicit(&gNNPPhase7AODBrightnessMultiplier, memory_order_acquire);
             // Keep the system's dim factor for the AOD transition. The iOS 17.1.2
             // CoreBrightness trace does not prove this factor drives panel nits;
             // the user multiplier is applied through SpringBoard's UIScreen brightness.
