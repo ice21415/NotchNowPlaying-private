@@ -215,6 +215,10 @@ void NNPNotificationDiagnosticsSetDisplayState(BOOL locked, BOOL aodActive) {
     }
 }
 
+BOOL NNPNotificationDiagnosticsIsNotificationBacklightSource(NSInteger source) {
+    return source == NNPObservedNotificationBacklightSource;
+}
+
 BOOL NNPNotificationDiagnosticsConsumeWakeForSnakeAnimation(NSInteger state, NSInteger source) {
     if (state != 1) return NO;
 

@@ -35,7 +35,9 @@ static _Atomic(float) gNNPPhase7LastFactorOutput = 0.0f;
 static _Atomic(bool) gNNPPhase7LastFactorHadProvider = false;
 static _Atomic(bool) gNNPPhase7BlankRequestSuppressed = false;
 static _Atomic(bool) gNNPPhase7RevealOnWakePending = false;
+static _Atomic(uint64_t) gNNPPhase7NotificationWakeSuppressionDeadlineTicks = 0;
 static _Atomic(uint64_t) gNNPPhase7NotificationUnblankSuppressionDeadlineTicks = 0;
+static const double NNPPhase7NotificationWakeSuppressionSeconds = 5.0;
 static _Atomic(int) gNNPPhase7LastRequestedMode = -1;
 static _Atomic(int) gNNPPhase7LastForwardedMode = -1;
 static _Atomic(uint64_t) gNNPPhase7LastTransitionTicks = 0;
@@ -182,6 +184,7 @@ void NNPPhase7UpdateForensicsState(NSInteger lifecycleState, BOOL deviceLocked, 
     atomic_store_explicit(&gNNPPhase7TimerActive, timerActive, memory_order_relaxed);
     if (!deviceLocked) {
         atomic_store_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_release);
+        atomic_store_explicit(&gNNPPhase7NotificationWakeSuppressionDeadlineTicks, 0, memory_order_release);
         atomic_store_explicit(&gNNPPhase7NotificationUnblankSuppressionDeadlineTicks, 0, memory_order_release);
     }
 }
@@ -253,6 +256,7 @@ void NNPPhase7SetExperimentArmed(BOOL armed) {
     }
     if (!armed) {
         atomic_store_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_release);
+        atomic_store_explicit(&gNNPPhase7NotificationWakeSuppressionDeadlineTicks, 0, memory_order_release);
         atomic_store_explicit(&gNNPPhase7NotificationUnblankSuppressionDeadlineTicks, 0, memory_order_release);
     }
 #endif
@@ -398,14 +402,40 @@ static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger stat
     bool locked = atomic_load_explicit(&gNNPPhase7DeviceLocked, memory_order_acquire);
     bool activeAOD = atomic_load_explicit(&gNNPPhase7Lifecycle, memory_order_acquire) == NNPDisplayLifecycleStateActive &&
         atomic_load_explicit(&gNNPPhase7ModeSubstitutionObserved, memory_order_acquire);
+
+    // A single notification can produce a second state=1 request after its
+    // first request was intercepted. Keep that follow-on request from waking
+    // SpringBoard for the duration of the snake animation. Physical-button
+    // wakes use a different source and still reveal the native Lock Screen.
+    if (state == 1) {
+        uint64_t deadline = atomic_load_explicit(&gNNPPhase7NotificationWakeSuppressionDeadlineTicks,
+                                                  memory_order_acquire);
+        if (deadline) {
+            uint64_t now = mach_absolute_time();
+            if (now <= deadline && NNPNotificationDiagnosticsIsNotificationBacklightSource(source) && armed && locked) {
+                NNPDiagnosticLogTransition([NSString stringWithFormat:
+                    @"PHASE7 suppressed follow-on notification backlight wake state=%ld source=%ld while snake animation is active",
+                    (long)state, (long)source]);
+                return;
+            }
+            atomic_store_explicit(&gNNPPhase7NotificationWakeSuppressionDeadlineTicks, 0,
+                                  memory_order_release);
+            atomic_store_explicit(&gNNPPhase7NotificationUnblankSuppressionDeadlineTicks, 0,
+                                  memory_order_release);
+        }
+    }
+
     bool notificationWakeMatched = NNPNotificationDiagnosticsConsumeWakeForSnakeAnimation(state, source);
 
     if (state == 1 && armed && locked && activeAOD && notificationWakeMatched) {
         if (NNPPhase7PresentNotificationSnakeAnimation()) {
             uint64_t now = mach_absolute_time();
-            uint64_t graceTicks = NNPPhase7TicksForSeconds(2.0);
-            atomic_store_explicit(&gNNPPhase7NotificationUnblankSuppressionDeadlineTicks,
+            uint64_t graceTicks = NNPPhase7TicksForSeconds(NNPPhase7NotificationWakeSuppressionSeconds);
+            atomic_store_explicit(&gNNPPhase7NotificationWakeSuppressionDeadlineTicks,
                                   graceTicks ? now + graceTicks : 0, memory_order_release);
+            uint64_t unblankGraceTicks = NNPPhase7TicksForSeconds(2.0);
+            atomic_store_explicit(&gNNPPhase7NotificationUnblankSuppressionDeadlineTicks,
+                                  unblankGraceTicks ? now + unblankGraceTicks : 0, memory_order_release);
             NNPDiagnosticLogTransition(@"PHASE7 kept AOD active and replaced correlated notification wake with snake animation");
             // The lock session is already active; omitting this correlated wake
             // request keeps the pseudo-AOD presentation and lock state intact.
@@ -415,6 +445,7 @@ static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger stat
     }
 
     if (state == 1) {
+        atomic_store_explicit(&gNNPPhase7NotificationWakeSuppressionDeadlineTicks, 0, memory_order_release);
         atomic_store_explicit(&gNNPPhase7NotificationUnblankSuppressionDeadlineTicks, 0, memory_order_release);
     }
 
