@@ -4,11 +4,14 @@
 #import <MediaPlayer/MediaPlayer.h>
 #import <objc/runtime.h>
 #import <fcntl.h>
+#import <stdint.h>
 #import <stdlib.h>
+#import <string.h>
 #import <unistd.h>
 
 static CFStringRef const NNPSpotifySharedPreferences = CFSTR("com.user.notchnowplaying");
 static CFStringRef const NNPSpotifyLyricsChangedNotification = CFSTR("com.user.notchnowplaying.preferences.changed");
+static BOOL NNPSpotifyStringContainsAny(NSString *value, NSArray<NSString *> *needles);
 static NSString *NNPSpotifyLyricsProbePath(void) {
     return [NSTemporaryDirectory() stringByAppendingPathComponent:@"nnp-spotify-lyrics-runtime.log"];
 }
@@ -28,6 +31,121 @@ static void NNPSpotifyProbeAppend(NSString *line) {
         remaining -= written;
     }
     close(fd);
+}
+
+static BOOL NNPSpotifyIsRelevantModelClass(Class cls) {
+    NSString *name = NSStringFromClass(cls) ?: @"";
+    return NNPSpotifyStringContainsAny(name, @[@"lyrics", @"line", @"progress", @"position", @"provider", @"model", @"event"]);
+}
+
+static NSString *NNPSpotifyScalarIvarValue(id object, Ivar ivar) {
+    const char *encoding = ivar_getTypeEncoding(ivar);
+    if (!encoding || !encoding[0] || encoding[0] == '@' || encoding[0] == '^' || encoding[0] == '{' || encoding[0] == '(') return nil;
+    ptrdiff_t offset = ivar_getOffset(ivar);
+    if (offset < 0) return nil;
+    NSUInteger instanceSize = class_getInstanceSize(object_getClass(object));
+    const uint8_t *bytes = (const uint8_t *)(__bridge const void *)object;
+    switch (encoding[0]) {
+        case 'c': case 'C': case 'B': {
+            int8_t value = 0; if ((NSUInteger)offset + sizeof(value) > instanceSize) return nil;
+            memcpy(&value, bytes + offset, sizeof(value)); return [NSString stringWithFormat:@"%d", value];
+        }
+        case 's': case 'S': {
+            int16_t value = 0; if ((NSUInteger)offset + sizeof(value) > instanceSize) return nil;
+            memcpy(&value, bytes + offset, sizeof(value)); return [NSString stringWithFormat:@"%d", value];
+        }
+        case 'i': case 'I': {
+            int32_t value = 0; if ((NSUInteger)offset + sizeof(value) > instanceSize) return nil;
+            memcpy(&value, bytes + offset, sizeof(value)); return [NSString stringWithFormat:@"%d", value];
+        }
+        case 'l': case 'L': case 'q': case 'Q': {
+            int64_t value = 0; if ((NSUInteger)offset + sizeof(value) > instanceSize) return nil;
+            memcpy(&value, bytes + offset, sizeof(value)); return [NSString stringWithFormat:@"%lld", (long long)value];
+        }
+        case 'f': {
+            float value = 0; if ((NSUInteger)offset + sizeof(value) > instanceSize) return nil;
+            memcpy(&value, bytes + offset, sizeof(value)); return [NSString stringWithFormat:@"%.4f", value];
+        }
+        case 'd': {
+            double value = 0; if ((NSUInteger)offset + sizeof(value) > instanceSize) return nil;
+            memcpy(&value, bytes + offset, sizeof(value)); return [NSString stringWithFormat:@"%.4f", value];
+        }
+        default: return nil;
+    }
+}
+
+static NSString *NNPSpotifyLyricsObjectSnapshot(id object, NSUInteger depth, NSMutableSet<NSString *> *visited) {
+    if (!object || depth > 4) return @"";
+    Class cls = object_getClass(object);
+    NSString *className = NSStringFromClass(cls) ?: @"?";
+    if ([object isKindOfClass:NSString.class]) {
+        NSString *value = [(NSString *)object stringByReplacingOccurrencesOfString:@"\n" withString:@" "];
+        return [NSString stringWithFormat:@"%@(%@)", className, [value substringToIndex:MIN(value.length, 100)]];
+    }
+    if ([object isKindOfClass:NSNumber.class]) return [NSString stringWithFormat:@"%@(%@)", className, object];
+    if ([object isKindOfClass:NSArray.class]) {
+        NSArray *array = (NSArray *)object;
+        NSMutableArray *items = [NSMutableArray array];
+        NSUInteger count = MIN(array.count, 6);
+        for (NSUInteger index = 0; index < count; index++) {
+            [items addObject:NNPSpotifyLyricsObjectSnapshot(array[index], depth + 1, visited) ?: @"?"];
+        }
+        return [NSString stringWithFormat:@"%@[%lu]{%@}", className, (unsigned long)array.count, [items componentsJoinedByString:@","]];
+    }
+
+    NSString *imagePath = [NSString stringWithUTF8String:class_getImageName(cls) ?: ""];
+    if (![imagePath containsString:@"Spotify.app/Spotify"] || !NNPSpotifyIsRelevantModelClass(cls)) return [NSString stringWithFormat:@"%@", className];
+    NSString *objectKey = [NSString stringWithFormat:@"%p", object];
+    if ([visited containsObject:objectKey]) return [NSString stringWithFormat:@"%@@%@", className, objectKey];
+    [visited addObject:objectKey];
+
+    NSMutableArray<NSString *> *fields = [NSMutableArray array];
+    for (Class current = cls; current; current = class_getSuperclass(current)) {
+        NSString *currentImage = [NSString stringWithUTF8String:class_getImageName(current) ?: ""];
+        if (![currentImage containsString:@"Spotify.app/Spotify"]) break;
+        unsigned int count = 0;
+        Ivar *ivars = class_copyIvarList(current, &count);
+        for (unsigned int index = 0; index < count; index++) {
+            Ivar ivar = ivars[index];
+            const char *rawName = ivar_getName(ivar);
+            const char *rawType = ivar_getTypeEncoding(ivar);
+            NSString *name = rawName ? [NSString stringWithUTF8String:rawName] : @"?";
+            NSString *type = rawType ? [NSString stringWithUTF8String:rawType] : @"?";
+            if (type.length && type.UTF8String[0] == '@') {
+                id value = object_getIvar(object, ivar);
+                if (!value) {
+                    [fields addObject:[NSString stringWithFormat:@"%@:%@=nil", name, type]];
+                } else {
+                    NSString *valueName = NSStringFromClass(object_getClass(value)) ?: @"?";
+                    NSString *valueSummary = [NSString stringWithFormat:@"%@@%p", valueName, value];
+                    if (depth < 4 && NNPSpotifyIsRelevantModelClass(object_getClass(value))) {
+                        valueSummary = NNPSpotifyLyricsObjectSnapshot(value, depth + 1, visited);
+                    } else if ([value isKindOfClass:NSString.class] || [value isKindOfClass:NSNumber.class] || [value isKindOfClass:NSArray.class]) {
+                        valueSummary = NNPSpotifyLyricsObjectSnapshot(value, depth + 1, visited);
+                    }
+                    [fields addObject:[NSString stringWithFormat:@"%@:%@=%@", name, type, valueSummary ?: @"?"]];
+                }
+            } else {
+                NSString *scalar = NNPSpotifyScalarIvarValue(object, ivar);
+                [fields addObject:[NSString stringWithFormat:@"%@:%@=%@", name, type, scalar ?: @"?"]];
+            }
+        }
+        free(ivars);
+    }
+    return [NSString stringWithFormat:@"%@@%p{%@}", className, object, [fields componentsJoinedByString:@","]];
+}
+
+static void NNPSpotifyDumpLyricsObjectGraph(id object) {
+    static NSMutableDictionary<NSString *, NSString *> *lastSnapshots;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{ lastSnapshots = [NSMutableDictionary dictionary]; });
+    NSMutableSet<NSString *> *visited = [NSMutableSet set];
+    NSString *snapshot = NNPSpotifyLyricsObjectSnapshot(object, 0, visited);
+    NSString *key = [NSString stringWithFormat:@"%p", object];
+    if (!snapshot.length || [lastSnapshots[key] isEqualToString:snapshot]) return;
+    lastSnapshots[key] = snapshot;
+    if (lastSnapshots.count > 512) [lastSnapshots removeAllObjects];
+    NNPSpotifyProbeAppend([@"MODEL-SNAPSHOT " stringByAppendingString:snapshot]);
 }
 
 static NSString *NNPSpotifyNormalizeLyricsText(NSString *text) {
@@ -76,7 +194,7 @@ static void NNPSpotifyDumpLyricsRuntime(void) {
             for (unsigned int ivarIndex = 0; ivarIndex < ivarCount; ivarIndex++) {
                 const char *ivarName = ivar_getName(ivarList[ivarIndex]);
                 const char *type = ivar_getTypeEncoding(ivarList[ivarIndex]);
-                if (ivarName) [ivars addObject:[NSString stringWithFormat:@"%s:%s", ivarName, type ?: "?"]];
+                if (ivarName) [ivars addObject:[NSString stringWithFormat:@"%s:%s@%td", ivarName, type ?: "?", ivar_getOffset(ivarList[ivarIndex])]];
             }
             free(ivarList);
             NSMutableArray<NSString *> *selectors = [NSMutableArray array];
@@ -174,6 +292,7 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
             if ([ancestorPath containsString:@"Lyrics_CardElementImpl.CardView"]) lyricsSurface = @"now-playing-card";
             else if ([ancestorPath containsString:@"Lyrics_FullscreenElementPageImpl.FullscreenView"]) lyricsSurface = @"fullscreen";
             if (lyricsCell) {
+                NNPSpotifyDumpLyricsObjectGraph(lyricsCell);
                 NSIndexPath *indexPath = [lyricsTable indexPathForCell:lyricsCell];
                 cellRow = indexPath ? (NSInteger)indexPath.row : -1;
                 NSIndexPath *centerIndexPath = nil;
