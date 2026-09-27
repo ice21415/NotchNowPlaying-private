@@ -97,6 +97,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 @property(nonatomic, strong) UIImage *accentArtwork;
 @property(nonatomic, strong) UIColor *accentColor;
 @property(nonatomic, strong) CAShapeLayer *notificationSnakeLayer;
+@property(nonatomic, strong) CAShapeLayer *notificationSnakeFinishLayer;
 @property(nonatomic) NSUInteger notificationSnakeGeneration;
 - (void)updateTitleMarquee;
 - (CGRect)notchRectUsingPrivateAPI:(BOOL *)usedPrivateAPI;
@@ -335,55 +336,45 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         self.notificationSnakeLayer.path = [self notificationSnakePath].CGPath;
         [self updateNotificationSnakeCounterTransform];
     }
+    if (self.notificationSnakeFinishLayer) {
+        self.notificationSnakeFinishLayer.frame = self.bounds;
+        self.notificationSnakeFinishLayer.path = self.track.path;
+        self.notificationSnakeFinishLayer.lineWidth = self.track.lineWidth + 1.5;
+    }
     [CATransaction commit];
     [self updateTitleMarquee];
 }
 
 - (UIBezierPath *)notificationSnakePath {
     CGRect bounds = self.bounds;
-    CGRect notch = [self notchRectUsingPrivateAPI:NULL];
     CGFloat width = CGRectGetWidth(bounds);
     CGFloat height = CGRectGetHeight(bounds);
-    CGFloat left = 8.0;
-    CGFloat right = MAX(left + 40.0, width - 8.0);
-    CGFloat top = 8.0;
-    CGFloat bottom = MAX(top + 80.0, height - 8.0);
-    CGFloat radius = MIN(22.0, MIN((right - left) * 0.12, (bottom - top) * 0.08));
-    CGFloat joinY = MIN(bottom - 28.0, MAX(CGRectGetMaxY(notch) + 12.0, top + 38.0));
-    CGFloat leftJoin = MAX(left + radius + 6.0, CGRectGetMinX(notch) - 7.0);
-    CGFloat rightJoin = MIN(right - radius - 6.0, CGRectGetMaxX(notch) + 7.0);
-    if (rightJoin - leftJoin < 32.0) {
-        leftJoin = CGRectGetMidX(bounds) - 20.0;
-        rightJoin = CGRectGetMidX(bounds) + 20.0;
-    }
+    CGFloat left = 7.0;
+    CGFloat right = MAX(left + 40.0, width - 7.0);
+    CGFloat top = 7.0;
+    CGFloat bottom = MAX(top + 80.0, height - 7.0);
+    CGFloat radius = MIN(24.0, MIN((right - left) * 0.12, (bottom - top) * 0.055));
+    CGFloat startX = CGRectGetMidX(bounds);
 
     UIBezierPath *path = [UIBezierPath bezierPath];
-    [path moveToPoint:CGPointMake(leftJoin, joinY)];
-    [path addLineToPoint:CGPointMake(leftJoin, top)];
+    [path moveToPoint:CGPointMake(startX, top)];
     [path addLineToPoint:CGPointMake(left + radius, top)];
-    [path addQuadCurveToPoint:CGPointMake(left, top + radius)
-                 controlPoint:CGPointMake(left, top)];
+    [path addQuadCurveToPoint:CGPointMake(left, top + radius) controlPoint:CGPointMake(left, top)];
     [path addLineToPoint:CGPointMake(left, bottom - radius)];
-    [path addQuadCurveToPoint:CGPointMake(left + radius, bottom)
-                 controlPoint:CGPointMake(left, bottom)];
+    [path addQuadCurveToPoint:CGPointMake(left + radius, bottom) controlPoint:CGPointMake(left, bottom)];
     [path addLineToPoint:CGPointMake(right - radius, bottom)];
-    [path addQuadCurveToPoint:CGPointMake(right, bottom - radius)
-                 controlPoint:CGPointMake(right, bottom)];
+    [path addQuadCurveToPoint:CGPointMake(right, bottom - radius) controlPoint:CGPointMake(right, bottom)];
     [path addLineToPoint:CGPointMake(right, top + radius)];
-    [path addQuadCurveToPoint:CGPointMake(right - radius, top)
-                 controlPoint:CGPointMake(right, top)];
-    [path addLineToPoint:CGPointMake(rightJoin, top)];
-    [path addLineToPoint:CGPointMake(rightJoin, joinY)];
-    CGFloat centerX = CGRectGetMidX(notch);
-    [path addCurveToPoint:CGPointMake(leftJoin, joinY)
-           controlPoint1:CGPointMake(centerX + 22.0, joinY + 18.0)
-           controlPoint2:CGPointMake(centerX - 22.0, joinY + 18.0)];
+    [path addQuadCurveToPoint:CGPointMake(right - radius, top) controlPoint:CGPointMake(right, top)];
+    [path addLineToPoint:CGPointMake(startX, top)];
     [path closePath];
     return path;
 }
 
 - (BOOL)playNotificationSnakeAnimation {
     if (![NSThread isMainThread] || !self.window || CGRectIsEmpty(self.bounds)) return NO;
+    if (!self.track.path) [self layoutIfNeeded];
+    if (!self.track.path) return NO;
     if (!self.notificationSnakeLayer) {
         self.notificationSnakeLayer = [CAShapeLayer layer];
         self.notificationSnakeLayer.fillColor = UIColor.clearColor.CGColor;
@@ -392,45 +383,72 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         self.notificationSnakeLayer.contentsScale = MAX(UIScreen.mainScreen.scale, 1.0);
         [self.layer addSublayer:self.notificationSnakeLayer];
     }
+    if (!self.notificationSnakeFinishLayer) {
+        self.notificationSnakeFinishLayer = [CAShapeLayer layer];
+        self.notificationSnakeFinishLayer.fillColor = UIColor.clearColor.CGColor;
+        self.notificationSnakeFinishLayer.lineCap = kCALineCapRound;
+        self.notificationSnakeFinishLayer.lineJoin = kCALineJoinRound;
+        self.notificationSnakeFinishLayer.contentsScale = MAX(UIScreen.mainScreen.scale, 1.0);
+        [self.layer addSublayer:self.notificationSnakeFinishLayer];
+    }
 
     CAShapeLayer *snake = self.notificationSnakeLayer;
+    CAShapeLayer *finish = self.notificationSnakeFinishLayer;
     NSUInteger generation = ++self.notificationSnakeGeneration;
     [snake removeAllAnimations];
+    [finish removeAllAnimations];
     snake.frame = self.bounds;
     snake.path = [self notificationSnakePath].CGPath;
-    snake.lineWidth = 3.0;
-    snake.strokeColor = [self.accentColor colorWithAlphaComponent:0.98].CGColor;
+    snake.lineWidth = 4.5;
+    snake.strokeColor = self.accentColor.CGColor;
     snake.shadowColor = self.accentColor.CGColor;
-    snake.shadowOpacity = 0.82;
-    snake.shadowRadius = 7.0;
+    snake.shadowOpacity = 1.0;
+    snake.shadowRadius = 11.0;
     snake.shadowOffset = CGSizeZero;
-    snake.opacity = 0.96;
-    snake.hidden = NO;
+    snake.opacity = 1.0;
+    finish.frame = self.bounds;
+    finish.path = self.track.path;
+    finish.lineWidth = self.track.lineWidth + 1.5;
+    finish.strokeColor = self.accentColor.CGColor;
+    finish.shadowColor = self.accentColor.CGColor;
+    finish.shadowOpacity = 1.0;
+    finish.shadowRadius = 10.0;
+    finish.shadowOffset = CGSizeZero;
+    finish.strokeStart = 0.0;
+    finish.strokeEnd = 0.0;
+    finish.opacity = 0.0;
+    finish.hidden = NO;
     [self updateNotificationSnakeCounterTransform];
 
-    NSTimeInterval duration = UIAccessibilityIsReduceMotionEnabled() ? 2.0 : 2.2;
-    if (UIAccessibilityIsReduceMotionEnabled()) {
+    BOOL reduceMotion = UIAccessibilityIsReduceMotionEnabled();
+    NSTimeInterval duration = 2.2;
+    if (reduceMotion) {
+        snake.hidden = YES;
+        finish.strokeEnd = 1.0;
+        finish.opacity = 0.94;
         snake.strokeStart = 0.0;
         snake.strokeEnd = 1.0;
         CABasicAnimation *pulse = [CABasicAnimation animationWithKeyPath:@"opacity"];
         pulse.fromValue = @0.45;
-        pulse.toValue = @0.96;
+        pulse.toValue = @0.94;
         pulse.duration = 0.45;
         pulse.autoreverses = YES;
         pulse.repeatCount = 2.0;
         pulse.removedOnCompletion = NO;
         pulse.fillMode = kCAFillModeForwards;
-        [snake addAnimation:pulse forKey:@"nnp.notificationSnakePulse"];
+        [finish addAnimation:pulse forKey:@"nnp.notificationSnakeFinishPulse"];
     } else {
+        snake.hidden = NO;
+        finish.hidden = NO;
         snake.strokeStart = 0.0;
-        snake.strokeEnd = 0.025;
+        snake.strokeEnd = 0.06;
         CABasicAnimation *tail = [CABasicAnimation animationWithKeyPath:@"strokeStart"];
         tail.fromValue = @0.0;
-        tail.toValue = @0.975;
+        tail.toValue = @0.94;
         tail.duration = duration;
         tail.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
         CABasicAnimation *head = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
-        head.fromValue = @0.025;
+        head.fromValue = @0.06;
         head.toValue = @1.0;
         head.duration = duration;
         head.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
@@ -441,17 +459,51 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         laps.removedOnCompletion = NO;
         laps.fillMode = kCAFillModeForwards;
         [snake addAnimation:laps forKey:@"nnp.notificationSnakeLaps"];
+
+        NSTimeInterval finishDuration = 0.9;
+        CABasicAnimation *notchTrace = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
+        notchTrace.fromValue = @0.0;
+        notchTrace.toValue = @1.0;
+        notchTrace.duration = finishDuration;
+        notchTrace.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+
+        CAKeyframeAnimation *finishGlow = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
+        finishGlow.values = @[@0.0, @1.0, @1.0, @0.0];
+        finishGlow.keyTimes = @[@0.0, @0.10, @0.76, @1.0];
+        finishGlow.duration = finishDuration;
+
+        CAAnimationGroup *notchFinish = [CAAnimationGroup animation];
+        notchFinish.animations = @[notchTrace, finishGlow];
+        notchFinish.duration = finishDuration;
+        notchFinish.beginTime = CACurrentMediaTime() + duration * 2.0;
+        notchFinish.removedOnCompletion = NO;
+        notchFinish.fillMode = kCAFillModeBoth;
+        [finish addAnimation:notchFinish forKey:@"nnp.notificationSnakeNotchFinish"];
+
+        CABasicAnimation *edgeFade = [CABasicAnimation animationWithKeyPath:@"opacity"];
+        edgeFade.fromValue = @1.0;
+        edgeFade.toValue = @0.08;
+        edgeFade.duration = 0.22;
+        edgeFade.beginTime = CACurrentMediaTime() + duration * 2.0;
+        edgeFade.removedOnCompletion = NO;
+        edgeFade.fillMode = kCAFillModeBoth;
+        [snake addAnimation:edgeFade forKey:@"nnp.notificationSnakeEdgeFade"];
     }
 
-    NSTimeInterval cleanupDelay = duration * (UIAccessibilityIsReduceMotionEnabled() ? 1.0 : 2.0) + 0.15;
+    NSTimeInterval cleanupDelay = duration * (reduceMotion ? 1.0 : 2.0) + (reduceMotion ? 0.15 : 1.05);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(cleanupDelay * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         if (generation != self.notificationSnakeGeneration) return;
         [snake removeAllAnimations];
+        [finish removeAllAnimations];
         snake.hidden = YES;
         snake.opacity = 0.0;
         snake.strokeStart = 0.0;
         snake.strokeEnd = 0.0;
+        finish.hidden = YES;
+        finish.opacity = 0.0;
+        finish.strokeStart = 0.0;
+        finish.strokeEnd = 0.0;
     });
     return YES;
 }
