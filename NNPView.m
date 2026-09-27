@@ -454,7 +454,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     BOOL textChanged = ![self.lyricsLabel.text isEqualToString:text];
     BOOL styleChanged = ![self.lyricsLabel.attributedText isEqualToAttributedString:styledText];
     if (textChanged) {
-        [UIView transitionWithView:self.lyricsLabel duration:0.38 options:UIViewAnimationOptionTransitionCrossDissolve | UIViewAnimationOptionBeginFromCurrentState animations:^{
+        [UIView transitionWithView:self.lyricsLabel duration:0.25 options:UIViewAnimationOptionTransitionCrossDissolve | UIViewAnimationOptionBeginFromCurrentState animations:^{
             self.lyricsLabel.attributedText = styledText;
         } completion:nil];
     } else if (styleChanged) {

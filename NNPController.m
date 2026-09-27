@@ -669,7 +669,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
                 elapsed += MAX(0.0, NSDate.date.timeIntervalSince1970 - self.state.timestamp) * self.state.playbackRate;
             // Spotify's line timestamps can feel ahead of the vocal on the AOD.
             // Hold the current lyric briefly before advancing to the next line.
-            elapsed = MAX(0.0, elapsed - 0.35);
+            elapsed = MAX(0.0, elapsed - 0.18);
             NSUInteger activeIndex = 0;
             for (NSUInteger index = 1; index < timedLines.count; index++) {
                 if ([timedLines[index][@"startTimeMs"] doubleValue] > elapsed * 1000.0) break;
