@@ -12,7 +12,7 @@ TWEAK_NAME := NotchNowPlaying NNPSpotifyProbe
 NotchNowPlaying_FILES := Tweak.xm NNPState.m NNPView.m NNPController.m NNPDiagnostics.m NNPPreferences.m NNPLockStateController.m NNPDisplayController.m
 NNPSpotifyProbe_FILES := NNPSpotifyProbe.xm NNPSpotifyLyricsProbe.m
 NNPSpotifyProbe_CFLAGS := -fobjc-arc -fvisibility=hidden -fno-ident
-NNPSpotifyProbe_FRAMEWORKS := Foundation UIKit
+NNPSpotifyProbe_FRAMEWORKS := Foundation UIKit MediaPlayer
 NNP_SAFE_BOOT_TEST ?= 0
 NNP_DEBUG_SHOW_WHILE_UNLOCKED ?= 0
 NNP_ALLOW_ALL_MEDIA ?= 0

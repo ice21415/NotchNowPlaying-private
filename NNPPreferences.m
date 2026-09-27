@@ -25,6 +25,10 @@ static CGFloat NNPFloat(NSString *key, CGFloat fallback) {
 @property(nonatomic) BOOL showArtwork;
 @property(nonatomic) BOOL showArtist;
 @property(nonatomic) BOOL showProgress;
+@property(nonatomic) BOOL showLyrics;
+@property(nonatomic, copy) NSString *spotifyLyricsText;
+@property(nonatomic, copy) NSString *spotifyLyricsNextLine;
+@property(nonatomic, copy) NSString *spotifyLyricsTrackTitle;
 @property(nonatomic) BOOL hideWhenPaused;
 @property(nonatomic) BOOL aodPixelShiftEnabled;
 @property(nonatomic) float aodBrightnessMultiplier;
@@ -55,6 +59,10 @@ static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observe
     self.showArtwork = NNPBool(@"ShowArtwork", YES);
     self.showArtist = NNPBool(@"ShowArtist", YES);
     self.showProgress = NNPBool(@"ShowProgress", YES);
+    self.showLyrics = NNPBool(@"ShowLyrics", YES);
+    self.spotifyLyricsText = NNPPreferenceValue(@"SpotifyLyricsText") ?: @"";
+    self.spotifyLyricsNextLine = NNPPreferenceValue(@"SpotifyLyricsNextLine") ?: @"";
+    self.spotifyLyricsTrackTitle = NNPPreferenceValue(@"SpotifyLyricsTrackTitle") ?: @"";
     self.hideWhenPaused = NNPBool(@"HideWhenPaused", YES);
     self.aodPixelShiftEnabled = NNPBool(@"AODPixelShiftEnabled", YES);
     self.aodBrightnessMultiplier = (float)MAX(1.0, MIN(4.0, NNPFloat(@"AODBrightnessMultiplier", 100.0) / 100.0));

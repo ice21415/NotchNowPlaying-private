@@ -85,6 +85,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 @property(nonatomic, strong) CAShapeLayer *track;
 @property(nonatomic, strong) CAShapeLayer *fill;
 @property(nonatomic, strong) UILabel *playbackTime;
+@property(nonatomic, strong) UILabel *lyricsLabel;
 @property(nonatomic) CGFloat fraction;
 @property(nonatomic) CGRect lastNotchRect;
 @property(nonatomic) BOOL lastNotchRectPrivate;
@@ -185,16 +186,28 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     _playbackTime.textAlignment = NSTextAlignmentCenter;
     _playbackTime.hidden = YES;
 
+    _lyricsLabel = [UILabel new];
+    _lyricsLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightSemibold];
+    _lyricsLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.94];
+    _lyricsLabel.textAlignment = NSTextAlignmentCenter;
+    _lyricsLabel.numberOfLines = 2;
+    _lyricsLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    _lyricsLabel.hidden = YES;
+    _lyricsLabel.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.55];
+    _lyricsLabel.shadowOffset = CGSizeMake(0.0, 1.0);
+
     [_contentContainer addSubview:_art];
     [_contentContainer addSubview:_titleViewport];
     [_contentContainer addSubview:_artist];
     [_contentContainer addSubview:_playbackTime];
+    [_contentContainer addSubview:_lyricsLabel];
     [_contentContainer.layer addSublayer:_track];
     [_contentContainer.layer addSublayer:_fill];
 
     _showArtwork = YES;
     _showArtist = YES;
     _showProgress = YES;
+    _showLyrics = YES;
     _artworkSize = 40.0;
     _cornerRadius = 9.0;
     _textSize = 14.0;
@@ -296,6 +309,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     [path addLineToPoint:CGPointMake(pathRight, pathTop)];
     self.playbackTime.frame = CGRectMake(pathLeft + radius, pathBottom + 3.0,
                                          MAX(1.0, pathRight - pathLeft - radius * 2.0), 15.0);
+    CGFloat lyricsTop = CGRectGetMaxY(self.playbackTime.frame) + 5.0;
+    self.lyricsLabel.frame = CGRectMake(side, lyricsTop, MAX(1.0, width - side * 2.0), 34.0);
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     self.track.path = path.CGPath;
@@ -411,6 +426,22 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     self.playbackTime.accessibilityLabel = [NSString stringWithFormat:@"已播放 %@，剩餘 %@", played, remaining];
     self.fraction = elapsed / duration;
     self.fill.opacity = playing ? 1.0 : 0.55;
+    [self setNeedsLayout];
+}
+
+- (void)updateLyricsText:(NSString *)currentLine nextLine:(NSString *)nextLine {
+    NSString *current = [currentLine stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
+    NSString *next = [nextLine stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
+    NSString *text = current.length && next.length && ![current isEqualToString:next]
+        ? [NSString stringWithFormat:@"%@\n%@", current, next] : current;
+    BOOL visible = self.showLyrics && text.length > 0;
+    if (![self.lyricsLabel.text isEqualToString:text]) {
+        [UIView transitionWithView:self.lyricsLabel duration:0.18 options:UIViewAnimationOptionTransitionCrossDissolve | UIViewAnimationOptionBeginFromCurrentState animations:^{
+            self.lyricsLabel.text = text;
+        } completion:nil];
+    }
+    self.lyricsLabel.hidden = !visible;
+    self.lyricsLabel.accessibilityLabel = text;
     [self setNeedsLayout];
 }
 

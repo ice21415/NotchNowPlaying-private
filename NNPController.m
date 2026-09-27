@@ -619,7 +619,25 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     NNPDiagnosticSetBool(@"PresentationDedicatedBlack", dedicatedBlackPresentation);
     [self recordPresentationDiagnostics:dedicatedBlackPresentation ? @"black-presentation" : @"transparent-presentation"];
 }
-- (void)applyViewPreferences { self.view.showArtwork = self.preferences.showArtwork; self.view.showArtist = self.preferences.showArtist; self.view.showProgress = self.preferences.showProgress; self.view.artworkSize = self.preferences.artworkSize; self.view.cornerRadius = self.preferences.cornerRadius; self.view.textSize = self.preferences.textSize; self.view.progressHeight = self.preferences.progressHeight; [self.view setNeedsLayout]; }
+- (void)applyViewPreferences {
+    self.view.showArtwork = self.preferences.showArtwork;
+    self.view.showArtist = self.preferences.showArtist;
+    self.view.showProgress = self.preferences.showProgress;
+    self.view.showLyrics = self.preferences.showLyrics;
+    self.view.artworkSize = self.preferences.artworkSize;
+    self.view.cornerRadius = self.preferences.cornerRadius;
+    self.view.textSize = self.preferences.textSize;
+    self.view.progressHeight = self.preferences.progressHeight;
+
+    BOOL spotifyTrack = [self.state.bundleIdentifier isEqualToString:NNPSpotify];
+    BOOL lyricsMatchTrack = !self.preferences.spotifyLyricsTrackTitle.length ||
+        [self.preferences.spotifyLyricsTrackTitle isEqualToString:self.state.title];
+    NSString *currentLine = self.preferences.showLyrics && spotifyTrack && lyricsMatchTrack
+        ? self.preferences.spotifyLyricsText : @"";
+    NSString *nextLine = currentLine.length ? self.preferences.spotifyLyricsNextLine : @"";
+    [self.view updateLyricsText:currentLine nextLine:nextLine];
+    [self.view setNeedsLayout];
+}
 - (void)updateUnlimitedMediaPauseWithEligibleMedia:(BOOL)mediaEligible activeSession:(BOOL)activeSession {
     BOOL shouldWait = self.preferences.experimentalUnlimitedDuration && activeSession && !mediaEligible;
     if (!shouldWait) {
