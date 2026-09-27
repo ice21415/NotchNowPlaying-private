@@ -155,7 +155,7 @@ def load_diagnostics(path: pathlib.Path) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--target", default="root@TAILSCALE_IP_REDACTED")
+    parser.add_argument("--target", required=True, help="SSH target, for example root@device-host")
     parser.add_argument("--session-dir", type=pathlib.Path)
     parser.add_argument("--timeout", type=int, default=20)
     parser.add_argument("--request-id")
