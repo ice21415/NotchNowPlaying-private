@@ -55,6 +55,7 @@ jobs:
           package=$(find build-packages -maxdepth 1 -name '*.deb' -print -quit)
           test -n "$package"
           test "$(dpkg-deb -f "$package" Architecture)" = iphoneos-arm64e
+          test "$(dpkg-deb -f "$package" Version)" = 0.1.75
           dpkg-deb -x "$package" /tmp/notchnowplaying-phase7
           dylib=$(find /tmp/notchnowplaying-phase7 -name NotchNowPlaying.dylib -print -quit)
           test -n "$dylib"
@@ -75,7 +76,9 @@ jobs:
           ! grep -q 'com.spotify.client' "$main_filter"
           preferences=$(find /tmp/notchnowplaying-phase7 -path '*/Library/PreferenceLoader/Preferences/NotchNowPlaying.plist' -print -quit)
           test -n "$preferences"
+          plutil -lint "$preferences"
           grep -q 'NotificationWakeTraceEnabled' "$preferences"
+          grep -q 'NotificationSnakeWakeEnabled' "$preferences"
 
       - name: Upload experimental diagnostics
         if: always()

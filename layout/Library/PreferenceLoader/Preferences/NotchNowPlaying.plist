@@ -36,6 +36,8 @@
 
         { cell = PSGroupCell; label = "鎖定畫面 AOD"; footerText = "開啟後，播放中的音樂可在鎖定後以黑底顯示播放器。此功能仍在實驗階段，也需要開啟「鎖定畫面顯示播放器」。請先解鎖手機並開始播放，再按側邊按鈕鎖定螢幕。"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ExperimentalLockedVisible; label = "啟用實驗性 AOD 播放器"; default = 0; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSGroupCell; label = "AOD 通知提醒"; footerText = "只在鎖定且 AOD 顯示時生效。符合通知喚醒條件時，光點會從瀏海旁沿螢幕邊緣繞行兩圈；通知內容仍留在系統通知中心。減少動態效果開啟時改用靜態邊框提示。側鍵喚醒維持原行為。此功能預設關閉。"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = NotificationSnakeWakeEnabled; label = "通知改用蛇形動畫"; default = 0; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
 
         { cell = PSGroupCell; label = "播放器位置微移"; footerText = "每 30 秒隨機微移播放器內容，水平與垂直方向各不超過 3 個螢幕像素，以降低 OLED 長時間顯示固定圖樣造成烙印的風險；無法保證完全避免。"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = AODPixelShiftEnabled; label = "微移播放器內容"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },

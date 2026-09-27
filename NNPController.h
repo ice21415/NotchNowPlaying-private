@@ -5,4 +5,5 @@
 - (void)refreshDiagnosticUI;
 - (void)setLocked:(BOOL)locked;
 - (void)revealCoverSheetControlsForWake;
+- (BOOL)showNotificationSnakeAnimation;
 @end

@@ -5,14 +5,23 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import <stdatomic.h>
+#import <stdint.h>
 #import <stdlib.h>
 #import <dlfcn.h>
+#import <mach/mach_time.h>
 
 static CFStringRef const NNPNotificationPreferencesDomain = CFSTR("com.user.notchnowplaying");
 static NSString * const NNPNotificationTracePreference = @"NotificationWakeTraceEnabled";
+static NSString * const NNPNotificationSnakeWakePreference = @"NotificationSnakeWakeEnabled";
+// Source 12 is the source value observed immediately after NC notification dispatches
+// on the target iOS 17.1.2 device; it is not a public enum name.
+static const NSInteger NNPObservedNotificationBacklightSource = 12;
+static const double NNPNotificationWakeCorrelationWindowSeconds = 2.0;
 static _Atomic(bool) gNNPNotificationTraceEnabled = false;
+static _Atomic(bool) gNNPNotificationSnakeWakeEnabled = false;
 static _Atomic(bool) gNNPNotificationTraceLocked = false;
 static _Atomic(bool) gNNPNotificationTraceAODActive = false;
+static _Atomic(uint64_t) gNNPLastAODNotificationDispatchTicks = 0;
 static _Atomic(unsigned int) gNNPNotificationTraceNotificationCount = 0;
 static _Atomic(unsigned int) gNNPNotificationTraceBacklightCount = 0;
 static IMP gNNPOriginalNotificationDispatch;
@@ -20,6 +29,17 @@ static IMP gNNPOriginalBacklightState;
 static BOOL gNNPNotificationDispatchHookInstalled;
 static BOOL gNNPBacklightStateHookInstalled;
 static dispatch_once_t gNNPNotificationDiagnosticsStartOnce;
+static dispatch_once_t gNNPNotificationTimebaseOnce;
+static mach_timebase_info_data_t gNNPNotificationTimebase;
+
+static uint64_t NNPNotificationTicksForSeconds(double seconds) {
+    dispatch_once(&gNNPNotificationTimebaseOnce, ^{
+        mach_timebase_info(&gNNPNotificationTimebase);
+    });
+    if (gNNPNotificationTimebase.numer == 0) return 0;
+    return (uint64_t)(seconds * 1000000000.0 *
+        (double)gNNPNotificationTimebase.denom / (double)gNNPNotificationTimebase.numer);
+}
 
 static void NNPNotificationTraceLogLimited(_Atomic(unsigned int) *counter, NSString *event) {
     unsigned int count = atomic_fetch_add_explicit(counter, 1, memory_order_relaxed) + 1;
@@ -55,6 +75,12 @@ static NSString *NNPNotificationSourceBundle(id request) {
 }
 
 static void NNPNotificationDispatchReplacement(id self, SEL selector, id request) {
+    if (atomic_load_explicit(&gNNPNotificationSnakeWakeEnabled, memory_order_acquire) &&
+        atomic_load_explicit(&gNNPNotificationTraceLocked, memory_order_acquire) &&
+        atomic_load_explicit(&gNNPNotificationTraceAODActive, memory_order_acquire)) {
+        atomic_store_explicit(&gNNPLastAODNotificationDispatchTicks, mach_absolute_time(), memory_order_release);
+    }
+
     if (atomic_load_explicit(&gNNPNotificationTraceEnabled, memory_order_acquire)) {
         NSString *section = NNPNotificationSourceBundle(request);
         NSString *requestClass = request ? NSStringFromClass(object_getClass(request)) : @"nil";
@@ -97,7 +123,7 @@ static BOOL NNPInstallDiagnosticHook(Class cls, SEL selector, IMP replacement, I
     return YES;
 }
 
-static void NNPInstallNotificationTraceHooks(void) {
+static void NNPInstallNotificationHooks(BOOL installBacklightTraceHook) {
     @synchronized ([NSProcessInfo processInfo]) {
         if (!gNNPNotificationDispatchHookInstalled) {
             if (!dlsym(RTLD_DEFAULT, "OBJC_CLASS_$_NCNotificationDispatcher")) {
@@ -115,7 +141,7 @@ static void NNPInstallNotificationTraceHooks(void) {
                               NSStringFromSelector(selector)]);
         }
 
-        if (!gNNPBacklightStateHookInstalled) {
+        if (installBacklightTraceHook && !gNNPBacklightStateHookInstalled) {
             Class backlightClass = NSClassFromString(@"SBBacklightController");
             SEL selector = NSSelectorFromString(@"setBacklightState:source:animated:completion:");
             gNNPBacklightStateHookInstalled = NNPInstallDiagnosticHook(
@@ -131,20 +157,35 @@ static void NNPInstallNotificationTraceHooks(void) {
 
 static void NNPNotificationDiagnosticsReloadPreference(void) {
     CFPreferencesAppSynchronize(NNPNotificationPreferencesDomain);
-    id value = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)NNPNotificationTracePreference,
-                                                           NNPNotificationPreferencesDomain));
-    BOOL enabled = value ? [value boolValue] : NO;
-    BOOL wasEnabled = atomic_exchange_explicit(&gNNPNotificationTraceEnabled, enabled, memory_order_acq_rel);
-    NNPDiagnosticSetBool(@"NotificationWakeTraceEnabled", enabled);
-    if (enabled == wasEnabled) return;
+    id traceValue = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)NNPNotificationTracePreference,
+                                                                NNPNotificationPreferencesDomain));
+    id snakeValue = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)NNPNotificationSnakeWakePreference,
+                                                                NNPNotificationPreferencesDomain));
+    BOOL traceEnabled = traceValue ? [traceValue boolValue] : NO;
+    BOOL snakeWakeEnabled = snakeValue ? [snakeValue boolValue] : NO;
+    BOOL wasTraceEnabled = atomic_exchange_explicit(&gNNPNotificationTraceEnabled, traceEnabled, memory_order_acq_rel);
+    BOOL wasSnakeWakeEnabled = atomic_exchange_explicit(&gNNPNotificationSnakeWakeEnabled, snakeWakeEnabled, memory_order_acq_rel);
+    NNPDiagnosticSetBool(@"NotificationWakeTraceEnabled", traceEnabled);
+    NNPDiagnosticSetBool(@"NotificationSnakeWakeEnabled", snakeWakeEnabled);
 
-    if (enabled) {
+    if (traceEnabled && !wasTraceEnabled) {
         atomic_store_explicit(&gNNPNotificationTraceNotificationCount, 0, memory_order_relaxed);
         atomic_store_explicit(&gNNPNotificationTraceBacklightCount, 0, memory_order_relaxed);
         NNPDiagnosticLog(@"NOTIFICATION_TRACE enabled; content and notification identifiers are not recorded");
-        NNPInstallNotificationTraceHooks();
-    } else {
+    } else if (!traceEnabled && wasTraceEnabled) {
         NNPDiagnosticLog(@"NOTIFICATION_TRACE disabled");
+    }
+
+    if (!snakeWakeEnabled) {
+        atomic_store_explicit(&gNNPLastAODNotificationDispatchTicks, 0, memory_order_release);
+    }
+    if (traceEnabled || snakeWakeEnabled) {
+        NNPInstallNotificationHooks(traceEnabled);
+    }
+    if (snakeWakeEnabled != wasSnakeWakeEnabled) {
+        NNPDiagnosticLog(snakeWakeEnabled
+            ? @"NOTIFICATION_SNAKE enabled; only correlated locked-AOD wake requests are eligible"
+            : @"NOTIFICATION_SNAKE disabled");
     }
 }
 
@@ -167,6 +208,33 @@ void NNPNotificationDiagnosticsStart(void) {
 }
 
 void NNPNotificationDiagnosticsSetDisplayState(BOOL locked, BOOL aodActive) {
-    atomic_store_explicit(&gNNPNotificationTraceLocked, locked, memory_order_relaxed);
-    atomic_store_explicit(&gNNPNotificationTraceAODActive, aodActive, memory_order_relaxed);
+    atomic_store_explicit(&gNNPNotificationTraceLocked, locked, memory_order_release);
+    atomic_store_explicit(&gNNPNotificationTraceAODActive, aodActive, memory_order_release);
+    if (!locked || !aodActive) {
+        atomic_store_explicit(&gNNPLastAODNotificationDispatchTicks, 0, memory_order_release);
+    }
+}
+
+BOOL NNPNotificationDiagnosticsConsumeWakeForSnakeAnimation(NSInteger state, NSInteger source) {
+    if (state != 1) return NO;
+
+    uint64_t dispatchTicks = atomic_exchange_explicit(&gNNPLastAODNotificationDispatchTicks, 0,
+                                                       memory_order_acq_rel);
+    BOOL eligible = source == NNPObservedNotificationBacklightSource &&
+        atomic_load_explicit(&gNNPNotificationSnakeWakeEnabled, memory_order_acquire) &&
+        atomic_load_explicit(&gNNPNotificationTraceLocked, memory_order_acquire) &&
+        atomic_load_explicit(&gNNPNotificationTraceAODActive, memory_order_acquire);
+    if (!eligible || !dispatchTicks) return NO;
+
+    uint64_t now = mach_absolute_time();
+    uint64_t window = NNPNotificationTicksForSeconds(NNPNotificationWakeCorrelationWindowSeconds);
+    if (!window || !gNNPNotificationTimebase.numer || !gNNPNotificationTimebase.denom ||
+        now < dispatchTicks || now - dispatchTicks > window) return NO;
+
+    double ageSeconds = ((double)(now - dispatchTicks) * (double)gNNPNotificationTimebase.numer /
+                         (double)gNNPNotificationTimebase.denom) / 1000000000.0;
+    NNPDiagnosticLogTransition([NSString stringWithFormat:
+        @"NOTIFICATION_SNAKE matched state=%ld source=%ld age=%.3fs; preserving locked AOD",
+        (long)state, (long)source, ageSeconds]);
+    return YES;
 }

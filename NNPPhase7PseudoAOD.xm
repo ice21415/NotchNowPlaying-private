@@ -1,5 +1,6 @@
 #import "NNPDisplayController.h"
 #import "NNPDiagnostics.h"
+#import "NNPNotificationDiagnostics.h"
 #import <mach/mach_time.h>
 #import <pthread.h>
 #import <stdatomic.h>
@@ -34,6 +35,7 @@ static _Atomic(float) gNNPPhase7LastFactorOutput = 0.0f;
 static _Atomic(bool) gNNPPhase7LastFactorHadProvider = false;
 static _Atomic(bool) gNNPPhase7BlankRequestSuppressed = false;
 static _Atomic(bool) gNNPPhase7RevealOnWakePending = false;
+static _Atomic(uint64_t) gNNPPhase7NotificationUnblankSuppressionDeadlineTicks = 0;
 static _Atomic(int) gNNPPhase7LastRequestedMode = -1;
 static _Atomic(int) gNNPPhase7LastForwardedMode = -1;
 static _Atomic(uint64_t) gNNPPhase7LastTransitionTicks = 0;
@@ -154,6 +156,13 @@ static double NNPPhase7SecondsForTicks(uint64_t ticks) {
     return ((double)ticks * (double)gNNPPhase7Timebase.numer / (double)gNNPPhase7Timebase.denom) / 1000000000.0;
 }
 
+static uint64_t NNPPhase7TicksForSeconds(double seconds) {
+    if (!gNNPPhase7Timebase.denom) mach_timebase_info(&gNNPPhase7Timebase);
+    if (!gNNPPhase7Timebase.numer) return 0;
+    return (uint64_t)(seconds * 1000000000.0 *
+        (double)gNNPPhase7Timebase.denom / (double)gNNPPhase7Timebase.numer);
+}
+
 static NSString *NNPPhase7LifecycleName(int state) {
     switch (state) {
         case NNPDisplayLifecycleStateIdle: return @"idle";
@@ -173,6 +182,7 @@ void NNPPhase7UpdateForensicsState(NSInteger lifecycleState, BOOL deviceLocked, 
     atomic_store_explicit(&gNNPPhase7TimerActive, timerActive, memory_order_relaxed);
     if (!deviceLocked) {
         atomic_store_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_release);
+        atomic_store_explicit(&gNNPPhase7NotificationUnblankSuppressionDeadlineTicks, 0, memory_order_release);
     }
 }
 
@@ -241,7 +251,10 @@ void NNPPhase7SetExperimentArmed(BOOL armed) {
             original(YES);
         }
     }
-    if (!armed) atomic_store_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_release);
+    if (!armed) {
+        atomic_store_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_release);
+        atomic_store_explicit(&gNNPPhase7NotificationUnblankSuppressionDeadlineTicks, 0, memory_order_release);
+    }
 #endif
     NNPDiagnosticSetBool(@"Phase7ExperimentArmed", armed);
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 armed=%@ session=%@", armed ? @"YES" : @"NO", gNNPPhase7SessionID ?: @"none"]);
@@ -333,6 +346,23 @@ static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
     BOOL fromBacklightServicesHost =
         dladdr((const void *)caller, &callerInfo) != 0 && callerInfo.dli_fname &&
         strstr(callerInfo.dli_fname, "/BacklightServicesHost.framework/") != NULL;
+
+    if (!blanked && fromBacklightServicesHost) {
+        uint64_t deadline = atomic_load_explicit(&gNNPPhase7NotificationUnblankSuppressionDeadlineTicks,
+                                                  memory_order_acquire);
+        uint64_t now = mach_absolute_time();
+        if (deadline && now <= deadline &&
+            atomic_load_explicit(&gNNPPhase7Armed, memory_order_acquire) &&
+            atomic_load_explicit(&gNNPPhase7DeviceLocked, memory_order_acquire)) {
+            NNPDiagnosticLogTransition(@"PHASE7 suppressed paired BKS unblank after notification wake replacement");
+            return;
+        }
+        if (deadline) {
+            atomic_store_explicit(&gNNPPhase7NotificationUnblankSuppressionDeadlineTicks, 0,
+                                  memory_order_release);
+        }
+    }
+
     BOOL suppress = blanked && fromBacklightServicesHost &&
         atomic_load_explicit(&gNNPPhase7Armed, memory_order_relaxed);
     if (suppress) {
@@ -364,9 +394,32 @@ static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger stat
     NNPBacklightStateIMP original = gNNPOriginalBacklightState;
     if (!original) return;
 
+    bool armed = atomic_load_explicit(&gNNPPhase7Armed, memory_order_acquire);
+    bool locked = atomic_load_explicit(&gNNPPhase7DeviceLocked, memory_order_acquire);
+    bool activeAOD = atomic_load_explicit(&gNNPPhase7Lifecycle, memory_order_acquire) == NNPDisplayLifecycleStateActive &&
+        atomic_load_explicit(&gNNPPhase7ModeSubstitutionObserved, memory_order_acquire);
+    bool notificationWakeMatched = NNPNotificationDiagnosticsConsumeWakeForSnakeAnimation(state, source);
+
+    if (state == 1 && armed && locked && activeAOD && notificationWakeMatched) {
+        if (NNPPhase7PresentNotificationSnakeAnimation()) {
+            uint64_t now = mach_absolute_time();
+            uint64_t graceTicks = NNPPhase7TicksForSeconds(2.0);
+            atomic_store_explicit(&gNNPPhase7NotificationUnblankSuppressionDeadlineTicks,
+                                  graceTicks ? now + graceTicks : 0, memory_order_release);
+            NNPDiagnosticLogTransition(@"PHASE7 kept AOD active and replaced correlated notification wake with snake animation");
+            // The lock session is already active; omitting this correlated wake
+            // request keeps the pseudo-AOD presentation and lock state intact.
+            return;
+        }
+        NNPDiagnosticLogTransition(@"PHASE7 notification wake animation unavailable; passing wake request through");
+    }
+
+    if (state == 1) {
+        atomic_store_explicit(&gNNPPhase7NotificationUnblankSuppressionDeadlineTicks, 0, memory_order_release);
+    }
+
     bool shouldReveal = state == 1 &&
-        atomic_load_explicit(&gNNPPhase7Armed, memory_order_acquire) &&
-        atomic_load_explicit(&gNNPPhase7DeviceLocked, memory_order_acquire) &&
+        armed && locked &&
         atomic_exchange_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_acq_rel);
     if (shouldReveal) {
         NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 SpringBoard backlight state=%ld source=%ld; revealing native Lock Screen before wake transition",

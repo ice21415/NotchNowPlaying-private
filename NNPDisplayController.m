@@ -23,12 +23,14 @@ void NNPPhase7SetSessionID(__unused NSString *sessionID) {}
 void NNPPhase7SetAODBrightnessMultiplier(__unused float multiplier) {}
 void NNPPhase7NotifyBacklightFactorSubstitution(__unused float originalFactor, __unused float dimmedFactor) {}
 void NNPPhase7NotifyDisplayWake(void) {}
+BOOL NNPPhase7PresentNotificationSnakeAnimation(void) { return NO; }
 void NNPPhase7StartIncidentDiagnostics(void) {}
 BOOL NNPPhase7EnsureBacklightFactorHook(void) { return NO; }
 void NNPPhase7UpdateForensicsState(__unused NSInteger lifecycleState, __unused BOOL deviceLocked, __unused BOOL modeSubstitutionObserved, __unused BOOL timerActive) {}
 #elif NNP_PHASE7_DRY_RUN == 2
 void NNPPhase7NotifyBacklightFactorSubstitution(__unused float originalFactor, __unused float dimmedFactor) {}
 void NNPPhase7NotifyDisplayWake(void) {}
+BOOL NNPPhase7PresentNotificationSnakeAnimation(void) { return NO; }
 #endif
 
 @interface NNPDisplayController ()
@@ -71,6 +73,11 @@ void NNPPhase7NotifyDisplayWake(void) {
     };
     if ([NSThread isMainThread]) reveal();
     else dispatch_async(dispatch_get_main_queue(), reveal);
+}
+
+BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
+    if (![NSThread isMainThread]) return NO;
+    return [[NNPController sharedController] showNotificationSnakeAnimation];
 }
 #endif
 

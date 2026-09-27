@@ -16,4 +16,5 @@
 - (void)updateElapsed:(NSTimeInterval)elapsed duration:(NSTimeInterval)duration playing:(BOOL)playing;
 - (void)updateLyricsText:(NSString *)currentLine nextLine:(NSString *)nextLine;
 - (void)stopContentAnimation;
+- (BOOL)playNotificationSnakeAnimation;
 @end

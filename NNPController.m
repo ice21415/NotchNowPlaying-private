@@ -538,6 +538,23 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     if (!self.locked || !self.coverSheetHostView || !self.coverSheetBlackoutView) return;
     [self revealCoverSheetControlsWithReason:@"side-button-wake"];
 }
+- (BOOL)showNotificationSnakeAnimation {
+    if (![NSThread isMainThread]) return NO;
+    UIWindow *presentationWindow = self.view.window;
+    BOOL aodReady = self.locked && self.display.aodPresentationActive &&
+        self.display.lifecycleState == NNPDisplayLifecycleStateActive &&
+        self.view && self.view.superview && !self.view.hidden && self.view.playbackVisible &&
+        presentationWindow && !presentationWindow.hidden && presentationWindow.alpha > 0.01;
+    if (!aodReady) {
+        NNPDiagnosticLogTransition(@"NOTIFICATION_SNAKE presentation unavailable; notification wake will pass through");
+        return NO;
+    }
+    BOOL presented = [self.view playNotificationSnakeAnimation];
+    if (presented) {
+        NNPDiagnosticLogTransition(@"NOTIFICATION_SNAKE animation started laps=2");
+    }
+    return presented;
+}
 - (void)revealCoverSheetControlsWithReason:(NSString *)reason {
     if (!self.coverSheetHostView || !self.coverSheetBlackoutView || self.coverSheetBlackoutRevealed) return;
     self.coverSheetBlackoutRevealed = YES;
