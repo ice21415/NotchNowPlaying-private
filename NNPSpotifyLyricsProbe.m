@@ -258,6 +258,30 @@ static BOOL NNPSpotifyPublishLyrics(NSString *current, NSString *next, NSArray<N
 }
 
 static void NNPSpotifyLyricsProbeCapture(void) {
+    static NSString *lastPlaybackTrackSignature;
+    static NSTimeInterval lastPlaybackTime = -1.0;
+    static NSInteger lastAcceptedRowIndex = -1;
+    static NSTimeInterval lastStaleRowLogTime = 0.0;
+
+    NSDictionary *playbackInfo = MPNowPlayingInfoCenter.defaultCenter.nowPlayingInfo ?: @{};
+    NSString *playbackTitle = [playbackInfo[MPMediaItemPropertyTitle] isKindOfClass:NSString.class]
+        ? playbackInfo[MPMediaItemPropertyTitle] : @"";
+    NSString *playbackArtist = [playbackInfo[MPMediaItemPropertyArtist] isKindOfClass:NSString.class]
+        ? playbackInfo[MPMediaItemPropertyArtist] : @"";
+    NSString *playbackTrackSignature = playbackTitle.length || playbackArtist.length
+        ? [NSString stringWithFormat:@"%@\n%@", playbackTitle, playbackArtist] : @"";
+    id elapsedValue = playbackInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime];
+    NSTimeInterval playbackTime = [elapsedValue respondsToSelector:@selector(doubleValue)]
+        ? [elapsedValue doubleValue] : -1.0;
+    NSTimeInterval previousPlaybackTime = lastPlaybackTime;
+    BOOL trackChanged = lastPlaybackTrackSignature.length && playbackTrackSignature.length &&
+        ![lastPlaybackTrackSignature isEqualToString:playbackTrackSignature];
+    BOOL playbackRewound = playbackTime >= 0.0 && previousPlaybackTime >= 0.0 &&
+        playbackTime + 1.25 < previousPlaybackTime;
+    if (trackChanged || playbackRewound) lastAcceptedRowIndex = -1;
+    if (playbackTrackSignature.length) lastPlaybackTrackSignature = [playbackTrackSignature copy];
+    if (playbackTime >= 0.0) lastPlaybackTime = playbackTime;
+
     UIApplication *application = UIApplication.sharedApplication;
     NSMutableArray<NSDictionary *> *rows = [NSMutableArray array];
     for (UIScene *scene in application.connectedScenes) {
@@ -375,6 +399,23 @@ static void NNPSpotifyLyricsProbeCapture(void) {
         current = lines[MIN(activeIndex, lines.count - 1)];
         next = activeIndex + 1 < lines.count ? lines[activeIndex + 1] : @"";
     }
+
+    if (synchronizedRow) {
+        NSInteger candidateRowIndex = [synchronizedRow[@"cellRow"] integerValue];
+        BOOL playbackContinuesForward = playbackTime < 0.0 || previousPlaybackTime < 0.0 ||
+            playbackTime >= previousPlaybackTime - 0.25;
+        if (lastAcceptedRowIndex >= 0 && candidateRowIndex < lastAcceptedRowIndex && playbackContinuesForward) {
+            NSTimeInterval now = NSDate.date.timeIntervalSince1970;
+            if (now - lastStaleRowLogTime >= 1.0) {
+                lastStaleRowLogTime = now;
+                NNPSpotifyProbeAppend([NSString stringWithFormat:@"STALE-ROW held=%ld candidate=%ld playback=%.2f source=%@ text=%@",
+                                       (long)lastAcceptedRowIndex, (long)candidateRowIndex, playbackTime,
+                                       synchronizedRow[@"lyricsSurface"], current ?: @""]);
+            }
+            return;
+        }
+        lastAcceptedRowIndex = candidateRowIndex;
+    }
     static NSString *lastSelectionSignature;
     static NSTimeInterval lastDiagnosticsTime;
     NSString *selectionSignature = [NSString stringWithFormat:@"%@|%@|%@", synchronizedRow[@"cellRow"] ?: @"fallback", current, next];
@@ -390,9 +431,12 @@ static void NNPSpotifyLyricsProbeCapture(void) {
                                    row[@"identifier"], row[@"lyricsSurface"], row[@"cellState"],
                                    row[@"textAttributes"], row[@"class"]]];
         }
-        NNPSpotifyProbeAppend([NSString stringWithFormat:@"RUNTIME rows=%@ source=%@ current=%@ next=%@",
+        NNPSpotifyProbeAppend([NSString stringWithFormat:@"RUNTIME rows=%@ source=%@ selectedRow=%ld centerRow=%ld playback=%.2f current=%@ next=%@",
                                [rowDetails componentsJoinedByString:@" | "],
                                synchronizedRow ? synchronizedRow[@"lyricsSurface"] : @"screen-center-fallback",
+                               synchronizedRow ? [synchronizedRow[@"cellRow"] integerValue] : -1L,
+                               synchronizedRow ? [synchronizedRow[@"tableCenterRow"] integerValue] : -1L,
+                               playbackTime,
                                current, next]);
     }
     NNPSpotifyPublishLyrics(current, next, lines);
@@ -407,7 +451,7 @@ void NNPSpotifyLyricsProbeStart(void) {
     NNPSpotifyDumpLyricsRuntime();
     dispatch_async(dispatch_get_main_queue(), ^{
         NNPSpotifyLyricsProbeCapture();
-        [NSTimer scheduledTimerWithTimeInterval:0.8 repeats:YES block:^(__unused NSTimer *timer) {
+        [NSTimer scheduledTimerWithTimeInterval:0.2 repeats:YES block:^(__unused NSTimer *timer) {
             NNPSpotifyLyricsProbeCapture();
         }];
     });
