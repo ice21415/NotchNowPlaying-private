@@ -217,33 +217,6 @@ static NSString *NNPSpotifyNormalizeLyricsText(NSString *text) {
     return [parts componentsJoinedByString:@" "];
 }
 
-static BOOL NNPSpotifyReadActiveLyricsLine(UITableView *tableView, NSInteger *activeLine) {
-    if (!tableView || !activeLine) return NO;
-    id dataSource = tableView.dataSource;
-    Class cls = dataSource ? object_getClass(dataSource) : Nil;
-    NSString *className = cls ? NSStringFromClass(cls) : @"";
-    if (![className isEqualToString:@"Lyrics_TextComponentImpl.TableViewDataSource"]) return NO;
-    for (Class current = cls; current; current = class_getSuperclass(current)) {
-        unsigned int count = 0;
-        Ivar *ivars = class_copyIvarList(current, &count);
-        for (unsigned int index = 0; index < count; index++) {
-            Ivar ivar = ivars[index];
-            const char *rawName = ivar_getName(ivar);
-            if (!rawName || strcmp(rawName, "activeLine") != 0) continue;
-            ptrdiff_t offset = ivar_getOffset(ivar);
-            NSUInteger instanceSize = class_getInstanceSize(cls);
-            if (offset < 0 || (NSUInteger)offset + sizeof(int64_t) > instanceSize) { free(ivars); return NO; }
-            int64_t value = 0;
-            memcpy(&value, (const uint8_t *)(__bridge const void *)dataSource + offset, sizeof(value));
-            *activeLine = (NSInteger)value;
-            free(ivars);
-            return value >= 0 && value < 100000;
-        }
-        free(ivars);
-    }
-    return NO;
-}
-
 static BOOL NNPSpotifyStringContainsAny(NSString *value, NSArray<NSString *> *needles) {
     NSString *lowercase = value.lowercaseString;
     for (NSString *needle in needles) if ([lowercase containsString:needle]) return YES;
@@ -371,7 +344,6 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
             NSString *cellState = @"none";
             NSInteger cellRow = -1;
             NSInteger centerRow = -1;
-            NSInteger dataSourceActiveLine = -1;
             CGFloat tableCenterY = CGRectGetMidY(window.bounds);
             NSUInteger visibleCellCount = 0;
             NSString *tableIdentity = @"none";
@@ -387,7 +359,6 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
                 NSIndexPath *centerIndexPath = nil;
                 NSString *tableState = @"no-table";
                 if (lyricsTable) {
-                    NNPSpotifyReadActiveLyricsLine(lyricsTable, &dataSourceActiveLine);
                     CGPoint center = CGPointMake(CGRectGetMidX(lyricsTable.bounds), CGRectGetMidY(lyricsTable.bounds));
                     centerIndexPath = [lyricsTable indexPathForRowAtPoint:center];
                     centerRow = centerIndexPath ? (NSInteger)centerIndexPath.row : -1;
@@ -421,7 +392,6 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
                               @"tableCenterY": @(tableCenterY),
                               @"tableVisibleCount": @(visibleCellCount),
                               @"tableIdentity": tableIdentity,
-                              @"dataSourceActiveLine": @(dataSourceActiveLine),
                               @"lyricsSurface": lyricsSurface,
                               @"z": @(label.layer.zPosition),
                               @"textAttributes": [textAttributes componentsJoinedByString:@"|"]}];
@@ -539,19 +509,13 @@ static void NNPSpotifyLyricsProbeCapture(void) {
         NSUInteger visibleCount = [row[@"tableVisibleCount"] unsignedIntegerValue];
         NSInteger rowIndex = [row[@"cellRow"] integerValue];
         NSInteger centerIndex = [row[@"tableCenterRow"] integerValue];
-        NSInteger activeLine = [row[@"dataSourceActiveLine"] integerValue];
-        BOOL isModelActiveLine = activeLine >= 0 && rowIndex == activeLine;
-        BOOL selectedIsModelActiveLine = synchronizedRow &&
-            [synchronizedRow[@"dataSourceActiveLine"] integerValue] >= 0 &&
-            [synchronizedRow[@"cellRow"] integerValue] == [synchronizedRow[@"dataSourceActiveLine"] integerValue];
         BOOL isCenterRow = rowIndex == centerIndex;
         BOOL selectedIsCenterRow = synchronizedRow &&
             [synchronizedRow[@"cellRow"] integerValue] == [synchronizedRow[@"tableCenterRow"] integerValue];
         if (!synchronizedRow ||
-            (isModelActiveLine && !selectedIsModelActiveLine) ||
-            (isModelActiveLine == selectedIsModelActiveLine && isCenterRow && !selectedIsCenterRow) ||
-            (isModelActiveLine == selectedIsModelActiveLine && isCenterRow == selectedIsCenterRow && visibleCount > selectedVisibleCount) ||
-            (isModelActiveLine == selectedIsModelActiveLine && isCenterRow == selectedIsCenterRow && visibleCount == selectedVisibleCount && distance < nearestCenterDistance)) {
+            (isCenterRow && !selectedIsCenterRow) ||
+            (isCenterRow == selectedIsCenterRow && visibleCount > selectedVisibleCount) ||
+            (isCenterRow == selectedIsCenterRow && visibleCount == selectedVisibleCount && distance < nearestCenterDistance)) {
             synchronizedRow = row;
             selectedVisibleCount = visibleCount;
             nearestCenterDistance = distance;
@@ -616,12 +580,11 @@ static void NNPSpotifyLyricsProbeCapture(void) {
                                    row[@"identifier"], row[@"lyricsSurface"], row[@"cellState"],
                                    row[@"textAttributes"], row[@"class"]]];
         }
-        NNPSpotifyProbeAppend([NSString stringWithFormat:@"RUNTIME rows=%@ source=%@ selectedRow=%ld centerRow=%ld modelActiveRow=%ld playback=%.2f current=%@ next=%@",
+        NNPSpotifyProbeAppend([NSString stringWithFormat:@"RUNTIME rows=%@ source=%@ selectedRow=%ld centerRow=%ld playback=%.2f current=%@ next=%@",
                                [rowDetails componentsJoinedByString:@" | "],
                                synchronizedRow ? synchronizedRow[@"lyricsSurface"] : @"screen-center-fallback",
                                synchronizedRow ? [synchronizedRow[@"cellRow"] integerValue] : -1L,
                                synchronizedRow ? [synchronizedRow[@"tableCenterRow"] integerValue] : -1L,
-                               synchronizedRow ? [synchronizedRow[@"dataSourceActiveLine"] integerValue] : -1L,
                                playbackTime,
                                current, next]);
     }
