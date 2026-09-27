@@ -12,6 +12,10 @@
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowArtwork; label = "顯示專輯封面"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowArtist; label = "顯示歌手名稱"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowProgress; label = "顯示播放進度"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSGroupCell; label = "Spotify 歌詞"; footerText = "Spotify 的歌詞頁開啟時，播放器會自動讀取目前顯示的歌詞；離開歌詞頁會停止讀取。歌詞需由 Spotify 提供。"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowLyrics; label = "顯示目前歌詞"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSGroupCell; label = "歌詞同步微調"; footerText = "調整目前歌詞的切換時機。正值會提早顯示，負值會延後顯示。預設 +100 ms，範圍 -500 至 +500 ms。"; },
+        { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = LyricsSyncOffsetMilliseconds; label = "偏移（ms）"; default = 100; min = -500; max = 500; showValue = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
 
         { cell = PSGroupCell; label = "播放進度條粗細"; footerText = "調整播放器進度條的粗細。數值越大，進度條越醒目。預設 3 pt，範圍 2 至 6 pt。"; },
         { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ProgressHeight; label = "粗細（pt）"; default = 3; min = 2; max = 6; showValue = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
@@ -36,7 +40,7 @@
         { cell = PSGroupCell; label = "播放器位置微移"; footerText = "每 30 秒隨機微移播放器內容，水平與垂直方向各不超過 3 個螢幕像素，以降低 OLED 長時間顯示固定圖樣造成烙印的風險；無法保證完全避免。"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = AODPixelShiftEnabled; label = "微移播放器內容"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
 
-        { cell = PSGroupCell; label = "AOD 亮度"; footerText = "100% 保持原本亮度；提高後會在 AOD 期間嘗試直接調整面板亮度，400% 約為 80 nits。喚醒、解鎖或顯示時間結束時會還原。這會使顯示內容更亮並增加耗電；實際效果仍取決於系統的鎖定顯示策略。"; },
+        { cell = PSGroupCell; label = "AOD 亮度"; footerText = "100% 保持原本亮度；提高後會在 AOD 期間調整面板亮度，400% 約為 120 nits。喚醒、解鎖或顯示時間結束時會還原。亮度越高耗電越多。"; },
         { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = AODBrightnessMultiplier; label = "亮度（%）"; default = 100; min = 100; max = 400; showValue = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
 
         { cell = PSGroupCell; label = "AOD 顯示時間"; footerText = "開啟後，音樂持續播放時不受下方時間上限限制。解鎖或關閉功能會結束 AOD；音樂停止約 15 秒後也會結束。"; },
