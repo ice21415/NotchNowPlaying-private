@@ -630,9 +630,11 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     self.view.progressHeight = self.preferences.progressHeight;
 
     BOOL spotifyTrack = [self.state.bundleIdentifier isEqualToString:NNPSpotify];
-    BOOL lyricsMatchTrack = !self.preferences.spotifyLyricsTrackTitle.length ||
-        [self.preferences.spotifyLyricsTrackTitle isEqualToString:self.state.title];
-    NSString *currentLine = self.preferences.showLyrics && spotifyTrack && lyricsMatchTrack
+    // Spotify and SpringBoard can expose different title strings (e.g. explicit
+    // markers, localized formatting, or live/remastered suffixes). The probe
+    // only reads lyrics from Spotify itself, so exact title equality can
+    // incorrectly suppress valid lyrics for the active Spotify session.
+    NSString *currentLine = self.preferences.showLyrics && spotifyTrack
         ? self.preferences.spotifyLyricsText : @"";
     NSString *nextLine = currentLine.length ? self.preferences.spotifyLyricsNextLine : @"";
     [self.view updateLyricsText:currentLine nextLine:nextLine];
