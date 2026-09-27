@@ -5,6 +5,7 @@ extern "C" {
 #endif
 
 void NNPSpotifyLyricsProbeStart(void);
+void NNPSpotifyLyricsProbeResetLog(void);
 void NNPSpotifyLyricsProbeCaptureNetworkResponse(NSURLRequest *request, NSData *data, NSURLResponse *response, NSError *error);
 BOOL NNPSpotifyLyricsProbeShouldTraceNetworkRequest(NSURLRequest *request);
 void NNPSpotifyLyricsProbeCaptureNetworkTask(NSURLRequest *request);

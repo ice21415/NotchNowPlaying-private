@@ -18,6 +18,11 @@ static NSString *NNPSpotifyLyricsProbePath(void) {
     return [NSTemporaryDirectory() stringByAppendingPathComponent:@"nnp-spotify-lyrics-runtime.log"];
 }
 
+void NNPSpotifyLyricsProbeResetLog(void) {
+    int fd = open(NNPSpotifyLyricsProbePath().fileSystemRepresentation, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd >= 0) close(fd);
+}
+
 static void NNPSpotifyProbeAppend(NSString *line) {
     if (!line.length) return;
     NSString *entry = [line stringByAppendingString:@"\n"];
