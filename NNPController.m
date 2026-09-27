@@ -15,7 +15,7 @@
 static NSString * const NNPLog = @"[NotchNowPlaying]";
 static NSString * const NNPSpotify = @"com.spotify.client";
 static NSString *NNPNormalizedTrackTitle(NSString *title) {
-    NSString *folded = [[title ?: @""] stringByFoldingWithOptions:NSDiacriticInsensitive | NSCaseInsensitive | NSWidthInsensitive
+    NSString *folded = [(title ?: @"") stringByFoldingWithOptions:NSDiacriticInsensitive | NSCaseInsensitive | NSWidthInsensitive
                                                             locale:NSLocale.currentLocale];
     NSMutableString *normalized = [NSMutableString string];
     NSCharacterSet *lettersAndDigits = NSCharacterSet.alphanumericCharacterSet;
