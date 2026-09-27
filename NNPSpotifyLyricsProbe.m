@@ -38,6 +38,24 @@ static BOOL NNPSpotifyIsRelevantModelClass(Class cls) {
     return NNPSpotifyStringContainsAny(name, @[@"lyrics", @"line", @"progress", @"position", @"provider", @"model", @"event"]);
 }
 
+static BOOL NNPSpotifyIvarStoresKnownObject(NSString *name, NSString *type) {
+    if ([type hasPrefix:@"@"] || [type hasPrefix:@"^{"]) return YES;
+    NSString *lowercase = name.lowercaseString;
+    // Swift's Objective-C runtime metadata deliberately omits the type
+    // encoding for many stored properties. Limit raw object reads to fields
+    // Spotify exposes as references in its lyrics view-model graph.
+    static NSArray<NSString *> *knownNames;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        knownNames = @[@"lyricsmodel", @"selectedlines", @"progresseventsource",
+                       @"lyricslinemodels", @"lyricslines", @"lineprovider",
+                       @"viewmodel", @"datasource", @"eventsource", @"binder",
+                       @"listener", @"delegate", @"element", @"translation"];
+    });
+    for (NSString *knownName in knownNames) if ([lowercase containsString:knownName]) return YES;
+    return NO;
+}
+
 static NSString *NNPSpotifyScalarIvarValue(id object, Ivar ivar) {
     const char *encoding = ivar_getTypeEncoding(ivar);
     if (!encoding || !encoding[0] || encoding[0] == '@' || encoding[0] == '^' || encoding[0] == '{' || encoding[0] == '(') return nil;
@@ -111,7 +129,7 @@ static NSString *NNPSpotifyLyricsObjectSnapshot(id object, NSUInteger depth, NSM
             const char *rawType = ivar_getTypeEncoding(ivar);
             NSString *name = rawName ? [NSString stringWithUTF8String:rawName] : @"?";
             NSString *type = rawType ? [NSString stringWithUTF8String:rawType] : @"?";
-            if (type.length && type.UTF8String[0] == '@') {
+            if (NNPSpotifyIvarStoresKnownObject(name, type)) {
                 id value = object_getIvar(object, ivar);
                 if (!value) {
                     [fields addObject:[NSString stringWithFormat:@"%@:%@=nil", name, type]];
@@ -146,6 +164,27 @@ static void NNPSpotifyDumpLyricsObjectGraph(id object) {
     lastSnapshots[key] = snapshot;
     if (lastSnapshots.count > 512) [lastSnapshots removeAllObjects];
     NNPSpotifyProbeAppend([@"MODEL-SNAPSHOT " stringByAppendingString:snapshot]);
+}
+
+static void NNPSpotifyDumpLyricsResponderModels(UIView *view) {
+    static NSMutableDictionary<NSString *, NSString *> *lastResponderChains;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{ lastResponderChains = [NSMutableDictionary dictionary]; });
+    NSMutableArray<NSString *> *chain = [NSMutableArray array];
+    for (UIResponder *responder = view; responder && chain.count < 18; responder = responder.nextResponder) {
+        Class cls = object_getClass(responder);
+        NSString *name = NSStringFromClass(cls) ?: @"?";
+        [chain addObject:name];
+        if (!NNPSpotifyStringContainsAny(name, @[@"lyricsviewcontroller", @"lyricselementviewprovider", @"lyricsviewbinder"])) continue;
+        NSString *key = [NSString stringWithFormat:@"%p", responder];
+        NSString *joined = [chain componentsJoinedByString:@"<"];
+        if (![lastResponderChains[key] isEqualToString:joined]) {
+            lastResponderChains[key] = joined;
+            NNPSpotifyProbeAppend([NSString stringWithFormat:@"MODEL-RESPONDER chain=%@", joined]);
+        }
+        NNPSpotifyDumpLyricsObjectGraph(responder);
+    }
+    if (lastResponderChains.count > 256) [lastResponderChains removeAllObjects];
 }
 
 static NSString *NNPSpotifyNormalizeLyricsText(NSString *text) {
@@ -293,6 +332,7 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
             else if ([ancestorPath containsString:@"Lyrics_FullscreenElementPageImpl.FullscreenView"]) lyricsSurface = @"fullscreen";
             if (lyricsCell) {
                 NNPSpotifyDumpLyricsObjectGraph(lyricsCell);
+                NNPSpotifyDumpLyricsResponderModels(lyricsCell);
                 NSIndexPath *indexPath = [lyricsTable indexPathForCell:lyricsCell];
                 cellRow = indexPath ? (NSInteger)indexPath.row : -1;
                 NSIndexPath *centerIndexPath = nil;
