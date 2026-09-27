@@ -149,14 +149,25 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
             [label.attributedText enumerateAttributesInRange:NSMakeRange(0, label.attributedText.length)
                                                      options:0
                                                   usingBlock:^(NSDictionary<NSAttributedStringKey, id> *attributes, NSRange range, BOOL *stop) {
-                NSMutableArray<NSString *> *parts = [NSMutableArray array];
-                for (NSAttributedStringKey key in attributes) {
-                    id value = attributes[key];
-                    [parts addObject:[NSString stringWithFormat:@"%@=%@", key, value]];
-                }
-                [textAttributes addObject:[NSString stringWithFormat:@"%lu:%@", (unsigned long)range.length,
-                                           [parts componentsJoinedByString:@","]]];
+                id foreground = attributes[NSForegroundColorAttributeName];
+                id font = attributes[NSFontAttributeName];
+                [textAttributes addObject:[NSString stringWithFormat:@"%lu:color=%@,font=%@", (unsigned long)range.length,
+                                           foreground ?: @"default", font ?: @"default"]];
             }];
+            UITableViewCell *lyricsCell = nil;
+            UITableView *lyricsTable = nil;
+            for (UIView *candidate = view.superview; candidate; candidate = candidate.superview) {
+                if (!lyricsCell && [candidate isKindOfClass:UITableViewCell.class]) lyricsCell = (UITableViewCell *)candidate;
+                if ([candidate isKindOfClass:UITableView.class]) { lyricsTable = (UITableView *)candidate; break; }
+            }
+            NSString *cellState = @"none";
+            if (lyricsCell) {
+                NSIndexPath *indexPath = [lyricsTable indexPathForCell:lyricsCell];
+                cellState = [NSString stringWithFormat:@"%@ row=%ld section=%ld selected=%@ highlighted=%@ reuse=%@",
+                             NSStringFromClass(lyricsCell.class), (long)indexPath.row, (long)indexPath.section,
+                             lyricsCell.selected ? @"YES" : @"NO", lyricsCell.highlighted ? @"YES" : @"NO",
+                             lyricsCell.reuseIdentifier ?: @""];
+            }
             [rows addObject:@{@"text": text, @"midY": @(CGRectGetMidY(frame)),
                               @"class": className,
                               @"alpha": @(label.alpha),
@@ -165,6 +176,7 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
                               @"color": label.textColor.description ?: @"",
                               @"identifier": label.accessibilityIdentifier ?: @"",
                               @"ancestors": [ancestors componentsJoinedByString:@"<"],
+                              @"cellState": cellState,
                               @"z": @(label.layer.zPosition),
                               @"textAttributes": [textAttributes componentsJoinedByString:@"|"]}];
         }
@@ -259,10 +271,10 @@ static void NNPSpotifyLyricsProbeCapture(void) {
         lastDiagnosticsTime = now;
         NSMutableArray<NSString *> *rowDetails = [NSMutableArray arrayWithCapacity:uniqueRows.count];
         for (NSDictionary *row in uniqueRows) {
-            [rowDetails addObject:[NSString stringWithFormat:@"%@ y=%.1f a=%.2f z=%.1f font=%@/%.1f color=%@ id=%@ ancestors=%@ attrs=%@ class=%@",
+            [rowDetails addObject:[NSString stringWithFormat:@"%@ y=%.1f a=%.2f z=%.1f font=%@/%.1f color=%@ id=%@ cell=%@ ancestors=%@ attrs=%@ class=%@",
                                    row[@"text"], [row[@"midY"] doubleValue], [row[@"alpha"] doubleValue],
                                    [row[@"z"] doubleValue], row[@"font"], [row[@"fontSize"] doubleValue], row[@"color"],
-                                   row[@"identifier"], row[@"ancestors"], row[@"textAttributes"], row[@"class"]]];
+                                   row[@"identifier"], row[@"cellState"], row[@"ancestors"], row[@"textAttributes"], row[@"class"]]];
         }
         NNPSpotifyProbeAppend([NSString stringWithFormat:@"RUNTIME rows=%@ activeIndex=%lu targetY=%.1f",
                                [rowDetails componentsJoinedByString:@" | "], (unsigned long)activeIndex, targetY]);
