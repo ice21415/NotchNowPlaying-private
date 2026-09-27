@@ -14,6 +14,28 @@
 
 static NSString * const NNPLog = @"[NotchNowPlaying]";
 static NSString * const NNPSpotify = @"com.spotify.client";
+static NSString *NNPNormalizedTrackTitle(NSString *title) {
+    NSString *folded = [[title ?: @""] stringByFoldingWithOptions:NSDiacriticInsensitive | NSCaseInsensitive | NSWidthInsensitive
+                                                            locale:NSLocale.currentLocale];
+    NSMutableString *normalized = [NSMutableString string];
+    NSCharacterSet *lettersAndDigits = NSCharacterSet.alphanumericCharacterSet;
+    [folded enumerateSubstringsInRange:NSMakeRange(0, folded.length)
+                               options:NSStringEnumerationByComposedCharacterSequences
+                            usingBlock:^(NSString *substring, __unused NSRange substringRange,
+                                         __unused NSRange enclosingRange, __unused BOOL *stop) {
+        if ([substring rangeOfCharacterFromSet:lettersAndDigits].location != NSNotFound)
+            [normalized appendString:substring];
+    }];
+    return normalized;
+}
+static BOOL NNPTrackTitleMatches(NSString *mediaTitle, NSString *lyricsTitle) {
+    NSString *media = NNPNormalizedTrackTitle(mediaTitle);
+    NSString *lyrics = NNPNormalizedTrackTitle(lyricsTitle);
+    if (!media.length || !lyrics.length) return media.length == lyrics.length;
+    if ([media isEqualToString:lyrics]) return YES;
+    return MIN(media.length, lyrics.length) >= 4 &&
+        ([media containsString:lyrics] || [lyrics containsString:media]);
+}
 @interface NNPController (TouchDiagnostics)
 - (void)observeTouchEvent:(UIEvent *)event;
 @end
@@ -115,6 +137,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic) BOOL coverSheetBlackoutRevealed;
 @property(nonatomic) BOOL locked;
 @property(nonatomic) BOOL installed;
+- (void)applyLyricsPreferences;
 - (void)revealCoverSheetControls;
 - (void)revealCoverSheetControlsWithReason:(NSString *)reason;
 - (void)clearLockedPresentationBackgroundForUnlock;
@@ -629,16 +652,17 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     self.view.textSize = self.preferences.textSize;
     self.view.progressHeight = self.preferences.progressHeight;
 
+    [self applyLyricsPreferences];
+    [self.view setNeedsLayout];
+}
+- (void)applyLyricsPreferences {
     BOOL spotifyTrack = [self.state.bundleIdentifier isEqualToString:NNPSpotify];
-    // Spotify and SpringBoard can expose different title strings (e.g. explicit
-    // markers, localized formatting, or live/remastered suffixes). The probe
-    // only reads lyrics from Spotify itself, so exact title equality can
-    // incorrectly suppress valid lyrics for the active Spotify session.
-    NSString *currentLine = self.preferences.showLyrics && spotifyTrack
+    BOOL matchingTrack = NNPTrackTitleMatches(self.state.title, self.preferences.spotifyLyricsTrackTitle);
+    NNPDiagnosticSetBool(@"SpotifyLyricsTrackMatch", matchingTrack);
+    NSString *currentLine = self.preferences.showLyrics && spotifyTrack && matchingTrack
         ? self.preferences.spotifyLyricsText : @"";
     NSString *nextLine = currentLine.length ? self.preferences.spotifyLyricsNextLine : @"";
     [self.view updateLyricsText:currentLine nextLine:nextLine];
-    [self.view setNeedsLayout];
 }
 - (void)updateUnlimitedMediaPauseWithEligibleMedia:(BOOL)mediaEligible activeSession:(BOOL)activeSession {
     BOOL shouldWait = self.preferences.experimentalUnlimitedDuration && activeSession && !mediaEligible;
@@ -787,7 +811,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     NNPDiagnosticSetInteger(@"AODPixelShiftY", 0);
 }
 - (void)startProgressTimer { if (self.progressTimer) return; __weak typeof(self) weakSelf = self; self.progressTimer = [NSTimer scheduledTimerWithTimeInterval:self.preferences.progressUpdateInterval repeats:YES block:^(__unused NSTimer *timer) { [weakSelf updateProgress]; }]; }
-- (void)updateProgress { if (!self.state || self.window.hidden) return; [self updateCoverSheetPresentation]; NSTimeInterval elapsed = self.state.elapsed; if (self.state.playing && self.state.playbackRate > 0.0 && self.state.timestamp > 0.0) elapsed += MAX(0.0, NSDate.date.timeIntervalSince1970 - self.state.timestamp) * self.state.playbackRate; if (self.state.duration > 0.0) elapsed = MIN(self.state.duration, MAX(0.0, elapsed)); [self.view updateElapsed:elapsed duration:self.state.duration playing:self.state.playing]; [self.statusBarPlayerView updateElapsed:elapsed duration:self.state.duration playing:self.state.playing]; }
+- (void)updateProgress { if (!self.state || self.window.hidden) return; [self.preferences reloadSpotifyLyricsSnapshot]; [self applyLyricsPreferences]; [self updateCoverSheetPresentation]; NSTimeInterval elapsed = self.state.elapsed; if (self.state.playing && self.state.playbackRate > 0.0 && self.state.timestamp > 0.0) elapsed += MAX(0.0, NSDate.date.timeIntervalSince1970 - self.state.timestamp) * self.state.playbackRate; if (self.state.duration > 0.0) elapsed = MIN(self.state.duration, MAX(0.0, elapsed)); [self.view updateElapsed:elapsed duration:self.state.duration playing:self.state.playing]; [self.statusBarPlayerView updateElapsed:elapsed duration:self.state.duration playing:self.state.playing]; }
 - (void)dealloc {
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
     [_display stopLockedVisibleMode];

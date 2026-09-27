@@ -86,10 +86,7 @@ static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observe
     self.showArtist = NNPBool(@"ShowArtist", YES);
     self.showProgress = NNPBool(@"ShowProgress", YES);
     self.showLyrics = NNPBool(@"ShowLyrics", YES);
-    NSDictionary *lyrics = NNPSpotifyLyricsSnapshot();
-    self.spotifyLyricsText = [lyrics[@"SpotifyLyricsText"] isKindOfClass:NSString.class] ? lyrics[@"SpotifyLyricsText"] : @"";
-    self.spotifyLyricsNextLine = [lyrics[@"SpotifyLyricsNextLine"] isKindOfClass:NSString.class] ? lyrics[@"SpotifyLyricsNextLine"] : @"";
-    self.spotifyLyricsTrackTitle = [lyrics[@"SpotifyLyricsTrackTitle"] isKindOfClass:NSString.class] ? lyrics[@"SpotifyLyricsTrackTitle"] : @"";
+    [self reloadSpotifyLyricsSnapshot];
     self.hideWhenPaused = NNPBool(@"HideWhenPaused", YES);
     self.aodPixelShiftEnabled = NNPBool(@"AODPixelShiftEnabled", YES);
     self.aodBrightnessMultiplier = (float)MAX(1.0, MIN(4.0, NNPFloat(@"AODBrightnessMultiplier", 100.0) / 100.0));
@@ -101,6 +98,12 @@ static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observe
     self.cornerRadius = MAX(4.0, MIN(16.0, NNPFloat(@"CornerRadius", 9.0)));
     self.textSize = MAX(10.0, MIN(20.0, NNPFloat(@"TextSize", 14.0)));
     self.progressHeight = MAX(2.0, MIN(6.0, NNPFloat(@"ProgressHeight", 3.0)));
+}
+- (void)reloadSpotifyLyricsSnapshot {
+    NSDictionary *lyrics = NNPSpotifyLyricsSnapshot();
+    self.spotifyLyricsText = [lyrics[@"SpotifyLyricsText"] isKindOfClass:NSString.class] ? lyrics[@"SpotifyLyricsText"] : @"";
+    self.spotifyLyricsNextLine = [lyrics[@"SpotifyLyricsNextLine"] isKindOfClass:NSString.class] ? lyrics[@"SpotifyLyricsNextLine"] : @"";
+    self.spotifyLyricsTrackTitle = [lyrics[@"SpotifyLyricsTrackTitle"] isKindOfClass:NSString.class] ? lyrics[@"SpotifyLyricsTrackTitle"] : @"";
 }
 - (void)reloadAODBrightnessMultiplier {
     CFPreferencesAppSynchronize(NNPPreferencesDomain);

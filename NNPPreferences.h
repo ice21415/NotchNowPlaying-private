@@ -27,6 +27,7 @@ FOUNDATION_EXPORT NSString * const NNPPreferencesDidChangeNotification;
 @property(nonatomic, readonly) CGFloat progressHeight;
 + (instancetype)sharedPreferences;
 - (void)reload;
+- (void)reloadSpotifyLyricsSnapshot;
 - (void)reloadAODBrightnessMultiplier;
 - (void)startObserving;
 @end
