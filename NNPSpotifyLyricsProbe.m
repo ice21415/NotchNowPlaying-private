@@ -133,13 +133,40 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
             frame.size.height >= 12.0 && frame.size.height <= 100.0 &&
             CGRectIntersectsRect(frame, window.bounds)) {
             UILabel *label = (UILabel *)view;
+            NSMutableArray<NSString *> *ancestors = [NSMutableArray array];
+            UIView *ancestor = view.superview;
+            NSUInteger ancestorDepth = 0;
+            while (ancestor && ancestorDepth++ < 8) {
+                NSString *ancestorName = NSStringFromClass(ancestor.class) ?: @"?";
+                if ([ancestor isKindOfClass:UIScrollView.class]) {
+                    CGPoint offset = ((UIScrollView *)ancestor).contentOffset;
+                    ancestorName = [NSString stringWithFormat:@"%@{offset=%.1f,%.1f}", ancestorName, offset.x, offset.y];
+                }
+                [ancestors addObject:ancestorName];
+                ancestor = ancestor.superview;
+            }
+            NSMutableArray<NSString *> *textAttributes = [NSMutableArray array];
+            [label.attributedText enumerateAttributesInRange:NSMakeRange(0, label.attributedText.length)
+                                                     options:0
+                                                  usingBlock:^(NSDictionary<NSAttributedStringKey, id> *attributes, NSRange range, BOOL *stop) {
+                NSMutableArray<NSString *> *parts = [NSMutableArray array];
+                for (NSAttributedStringKey key in attributes) {
+                    id value = attributes[key];
+                    [parts addObject:[NSString stringWithFormat:@"%@=%@", key, value]];
+                }
+                [textAttributes addObject:[NSString stringWithFormat:@"%lu:%@", (unsigned long)range.length,
+                                           [parts componentsJoinedByString:@","]]];
+            }];
             [rows addObject:@{@"text": text, @"midY": @(CGRectGetMidY(frame)),
                               @"class": className,
                               @"alpha": @(label.alpha),
                               @"font": label.font.fontName ?: @"",
                               @"fontSize": @(label.font.pointSize),
                               @"color": label.textColor.description ?: @"",
-                              @"identifier": label.accessibilityIdentifier ?: @""}];
+                              @"identifier": label.accessibilityIdentifier ?: @"",
+                              @"ancestors": [ancestors componentsJoinedByString:@"<"],
+                              @"z": @(label.layer.zPosition),
+                              @"textAttributes": [textAttributes componentsJoinedByString:@"|"]}];
         }
     }
     for (UIView *child in view.subviews)
@@ -224,14 +251,18 @@ static void NNPSpotifyLyricsProbeCapture(void) {
     NSString *current = lines[MIN(activeIndex, lines.count - 1)];
     NSString *next = activeIndex + 1 < lines.count ? lines[activeIndex + 1] : @"";
     static NSString *lastSelectionSignature;
+    static NSTimeInterval lastDiagnosticsTime;
     NSString *selectionSignature = [NSString stringWithFormat:@"%lu|%@|%@", (unsigned long)activeIndex, current, next];
-    if (![lastSelectionSignature isEqualToString:selectionSignature]) {
+    NSTimeInterval now = NSDate.date.timeIntervalSince1970;
+    if (![lastSelectionSignature isEqualToString:selectionSignature] || now - lastDiagnosticsTime >= 4.0) {
         lastSelectionSignature = selectionSignature;
+        lastDiagnosticsTime = now;
         NSMutableArray<NSString *> *rowDetails = [NSMutableArray arrayWithCapacity:uniqueRows.count];
         for (NSDictionary *row in uniqueRows) {
-            [rowDetails addObject:[NSString stringWithFormat:@"%@ y=%.1f a=%.2f font=%@/%.1f color=%@ class=%@",
+            [rowDetails addObject:[NSString stringWithFormat:@"%@ y=%.1f a=%.2f z=%.1f font=%@/%.1f color=%@ id=%@ ancestors=%@ attrs=%@ class=%@",
                                    row[@"text"], [row[@"midY"] doubleValue], [row[@"alpha"] doubleValue],
-                                   row[@"font"], [row[@"fontSize"] doubleValue], row[@"color"], row[@"class"]]];
+                                   [row[@"z"] doubleValue], row[@"font"], [row[@"fontSize"] doubleValue], row[@"color"],
+                                   row[@"identifier"], row[@"ancestors"], row[@"textAttributes"], row[@"class"]]];
         }
         NNPSpotifyProbeAppend([NSString stringWithFormat:@"RUNTIME rows=%@ activeIndex=%lu targetY=%.1f",
                                [rowDetails componentsJoinedByString:@" | "], (unsigned long)activeIndex, targetY]);
