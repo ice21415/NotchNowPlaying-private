@@ -377,21 +377,10 @@ static BOOL NNPSpotifyPublishLyrics(NSString *current, NSString *next, NSArray<N
 }
 
 static void NNPSpotifyLyricsProbeCapture(void) {
-    static NSString *lastPlaybackTrackSignature;
-    static NSTimeInterval lastPlaybackTime = -1.0;
-
     NSDictionary *playbackInfo = MPNowPlayingInfoCenter.defaultCenter.nowPlayingInfo ?: @{};
-    NSString *playbackTitle = [playbackInfo[MPMediaItemPropertyTitle] isKindOfClass:NSString.class]
-        ? playbackInfo[MPMediaItemPropertyTitle] : @"";
-    NSString *playbackArtist = [playbackInfo[MPMediaItemPropertyArtist] isKindOfClass:NSString.class]
-        ? playbackInfo[MPMediaItemPropertyArtist] : @"";
-    NSString *playbackTrackSignature = playbackTitle.length || playbackArtist.length
-        ? [NSString stringWithFormat:@"%@\n%@", playbackTitle, playbackArtist] : @"";
     id elapsedValue = playbackInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime];
     NSTimeInterval playbackTime = [elapsedValue respondsToSelector:@selector(doubleValue)]
         ? [elapsedValue doubleValue] : -1.0;
-    if (playbackTrackSignature.length) lastPlaybackTrackSignature = [playbackTrackSignature copy];
-    if (playbackTime >= 0.0) lastPlaybackTime = playbackTime;
 
     UIApplication *application = UIApplication.sharedApplication;
     NSMutableArray<NSDictionary *> *rows = [NSMutableArray array];
