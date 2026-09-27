@@ -12,6 +12,8 @@
 static CFStringRef const NNPSpotifySharedPreferences = CFSTR("com.user.notchnowplaying");
 static CFStringRef const NNPSpotifyLyricsChangedNotification = CFSTR("com.user.notchnowplaying.preferences.changed");
 static BOOL NNPSpotifyStringContainsAny(NSString *value, NSArray<NSString *> *needles);
+static char NNPSpotifyNetworkBodyAssociationKey;
+static char NNPSpotifyNetworkBodyTruncatedAssociationKey;
 static NSString *NNPSpotifyLyricsProbePath(void) {
     return [NSTemporaryDirectory() stringByAppendingPathComponent:@"nnp-spotify-lyrics-runtime.log"];
 }
@@ -33,6 +35,10 @@ static void NNPSpotifyProbeAppend(NSString *line) {
     close(fd);
 }
 
+void NNPSpotifyLyricsProbeAppendDiagnostic(NSString *line) {
+    NNPSpotifyProbeAppend(line);
+}
+
 BOOL NNPSpotifyLyricsProbeShouldTraceNetworkRequest(NSURLRequest *request) {
     NSString *url = request.URL.absoluteString.lowercaseString ?: @"";
     return [url containsString:@"lyrics"] || [url containsString:@"spclient.wg.spotify.com"];
@@ -47,11 +53,65 @@ void NNPSpotifyLyricsProbeCaptureNetworkResponse(NSURLRequest *request, NSData *
         NNPSpotifyProbeAppend([NSString stringWithFormat:@"NETWORK request status=%ld bytes=%lu url=%@", (long)status, (unsigned long)data.length, url]);
         return;
     }
-    NSData *sample = data.length > 65536 ? [data subdataWithRange:NSMakeRange(0, 65536)] : data;
+    NSData *sample = data.length > 8192 ? [data subdataWithRange:NSMakeRange(0, 8192)] : data;
     NSString *text = [[NSString alloc] initWithData:sample encoding:NSUTF8StringEncoding];
     NSString *body = text.length ? text : [sample base64EncodedStringWithOptions:0];
-    NNPSpotifyProbeAppend([NSString stringWithFormat:@"NETWORK-LYRICS status=%ld bytes=%lu error=%@ url=%@ body=%@",
-                           (long)status, (unsigned long)data.length, error.localizedDescription ?: @"", url, body ?: @""]);
+    NNPSpotifyProbeAppend([NSString stringWithFormat:@"NETWORK-LYRICS status=%ld bytes=%lu mime=%@ error=%@ url=%@ body=%@",
+                           (long)status, (unsigned long)data.length, response.MIMEType ?: @"", error.localizedDescription ?: @"", url, body ?: @""]);
+}
+
+void NNPSpotifyLyricsProbeCaptureNetworkTask(NSURLRequest *request) {
+    if (!NNPSpotifyLyricsProbeShouldTraceNetworkRequest(request)) return;
+    NSURLComponents *components = [NSURLComponents componentsWithURL:request.URL resolvingAgainstBaseURL:NO];
+    NSMutableArray<NSString *> *queryKeys = [NSMutableArray array];
+    for (NSURLQueryItem *item in components.queryItems ?: @[]) {
+        if (item.name.length) [queryKeys addObject:item.name];
+    }
+    NNPSpotifyProbeAppend([NSString stringWithFormat:@"NETWORK-TASK method=%@ host=%@ path=%@ queryKeys=%@",
+                           request.HTTPMethod ?: @"GET", components.host ?: @"", components.path ?: @"/",
+                           [queryKeys componentsJoinedByString:@","]]);
+}
+
+void NNPSpotifyLyricsProbeCaptureNetworkData(NSURLSessionTask *task, NSData *data) {
+    if (!task || !data.length) return;
+    NSURLRequest *request = task.currentRequest ?: task.originalRequest;
+    if (!request || ![request.URL.absoluteString.lowercaseString containsString:@"lyrics"]) return;
+
+    NSMutableData *body = objc_getAssociatedObject(task, &NNPSpotifyNetworkBodyAssociationKey);
+    if (!body) {
+        body = [NSMutableData data];
+        objc_setAssociatedObject(task, &NNPSpotifyNetworkBodyAssociationKey, body, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    const NSUInteger maximumBytes = 256 * 1024;
+    NSUInteger remaining = body.length < maximumBytes ? maximumBytes - body.length : 0;
+    NSUInteger bytesToAppend = MIN(data.length, remaining);
+    if (bytesToAppend) {
+        NSData *chunk = bytesToAppend == data.length ? data : [data subdataWithRange:NSMakeRange(0, bytesToAppend)];
+        [body appendData:chunk];
+    }
+    if (bytesToAppend < data.length)
+        objc_setAssociatedObject(task, &NNPSpotifyNetworkBodyTruncatedAssociationKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+void NNPSpotifyLyricsProbeCompleteNetworkTask(NSURLSessionTask *task, NSError *error) {
+    if (!task) return;
+    NSURLRequest *request = task.currentRequest ?: task.originalRequest;
+    NSMutableData *body = objc_getAssociatedObject(task, &NNPSpotifyNetworkBodyAssociationKey);
+    NSNumber *truncated = objc_getAssociatedObject(task, &NNPSpotifyNetworkBodyTruncatedAssociationKey);
+    if (request && NNPSpotifyLyricsProbeShouldTraceNetworkRequest(request)) {
+        if ([request.URL.absoluteString.lowercaseString containsString:@"lyrics"] && body.length) {
+            NNPSpotifyLyricsProbeCaptureNetworkResponse(request, body, task.response, error);
+            if (truncated.boolValue)
+                NNPSpotifyProbeAppend([NSString stringWithFormat:@"NETWORK-LYRICS body-truncated task=%p cap=%lu", task, (unsigned long)body.length]);
+        } else {
+            NSInteger status = [task.response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)task.response).statusCode : 0;
+            NNPSpotifyProbeAppend([NSString stringWithFormat:@"NETWORK-DONE method=%@ status=%ld bytes=%lld error=%@ url=%@",
+                                   request.HTTPMethod ?: @"GET", (long)status, task.countOfBytesReceived,
+                                   error.localizedDescription ?: @"", request.URL.absoluteString ?: @""]);
+        }
+    }
+    objc_setAssociatedObject(task, &NNPSpotifyNetworkBodyAssociationKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(task, &NNPSpotifyNetworkBodyTruncatedAssociationKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 static BOOL NNPSpotifyIsRelevantModelClass(Class cls) {
