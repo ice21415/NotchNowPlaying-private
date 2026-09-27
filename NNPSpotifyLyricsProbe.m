@@ -8,10 +8,19 @@
 static NSString *NNPSpotifyLyricsProbePath(void) {
     return [NSTemporaryDirectory() stringByAppendingPathComponent:@"nnp-spotify-lyrics-runtime.log"];
 }
+static NSMutableString *NNPSpotifyLyricsProbeBuffer;
+
+static void NNPSpotifyProbePersistSnapshot(void) {
+    NSString *snapshot = [NNPSpotifyLyricsProbeBuffer copy] ?: @"";
+    [NSUserDefaults.standardUserDefaults setObject:snapshot forKey:@"NNPSpotifyLyricsProbeSnapshot"];
+    [NSUserDefaults.standardUserDefaults synchronize];
+}
 
 static void NNPSpotifyProbeAppend(NSString *line) {
     if (!line.length) return;
     NSString *entry = [line stringByAppendingString:@"\n"];
+    if (!NNPSpotifyLyricsProbeBuffer) NNPSpotifyLyricsProbeBuffer = [NSMutableString string];
+    [NNPSpotifyLyricsProbeBuffer appendString:entry];
     NSString *path = NNPSpotifyLyricsProbePath();
     int fd = open(path.UTF8String, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd < 0) return;
@@ -80,10 +89,15 @@ static void NNPSpotifyLyricsProbeScan(NSUInteger pass) {
     }
     free(classes);
     NNPSpotifyProbeAppend([NSString stringWithFormat:@"pass=%lu matched_classes=%lu", (unsigned long)pass, (unsigned long)matched]);
+    NNPSpotifyProbePersistSnapshot();
 }
 
 void NNPSpotifyLyricsProbeStart(void) {
+    [NSUserDefaults.standardUserDefaults setObject:[NSDate date] forKey:@"NNPSpotifyLyricsProbeStartedAt"];
+    [NSUserDefaults.standardUserDefaults setObject:@(getpid()) forKey:@"NNPSpotifyLyricsProbePID"];
+    [NSUserDefaults.standardUserDefaults synchronize];
     NNPSpotifyProbeAppend([NSString stringWithFormat:@"START pid=%d process=%@ bundle=%@", getpid(), NSProcessInfo.processInfo.processName ?: @"?", NSBundle.mainBundle.bundleIdentifier ?: @"?"]);
+    NNPSpotifyProbePersistSnapshot();
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         NNPSpotifyLyricsProbeScan(1);
     });
