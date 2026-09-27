@@ -19,6 +19,8 @@
 
 %end
 
+%group NNPSpotifyNetworkHooks
+
 %hook NSURLSession
 
 - (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request {
@@ -47,7 +49,10 @@
 
 %end
 
+%end
+
 %ctor {
+    %init(NNPSpotifyNetworkHooks);
     NNPSpotifyLyricsProbeStart();
     Class dataLoaderService = objc_lookUpClass("SPTDataLoaderService");
     SEL receiveData = sel_registerName("URLSession:dataTask:didReceiveData:");
