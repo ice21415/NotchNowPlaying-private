@@ -5,14 +5,15 @@
 #import <sys/stat.h>
 #import <unistd.h>
 
-static NSString * const NNPSpotifyLyricsProbePath = @"/var/mobile/Library/NotchNowPlaying/spotify-lyrics-runtime.log";
+static NSString *NNPSpotifyLyricsProbePath(void) {
+    return [NSTemporaryDirectory() stringByAppendingPathComponent:@"nnp-spotify-lyrics-runtime.log"];
+}
 
 static void NNPSpotifyProbeAppend(NSString *line) {
     if (!line.length) return;
     NSString *entry = [line stringByAppendingString:@"\n"];
-    NSString *directory = NNPSpotifyLyricsProbePath.stringByDeletingLastPathComponent;
-    mkdir(directory.UTF8String, 0755);
-    int fd = open(NNPSpotifyLyricsProbePath.UTF8String, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    NSString *path = NNPSpotifyLyricsProbePath();
+    int fd = open(path.UTF8String, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd < 0) return;
     NSData *data = [entry dataUsingEncoding:NSUTF8StringEncoding];
     const uint8_t *bytes = data.bytes;
