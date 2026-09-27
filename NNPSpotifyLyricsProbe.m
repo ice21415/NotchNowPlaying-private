@@ -213,6 +213,33 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
         NNPSpotifyCollectLyricLabels(child, window, insideLyrics, rows, depth + 1);
 }
 
+static void NNPSpotifyCollectLyricMirrors(UIView *view, UIWindow *window, NSSet<NSString *> *lyricTexts,
+                                          NSMutableArray<NSString *> *matches, BOOL inLyricsPage, NSUInteger depth) {
+    if (!view || depth > 48 || matches.count >= 80 || view.hidden || view.alpha < 0.01) return;
+    NSString *className = NSStringFromClass(view.class) ?: @"";
+    BOOL insideLyrics = inLyricsPage || [className rangeOfString:@"Lyrics" options:NSCaseInsensitiveSearch].location != NSNotFound;
+    if ([view isKindOfClass:UILabel.class]) {
+        UILabel *label = (UILabel *)view;
+        NSString *text = NNPSpotifyNormalizeLyricsText(label.text ?: label.accessibilityLabel);
+        if (text.length && [lyricTexts containsObject:text]) {
+            CGRect frame = [view convertRect:view.bounds toView:window];
+            NSMutableArray<NSString *> *ancestors = [NSMutableArray array];
+            UIView *ancestor = view.superview;
+            NSUInteger ancestorDepth = 0;
+            while (ancestor && ancestorDepth++ < 16) {
+                [ancestors addObject:NSStringFromClass(ancestor.class) ?: @"?"];
+                ancestor = ancestor.superview;
+            }
+            [matches addObject:[NSString stringWithFormat:@"text=%@ frame=%.1f,%.1f,%.1f,%.1f id=%@ color=%@ ancestors=%@",
+                                text, frame.origin.x, frame.origin.y, frame.size.width, frame.size.height,
+                                label.accessibilityIdentifier ?: @"", label.textColor.description ?: @"",
+                                [ancestors componentsJoinedByString:@"<"]]];
+        }
+    }
+    for (UIView *child in view.subviews)
+        NNPSpotifyCollectLyricMirrors(child, window, lyricTexts, matches, insideLyrics, depth + 1);
+}
+
 static BOOL NNPSpotifyPublishLyrics(NSString *current, NSString *next, NSArray<NSString *> *visibleLines) {
     static NSString *lastCurrent;
     static NSString *lastNext;
@@ -271,6 +298,24 @@ static void NNPSpotifyLyricsProbeCapture(void) {
             [lines addObject:text];
             [uniqueRows addObject:row];
         }
+    }
+    NSMutableSet<NSString *> *lyricTexts = [NSMutableSet setWithArray:lines];
+    NSMutableArray<NSString *> *mirrors = [NSMutableArray array];
+    for (UIScene *scene in application.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState == UISceneActivationStateUnattached) continue;
+        for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+            if (!window.hidden && window.alpha >= 0.01)
+                NNPSpotifyCollectLyricMirrors(window, window, lyricTexts, mirrors, NO, 0);
+        }
+    }
+    static NSTimeInterval lastMirrorLogTime;
+    static NSString *lastMirrorSignature;
+    NSString *mirrorSignature = [mirrors componentsJoinedByString:@"|"];
+    NSTimeInterval mirrorNow = NSDate.date.timeIntervalSince1970;
+    if (mirrors.count && (![mirrorSignature isEqualToString:lastMirrorSignature] || mirrorNow - lastMirrorLogTime >= 4.0)) {
+        lastMirrorSignature = mirrorSignature;
+        lastMirrorLogTime = mirrorNow;
+        NNPSpotifyProbeAppend([NSString stringWithFormat:@"RUNTIME lyric-mirrors=%@", mirrorSignature]);
     }
     if (lines.count == 0) {
         // Background Spotify can temporarily detach or hide its lyrics scene.
