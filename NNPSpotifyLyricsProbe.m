@@ -163,10 +163,23 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
             NSString *cellState = @"none";
             if (lyricsCell) {
                 NSIndexPath *indexPath = [lyricsTable indexPathForCell:lyricsCell];
+                NSIndexPath *centerIndexPath = nil;
+                NSString *tableState = @"no-table";
+                if (lyricsTable) {
+                    CGPoint center = CGPointMake(CGRectGetMidX(lyricsTable.bounds), CGRectGetMidY(lyricsTable.bounds));
+                    centerIndexPath = [lyricsTable indexPathForRowAtPoint:center];
+                    CGRect tableFrame = [lyricsTable convertRect:lyricsTable.bounds toView:window];
+                    tableState = [NSString stringWithFormat:@"table=%p frame=%.1f,%.1f,%.1f,%.1f centerRow=%ld visible=%lu offset=%.1f",
+                                  lyricsTable, tableFrame.origin.x, tableFrame.origin.y, tableFrame.size.width, tableFrame.size.height,
+                                  centerIndexPath ? (long)centerIndexPath.row : -1L,
+                                  (unsigned long)lyricsTable.indexPathsForVisibleRows.count,
+                                  lyricsTable.contentOffset.y];
+                }
                 cellState = [NSString stringWithFormat:@"%@ row=%ld section=%ld selected=%@ highlighted=%@ reuse=%@",
                              NSStringFromClass(lyricsCell.class), (long)indexPath.row, (long)indexPath.section,
                              lyricsCell.selected ? @"YES" : @"NO", lyricsCell.highlighted ? @"YES" : @"NO",
                              lyricsCell.reuseIdentifier ?: @""];
+                cellState = [cellState stringByAppendingFormat:@" %@", tableState];
             }
             [rows addObject:@{@"text": text, @"midY": @(CGRectGetMidY(frame)),
                               @"class": className,
