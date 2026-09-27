@@ -37,6 +37,29 @@ static NSString *NNPSpotifyNormalizeLyricsText(NSString *text) {
     return [parts componentsJoinedByString:@" "];
 }
 
+static BOOL NNPSpotifyIsNonLyricLabel(NSString *text) {
+    NSString *trimmed = [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *lowercase = trimmed.lowercaseString;
+    if ([lowercase isEqualToString:@"歌詞"] || [lowercase isEqualToString:@"lyrics"] ||
+        [lowercase containsString:@"musixmatch"] || [trimmed containsString:@"歌詞提供者"]) return YES;
+
+    NSDictionary *nowPlaying = MPNowPlayingInfoCenter.defaultCenter.nowPlayingInfo;
+    NSString *title = [nowPlaying[MPMediaItemPropertyTitle] isKindOfClass:NSString.class]
+        ? nowPlaying[MPMediaItemPropertyTitle] : @"";
+    NSString *artist = [nowPlaying[MPMediaItemPropertyArtist] isKindOfClass:NSString.class]
+        ? nowPlaying[MPMediaItemPropertyArtist] : @"";
+    if ((title.length && [trimmed isEqualToString:title]) ||
+        (artist.length && [trimmed isEqualToString:artist])) return YES;
+
+    NSString *clock = [trimmed hasPrefix:@"-"] ? [trimmed substringFromIndex:1] : trimmed;
+    NSArray<NSString *> *clockParts = [clock componentsSeparatedByString:@":"];
+    if (clockParts.count == 2 && clockParts[0].length <= 2 && clockParts[1].length == 2) {
+        NSCharacterSet *notDigits = NSCharacterSet.decimalDigitCharacterSet.invertedSet;
+        if ([clock rangeOfCharacterFromSet:notDigits].location == NSNotFound) return YES;
+    }
+    return NO;
+}
+
 static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL inLyricsPage,
                                         NSMutableArray<NSDictionary *> *rows, NSUInteger depth) {
     if (!view || depth > 48 || rows.count >= 160 || view.hidden || view.alpha < 0.01) return;
@@ -45,7 +68,8 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
     if (insideLyrics && [view isKindOfClass:UILabel.class]) {
         NSString *text = NNPSpotifyNormalizeLyricsText(((UILabel *)view).text ?: view.accessibilityLabel);
         CGRect frame = [view convertRect:view.bounds toView:window];
-        if (text.length >= 2 && frame.size.height >= 12.0 && frame.size.height <= 100.0 &&
+        if (text.length >= 2 && !NNPSpotifyIsNonLyricLabel(text) &&
+            frame.size.height >= 12.0 && frame.size.height <= 100.0 &&
             CGRectIntersectsRect(frame, window.bounds)) {
             [rows addObject:@{@"text": text, @"midY": @(CGRectGetMidY(frame))}];
         }
