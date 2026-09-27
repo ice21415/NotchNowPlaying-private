@@ -11,6 +11,7 @@ FOUNDATION_EXPORT NSString * const NNPPreferencesDidChangeNotification;
 @property(nonatomic, readonly) BOOL showArtist;
 @property(nonatomic, readonly) BOOL showProgress;
 @property(nonatomic, readonly) BOOL showLyrics;
+@property(nonatomic, readonly) CGFloat lyricsSyncOffsetMilliseconds;
 @property(nonatomic, copy, readonly) NSString *spotifyLyricsText;
 @property(nonatomic, copy, readonly) NSString *spotifyLyricsNextLine;
 @property(nonatomic, copy, readonly) NSString *spotifyLyricsTrackTitle;

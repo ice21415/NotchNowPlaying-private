@@ -52,6 +52,7 @@ static CGFloat NNPFloat(NSString *key, CGFloat fallback) {
 @property(nonatomic) BOOL showArtist;
 @property(nonatomic) BOOL showProgress;
 @property(nonatomic) BOOL showLyrics;
+@property(nonatomic) CGFloat lyricsSyncOffsetMilliseconds;
 @property(nonatomic, copy) NSString *spotifyLyricsText;
 @property(nonatomic, copy) NSString *spotifyLyricsNextLine;
 @property(nonatomic, copy) NSString *spotifyLyricsTrackTitle;
@@ -87,6 +88,7 @@ static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observe
     self.showArtist = NNPBool(@"ShowArtist", YES);
     self.showProgress = NNPBool(@"ShowProgress", YES);
     self.showLyrics = NNPBool(@"ShowLyrics", YES);
+    self.lyricsSyncOffsetMilliseconds = MAX(-500.0, MIN(500.0, NNPFloat(@"LyricsSyncOffsetMilliseconds", 100.0)));
     [self reloadSpotifyLyricsSnapshot];
     self.hideWhenPaused = NNPBool(@"HideWhenPaused", YES);
     self.aodPixelShiftEnabled = NNPBool(@"AODPixelShiftEnabled", YES);
