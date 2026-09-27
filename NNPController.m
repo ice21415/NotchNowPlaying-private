@@ -659,9 +659,27 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     BOOL spotifyTrack = [self.state.bundleIdentifier isEqualToString:NNPSpotify];
     BOOL matchingTrack = NNPTrackTitleMatches(self.state.title, self.preferences.spotifyLyricsTrackTitle);
     NNPDiagnosticSetBool(@"SpotifyLyricsTrackMatch", matchingTrack);
-    NSString *currentLine = self.preferences.showLyrics && spotifyTrack && matchingTrack
-        ? self.preferences.spotifyLyricsText : @"";
-    NSString *nextLine = currentLine.length ? self.preferences.spotifyLyricsNextLine : @"";
+    NSString *currentLine = @"";
+    NSString *nextLine = @"";
+    if (self.preferences.showLyrics && spotifyTrack && matchingTrack) {
+        NSArray<NSDictionary *> *timedLines = self.preferences.spotifyLyricsTimedLines;
+        if (timedLines.count) {
+            NSTimeInterval elapsed = self.state.elapsed;
+            if (self.state.playing && self.state.playbackRate > 0.0 && self.state.timestamp > 0.0)
+                elapsed += MAX(0.0, NSDate.date.timeIntervalSince1970 - self.state.timestamp) * self.state.playbackRate;
+            NSUInteger activeIndex = 0;
+            for (NSUInteger index = 1; index < timedLines.count; index++) {
+                if ([timedLines[index][@"startTimeMs"] doubleValue] > elapsed * 1000.0) break;
+                activeIndex = index;
+            }
+            currentLine = [timedLines[activeIndex][@"words"] isKindOfClass:NSString.class] ? timedLines[activeIndex][@"words"] : @"";
+            if (activeIndex + 1 < timedLines.count)
+                nextLine = [timedLines[activeIndex + 1][@"words"] isKindOfClass:NSString.class] ? timedLines[activeIndex + 1][@"words"] : @"";
+        } else {
+            currentLine = self.preferences.spotifyLyricsText;
+            nextLine = self.preferences.spotifyLyricsNextLine;
+        }
+    }
     [self.view updateLyricsText:currentLine nextLine:nextLine];
 }
 - (void)updateUnlimitedMediaPauseWithEligibleMedia:(BOOL)mediaEligible activeSession:(BOOL)activeSession {

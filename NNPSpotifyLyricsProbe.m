@@ -4,6 +4,7 @@
 #import <MediaPlayer/MediaPlayer.h>
 #import <objc/runtime.h>
 #import <fcntl.h>
+#import <limits.h>
 #import <stdint.h>
 #import <stdlib.h>
 #import <string.h>
@@ -44,6 +45,156 @@ void NNPSpotifyLyricsProbeAppendDiagnostic(NSString *line) {
     NNPSpotifyProbeAppend(line);
 }
 
+typedef struct {
+    const uint8_t *bytes;
+    NSUInteger length;
+    NSUInteger offset;
+} NNPSpotifyProtoReader;
+
+static BOOL NNPSpotifyProtoReadVarint(NNPSpotifyProtoReader *reader, uint64_t *value) {
+    if (!reader || !value) return NO;
+    uint64_t result = 0;
+    for (NSUInteger shift = 0; shift < 64 && reader->offset < reader->length; shift += 7) {
+        uint8_t byte = reader->bytes[reader->offset++];
+        result |= ((uint64_t)(byte & 0x7f)) << shift;
+        if ((byte & 0x80) == 0) {
+            *value = result;
+            return YES;
+        }
+    }
+    return NO;
+}
+
+static BOOL NNPSpotifyProtoReadBytes(NNPSpotifyProtoReader *reader, const uint8_t **bytes, NSUInteger *length) {
+    uint64_t encodedLength = 0;
+    if (!NNPSpotifyProtoReadVarint(reader, &encodedLength) || encodedLength > NSUIntegerMax) return NO;
+    NSUInteger count = (NSUInteger)encodedLength;
+    if (count > reader->length - reader->offset) return NO;
+    if (bytes) *bytes = reader->bytes + reader->offset;
+    if (length) *length = count;
+    reader->offset += count;
+    return YES;
+}
+
+static BOOL NNPSpotifyProtoSkipField(NNPSpotifyProtoReader *reader, uint32_t wireType) {
+    uint64_t ignored = 0;
+    const uint8_t *bytes = NULL;
+    NSUInteger length = 0;
+    switch (wireType) {
+        case 0: return NNPSpotifyProtoReadVarint(reader, &ignored);
+        case 1:
+            if (reader->length - reader->offset < 8) return NO;
+            reader->offset += 8;
+            return YES;
+        case 2: return NNPSpotifyProtoReadBytes(reader, &bytes, &length);
+        case 5:
+            if (reader->length - reader->offset < 4) return NO;
+            reader->offset += 4;
+            return YES;
+        default: return NO;
+    }
+}
+
+static NSDictionary *NNPSpotifyParseColorLyricsLine(const uint8_t *bytes, NSUInteger length) {
+    NNPSpotifyProtoReader reader = {bytes, length, 0};
+    uint64_t startTimeMs = 0;
+    BOOL hasStartTime = NO;
+    NSString *words = nil;
+    while (reader.offset < reader.length) {
+        uint64_t tag = 0;
+        if (!NNPSpotifyProtoReadVarint(&reader, &tag) || tag == 0) return nil;
+        uint32_t fieldNumber = (uint32_t)(tag >> 3);
+        uint32_t wireType = (uint32_t)(tag & 7);
+        if (fieldNumber == 1 && wireType == 0) {
+            if (!NNPSpotifyProtoReadVarint(&reader, &startTimeMs)) return nil;
+            hasStartTime = YES;
+        } else if (fieldNumber == 2 && wireType == 2) {
+            const uint8_t *textBytes = NULL;
+            NSUInteger textLength = 0;
+            if (!NNPSpotifyProtoReadBytes(&reader, &textBytes, &textLength)) return nil;
+            words = [[NSString alloc] initWithBytes:textBytes length:textLength encoding:NSUTF8StringEncoding];
+        } else if (!NNPSpotifyProtoSkipField(&reader, wireType)) {
+            return nil;
+        }
+    }
+    if (!hasStartTime || !words.length || [words isEqualToString:@"♪"] || startTimeMs > LLONG_MAX) return nil;
+    return @{@"startTimeMs": @((long long)startTimeMs), @"words": words};
+}
+
+static NSArray<NSDictionary *> *NNPSpotifyParseColorLyricsResponse(NSData *data, NSString **syncTypeOut) {
+    if (!data.length) return nil;
+    NNPSpotifyProtoReader response = {data.bytes, data.length, 0};
+    NSMutableArray<NSDictionary *> *lines = [NSMutableArray array];
+    NSString *syncType = @"UNSYNCED";
+    BOOL foundLyricsMessage = NO;
+    while (response.offset < response.length) {
+        uint64_t tag = 0;
+        if (!NNPSpotifyProtoReadVarint(&response, &tag) || tag == 0) return nil;
+        uint32_t fieldNumber = (uint32_t)(tag >> 3);
+        uint32_t wireType = (uint32_t)(tag & 7);
+        if (fieldNumber == 1 && wireType == 2) {
+            const uint8_t *lyricsBytes = NULL;
+            NSUInteger lyricsLength = 0;
+            if (!NNPSpotifyProtoReadBytes(&response, &lyricsBytes, &lyricsLength)) return nil;
+            foundLyricsMessage = YES;
+            NNPSpotifyProtoReader lyrics = {lyricsBytes, lyricsLength, 0};
+            while (lyrics.offset < lyrics.length) {
+                uint64_t lyricsTag = 0;
+                if (!NNPSpotifyProtoReadVarint(&lyrics, &lyricsTag) || lyricsTag == 0) return nil;
+                uint32_t lyricsField = (uint32_t)(lyricsTag >> 3);
+                uint32_t lyricsWire = (uint32_t)(lyricsTag & 7);
+                if (lyricsField == 1 && lyricsWire == 0) {
+                    uint64_t enumValue = 0;
+                    if (!NNPSpotifyProtoReadVarint(&lyrics, &enumValue)) return nil;
+                    syncType = enumValue == 1 ? @"LINE_SYNCED" : enumValue == 2 ? @"SYLLABLE_SYNCED" : @"UNSYNCED";
+                } else if (lyricsField == 2 && lyricsWire == 2) {
+                    const uint8_t *lineBytes = NULL;
+                    NSUInteger lineLength = 0;
+                    if (!NNPSpotifyProtoReadBytes(&lyrics, &lineBytes, &lineLength)) return nil;
+                    NSDictionary *line = NNPSpotifyParseColorLyricsLine(lineBytes, lineLength);
+                    if (line) [lines addObject:line];
+                    if (lines.count > 2000) return nil;
+                } else if (!NNPSpotifyProtoSkipField(&lyrics, lyricsWire)) {
+                    return nil;
+                }
+            }
+        } else if (!NNPSpotifyProtoSkipField(&response, wireType)) {
+            return nil;
+        }
+    }
+    if (syncTypeOut) *syncTypeOut = syncType;
+    return foundLyricsMessage && lines.count ? [lines copy] : nil;
+}
+
+static void NNPSpotifyPublishTimedLyrics(NSArray<NSDictionary *> *lines, NSString *syncType, NSURLRequest *request) {
+    NSDictionary *nowPlaying = MPNowPlayingInfoCenter.defaultCenter.nowPlayingInfo ?: @{};
+    id elapsedValue = nowPlaying[MPNowPlayingInfoPropertyElapsedPlaybackTime];
+    NSTimeInterval elapsed = [elapsedValue respondsToSelector:@selector(doubleValue)] ? [elapsedValue doubleValue] : 0.0;
+    NSUInteger currentIndex = 0;
+    for (NSUInteger index = 1; index < lines.count; index++) {
+        if ([lines[index][@"startTimeMs"] doubleValue] > elapsed * 1000.0) break;
+        currentIndex = index;
+    }
+    NSString *current = lines[currentIndex][@"words"] ?: @"";
+    NSString *next = currentIndex + 1 < lines.count ? (lines[currentIndex + 1][@"words"] ?: @"") : @"";
+    NSString *trackTitle = [nowPlaying[MPMediaItemPropertyTitle] isKindOfClass:NSString.class] ? nowPlaying[MPMediaItemPropertyTitle] : @"";
+    NSString *trackArtist = [nowPlaying[MPMediaItemPropertyArtist] isKindOfClass:NSString.class] ? nowPlaying[MPMediaItemPropertyArtist] : @"";
+    CFPreferencesSetAppValue(CFSTR("SpotifyLyricsTimedLines"), (__bridge CFArrayRef)lines, NNPSpotifySharedPreferences);
+    CFPreferencesSetAppValue(CFSTR("SpotifyLyricsSyncType"), (__bridge CFStringRef)(syncType ?: @"UNSYNCED"), NNPSpotifySharedPreferences);
+    CFPreferencesSetAppValue(CFSTR("SpotifyLyricsText"), (__bridge CFStringRef)current, NNPSpotifySharedPreferences);
+    CFPreferencesSetAppValue(CFSTR("SpotifyLyricsNextLine"), (__bridge CFStringRef)next, NNPSpotifySharedPreferences);
+    CFPreferencesSetAppValue(CFSTR("SpotifyLyricsTrackTitle"), (__bridge CFStringRef)trackTitle, NNPSpotifySharedPreferences);
+    CFPreferencesSetAppValue(CFSTR("SpotifyLyricsTrackArtist"), (__bridge CFStringRef)trackArtist, NNPSpotifySharedPreferences);
+    CFPreferencesSetAppValue(CFSTR("SpotifyLyricsUpdatedAt"), (__bridge CFDateRef)NSDate.date, NNPSpotifySharedPreferences);
+    Boolean synchronized = CFPreferencesAppSynchronize(NNPSpotifySharedPreferences);
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                         NNPSpotifyLyricsChangedNotification, NULL, NULL, true);
+    NSString *trackID = request.URL.lastPathComponent ?: @"";
+    NNPSpotifyProbeAppend([NSString stringWithFormat:@"NETWORK-PARSED lines=%lu sync=%@ track=%@ firstStartMs=%@ shared=%@",
+                           (unsigned long)lines.count, syncType ?: @"UNSYNCED", trackID,
+                           lines.firstObject[@"startTimeMs"] ?: @"?", synchronized ? @"YES" : @"NO"]);
+}
+
 BOOL NNPSpotifyLyricsProbeShouldTraceNetworkRequest(NSURLRequest *request) {
     NSString *url = request.URL.absoluteString.lowercaseString ?: @"";
     return [url containsString:@"lyrics"] || [url containsString:@"spclient.wg.spotify.com"];
@@ -58,11 +209,14 @@ void NNPSpotifyLyricsProbeCaptureNetworkResponse(NSURLRequest *request, NSData *
         NNPSpotifyProbeAppend([NSString stringWithFormat:@"NETWORK request status=%ld bytes=%lu url=%@", (long)status, (unsigned long)data.length, url]);
         return;
     }
-    NSData *sample = data.length > 8192 ? [data subdataWithRange:NSMakeRange(0, 8192)] : data;
-    NSString *text = [[NSString alloc] initWithData:sample encoding:NSUTF8StringEncoding];
-    NSString *body = text.length ? text : [sample base64EncodedStringWithOptions:0];
-    NNPSpotifyProbeAppend([NSString stringWithFormat:@"NETWORK-LYRICS status=%ld bytes=%lu mime=%@ error=%@ url=%@ body=%@",
-                           (long)status, (unsigned long)data.length, response.MIMEType ?: @"", error.localizedDescription ?: @"", url, body ?: @""]);
+    NNPSpotifyProbeAppend([NSString stringWithFormat:@"NETWORK-LYRICS status=%ld bytes=%lu mime=%@ error=%@ url=%@ body=redacted",
+                           (long)status, (unsigned long)data.length, response.MIMEType ?: @"", error.localizedDescription ?: @"", url]);
+    if (status == 200 && !error && [response.MIMEType.lowercaseString containsString:@"protobuf"]) {
+        NSString *syncType = nil;
+        NSArray<NSDictionary *> *lines = NNPSpotifyParseColorLyricsResponse(data, &syncType);
+        if (lines.count) NNPSpotifyPublishTimedLyrics(lines, syncType, request);
+        else NNPSpotifyProbeAppend([NSString stringWithFormat:@"NETWORK-PARSE failed bytes=%lu mime=%@", (unsigned long)data.length, response.MIMEType ?: @""]);
+    }
 }
 
 void NNPSpotifyLyricsProbeCaptureNetworkTask(NSURLRequest *request) {
