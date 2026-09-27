@@ -2,7 +2,9 @@
 #import <UIKit/UIKit.h>
 #import <CoreFoundation/CoreFoundation.h>
 #import <MediaPlayer/MediaPlayer.h>
+#import <objc/runtime.h>
 #import <fcntl.h>
+#import <stdlib.h>
 #import <unistd.h>
 
 static CFStringRef const NNPSpotifySharedPreferences = CFSTR("com.user.notchnowplaying");
@@ -35,6 +37,65 @@ static NSString *NNPSpotifyNormalizeLyricsText(NSString *text) {
         if (line.length) [parts addObject:line];
     }
     return [parts componentsJoinedByString:@" "];
+}
+
+static BOOL NNPSpotifyStringContainsAny(NSString *value, NSArray<NSString *> *needles) {
+    NSString *lowercase = value.lowercaseString;
+    for (NSString *needle in needles) if ([lowercase containsString:needle]) return YES;
+    return NO;
+}
+
+static void NNPSpotifyDumpLyricsRuntime(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        int classCount = objc_getClassList(NULL, 0);
+        if (classCount <= 0) return;
+        __unsafe_unretained Class *classes = (__unsafe_unretained Class *)calloc((size_t)classCount, sizeof(Class));
+        if (!classes) return;
+        classCount = objc_getClassList(classes, classCount);
+        NSArray<NSString *> *classTerms = @[@"lyric", @"encore", @"karaoke", @"musixmatch", @"timedtext"];
+        NSArray<NSString *> *selectorTerms = @[@"lyric", @"line", @"time", @"progress", @"active", @"current", @"index", @"position", @"sync", @"playback"];
+        NSUInteger emitted = 0;
+        for (int index = 0; index < classCount && emitted < 160; index++) {
+            Class cls = classes[index];
+            NSString *name = NSStringFromClass(cls) ?: @"";
+            if (!NNPSpotifyStringContainsAny(name, classTerms)) continue;
+            Class superclass = class_getSuperclass(cls);
+            NSMutableArray<NSString *> *properties = [NSMutableArray array];
+            unsigned int propertyCount = 0;
+            objc_property_t *propertyList = class_copyPropertyList(cls, &propertyCount);
+            for (unsigned int propertyIndex = 0; propertyIndex < propertyCount; propertyIndex++) {
+                const char *propertyName = property_getName(propertyList[propertyIndex]);
+                const char *attributes = property_getAttributes(propertyList[propertyIndex]);
+                if (propertyName) [properties addObject:[NSString stringWithFormat:@"%s:%s", propertyName, attributes ?: "?"]];
+            }
+            free(propertyList);
+            NSMutableArray<NSString *> *ivars = [NSMutableArray array];
+            unsigned int ivarCount = 0;
+            Ivar *ivarList = class_copyIvarList(cls, &ivarCount);
+            for (unsigned int ivarIndex = 0; ivarIndex < ivarCount; ivarIndex++) {
+                const char *ivarName = ivar_getName(ivarList[ivarIndex]);
+                const char *type = ivar_getTypeEncoding(ivarList[ivarIndex]);
+                if (ivarName) [ivars addObject:[NSString stringWithFormat:@"%s:%s", ivarName, type ?: "?"]];
+            }
+            free(ivarList);
+            NSMutableArray<NSString *> *selectors = [NSMutableArray array];
+            unsigned int methodCount = 0;
+            Method *methods = class_copyMethodList(cls, &methodCount);
+            for (unsigned int methodIndex = 0; methodIndex < methodCount; methodIndex++) {
+                NSString *selector = NSStringFromSelector(method_getName(methods[methodIndex]));
+                if (NNPSpotifyStringContainsAny(selector, selectorTerms)) [selectors addObject:selector];
+            }
+            free(methods);
+            NNPSpotifyProbeAppend([NSString stringWithFormat:@"RUNTIME class=%@ super=%@ properties=%@ ivars=%@ selectors=%@",
+                                   name, superclass ? NSStringFromClass(superclass) : @"none",
+                                   [properties componentsJoinedByString:@","], [ivars componentsJoinedByString:@","],
+                                   [selectors componentsJoinedByString:@","]]);
+            emitted++;
+        }
+        NNPSpotifyProbeAppend([NSString stringWithFormat:@"RUNTIME summary classes=%d emitted=%lu", classCount, (unsigned long)emitted]);
+        free(classes);
+    });
 }
 
 static BOOL NNPSpotifyIsNonLyricLabel(NSString *text) {
@@ -71,7 +132,14 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
         if (text.length >= 2 && !NNPSpotifyIsNonLyricLabel(text) &&
             frame.size.height >= 12.0 && frame.size.height <= 100.0 &&
             CGRectIntersectsRect(frame, window.bounds)) {
-            [rows addObject:@{@"text": text, @"midY": @(CGRectGetMidY(frame))}];
+            UILabel *label = (UILabel *)view;
+            [rows addObject:@{@"text": text, @"midY": @(CGRectGetMidY(frame)),
+                              @"class": className,
+                              @"alpha": @(label.alpha),
+                              @"font": label.font.fontName ?: @"",
+                              @"fontSize": @(label.font.pointSize),
+                              @"color": label.textColor.description ?: @"",
+                              @"identifier": label.accessibilityIdentifier ?: @""}];
         }
     }
     for (UIView *child in view.subviews)
@@ -155,6 +223,19 @@ static void NNPSpotifyLyricsProbeCapture(void) {
     }
     NSString *current = lines[MIN(activeIndex, lines.count - 1)];
     NSString *next = activeIndex + 1 < lines.count ? lines[activeIndex + 1] : @"";
+    static NSString *lastSelectionSignature;
+    NSString *selectionSignature = [NSString stringWithFormat:@"%lu|%@|%@", (unsigned long)activeIndex, current, next];
+    if (![lastSelectionSignature isEqualToString:selectionSignature]) {
+        lastSelectionSignature = selectionSignature;
+        NSMutableArray<NSString *> *rowDetails = [NSMutableArray arrayWithCapacity:uniqueRows.count];
+        for (NSDictionary *row in uniqueRows) {
+            [rowDetails addObject:[NSString stringWithFormat:@"%@ y=%.1f a=%.2f font=%@/%.1f color=%@ class=%@",
+                                   row[@"text"], [row[@"midY"] doubleValue], [row[@"alpha"] doubleValue],
+                                   row[@"font"], [row[@"fontSize"] doubleValue], row[@"color"], row[@"class"]]];
+        }
+        NNPSpotifyProbeAppend([NSString stringWithFormat:@"RUNTIME rows=%@ activeIndex=%lu targetY=%.1f",
+                               [rowDetails componentsJoinedByString:@" | "], (unsigned long)activeIndex, targetY]);
+    }
     NNPSpotifyPublishLyrics(current, next, lines);
 }
 
@@ -164,6 +245,7 @@ void NNPSpotifyLyricsProbeStart(void) {
     [NSUserDefaults.standardUserDefaults synchronize];
     NNPSpotifyProbeAppend([NSString stringWithFormat:@"START pid=%d process=%@ bundle=%@", getpid(),
                            NSProcessInfo.processInfo.processName ?: @"?", NSBundle.mainBundle.bundleIdentifier ?: @"?"]);
+    NNPSpotifyDumpLyricsRuntime();
     dispatch_async(dispatch_get_main_queue(), ^{
         NNPSpotifyLyricsProbeCapture();
         [NSTimer scheduledTimerWithTimeInterval:0.8 repeats:YES block:^(__unused NSTimer *timer) {
