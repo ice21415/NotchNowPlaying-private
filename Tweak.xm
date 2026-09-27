@@ -3,7 +3,6 @@
 #import "NNPController.h"
 #import "NNPDiagnostics.h"
 #import "NNPDisplayController.h"
-#import "NNPSpotifyLyricsProbe.h"
 #ifndef NNP_PHASE2J_READONLY_RUNTIME
 #define NNP_PHASE2J_READONLY_RUNTIME 0
 #endif
@@ -74,12 +73,6 @@ static __attribute__((noinline)) void NNPLocalNoop(void) {
 #endif
 
 %ctor {
-    NSString *nnpBundleIdentifier = NSBundle.mainBundle.bundleIdentifier;
-    if ([nnpBundleIdentifier isEqualToString:@"com.spotify.client"]) {
-        NNPSpotifyLyricsProbeStart();
-        return;
-    }
-    if (![nnpBundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
 #if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG
     NNPPhase4ASetDiagnosticValue(@"BuildIdentity", NNPPhase4ABuildIdentity());
     NNPPhase4ASetDiagnosticBoolean(@"CtorEntered", YES);

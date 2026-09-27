@@ -61,6 +61,18 @@ jobs:
           file "$dylib"
           xcrun lipo "$dylib" -verify_arch arm64e
           xcrun vtool -show-build "$dylib"
+          spotify_probe=$(find /tmp/notchnowplaying-phase7 -name NNPSpotifyProbe.dylib -print -quit)
+          test -n "$spotify_probe"
+          file "$spotify_probe"
+          xcrun lipo "$spotify_probe" -verify_arch arm64e
+          xcrun vtool -show-build "$spotify_probe"
+          spotify_filter=$(find /tmp/notchnowplaying-phase7 -name NNPSpotifyProbe.plist -print -quit)
+          test -n "$spotify_filter"
+          plutil -lint "$spotify_filter"
+          main_filter=$(find /tmp/notchnowplaying-phase7 -name NotchNowPlaying.plist -print -quit)
+          test -n "$main_filter"
+          grep -q 'com.apple.springboard' "$main_filter"
+          ! grep -q 'com.spotify.client' "$main_filter"
 
       - name: Upload experimental diagnostics
         if: always()

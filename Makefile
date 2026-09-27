@@ -8,8 +8,11 @@ STRIP := 1
 
 include $(THEOS)/makefiles/common.mk
 
-TWEAK_NAME := NotchNowPlaying
-NotchNowPlaying_FILES := Tweak.xm NNPState.m NNPView.m NNPController.m NNPDiagnostics.m NNPPreferences.m NNPLockStateController.m NNPDisplayController.m NNPSpotifyLyricsProbe.m
+TWEAK_NAME := NotchNowPlaying NNPSpotifyProbe
+NotchNowPlaying_FILES := Tweak.xm NNPState.m NNPView.m NNPController.m NNPDiagnostics.m NNPPreferences.m NNPLockStateController.m NNPDisplayController.m
+NNPSpotifyProbe_FILES := NNPSpotifyProbe.xm NNPSpotifyLyricsProbe.m
+NNPSpotifyProbe_CFLAGS := -fobjc-arc -fvisibility=hidden -fno-ident
+NNPSpotifyProbe_FRAMEWORKS := Foundation
 NNP_SAFE_BOOT_TEST ?= 0
 NNP_DEBUG_SHOW_WHILE_UNLOCKED ?= 0
 NNP_ALLOW_ALL_MEDIA ?= 0
@@ -55,6 +58,7 @@ NotchNowPlaying_CFLAGS += -DNNP_PHASE4A_CTOR_PREFERENCES_PROBE=$(NNP_PHASE4A_CTO
 NotchNowPlaying_CFLAGS += -DNNP_ENABLE_PHASE4B_DISPLAY_MODE_TRACE=$(NNP_ENABLE_PHASE4B_DISPLAY_MODE_TRACE)
 NotchNowPlaying_LDFLAGS := -Wl,-dead_strip
 NotchNowPlaying_FRAMEWORKS := UIKit
+NNPSpotifyProbe_LDFLAGS := -Wl,-dead_strip
 
 ifeq ($(NNP_SAFE_BOOT_TEST),0)
 NotchNowPlaying_FILES += NNPMediaController.m
