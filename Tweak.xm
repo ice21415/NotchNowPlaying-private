@@ -3,6 +3,7 @@
 #import "NNPController.h"
 #import "NNPDiagnostics.h"
 #import "NNPDisplayController.h"
+#import "NNPNotificationDiagnostics.h"
 #ifndef NNP_PHASE2J_READONLY_RUNTIME
 #define NNP_PHASE2J_READONLY_RUNTIME 0
 #endif
@@ -106,6 +107,7 @@ static __attribute__((noinline)) void NNPLocalNoop(void) {
         gNNPBackBoardReadOnlyDiagnostics = [NNPBackBoardReadOnlyDiagnostics new];
         [gNNPBackBoardReadOnlyDiagnostics start];
 #endif
+        NNPNotificationDiagnosticsStart();
         [[NNPController sharedController] install];
 #if NNP_ENABLE_SSH_SCREENSHOT_PROBE
         NNPScreenshotProbeInterfaces();

@@ -1,5 +1,6 @@
 #import "NNPDisplayController.h"
 #import "NNPDiagnostics.h"
+#import "NNPNotificationDiagnostics.h"
 #import <math.h>
 
 #ifndef NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
@@ -121,6 +122,7 @@ void NNPPhase7NotifyDisplayWake(void) {
 - (void)setAODPresentationActive:(BOOL)active {
     if (_aodPresentationActive == active) return;
     _aodPresentationActive = active;
+    NNPNotificationDiagnosticsSetDisplayState(self.deviceLocked, _aodPresentationActive);
     NNPDiagnosticSetBool(@"Phase7AODPresentationActive", active);
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY AOD presentation active=%@", active ? @"YES" : @"NO"]);
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE && NNP_PHASE7_DRY_RUN == 0
@@ -148,6 +150,7 @@ void NNPPhase7NotifyDisplayWake(void) {
     if (_deviceLocked == deviceLocked) return;
     BOOL wasLocked = _deviceLocked;
     _deviceLocked = deviceLocked;
+    NNPNotificationDiagnosticsSetDisplayState(_deviceLocked, self.aodPresentationActive);
     NNPPhase7UpdateForensicsState(_lifecycleState, _deviceLocked, self.modeSubstitutionObserved, self.visibleDurationTimer != nil);
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY deviceLocked=%@ session=%@", deviceLocked ? @"YES" : @"NO", self.sessionIdentifier ?: @"none"]);
     if (wasLocked && !deviceLocked &&

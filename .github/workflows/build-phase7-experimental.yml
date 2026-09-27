@@ -73,6 +73,9 @@ jobs:
           test -n "$main_filter"
           grep -q 'com.apple.springboard' "$main_filter"
           ! grep -q 'com.spotify.client' "$main_filter"
+          preferences=$(find /tmp/notchnowplaying-phase7 -path '*/Library/PreferenceLoader/Preferences/NotchNowPlaying.plist' -print -quit)
+          test -n "$preferences"
+          grep -q 'NotificationWakeTraceEnabled' "$preferences"
 
       - name: Upload experimental diagnostics
         if: always()

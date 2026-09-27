@@ -48,6 +48,7 @@
         { cell = PSGroupCell; label = "AOD 時間上限"; footerText = "只有關閉「持續顯示」時才使用。預設 30 秒，範圍 5 至 60 秒。調整時間後，下次進入 AOD 時生效。"; },
         { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = ExperimentalMaxDuration; label = "時間（秒）"; default = 30; min = 5; max = 60; showValue = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
 
-        { cell = PSGroupCell; label = "診斷資料"; footerText = "插件會在手機本機儲存執行紀錄，用於排查問題。"; }
+        { cell = PSGroupCell; label = "診斷資料"; footerText = "插件會在手機本機儲存執行紀錄，用於排查問題。通知喚醒追蹤只記錄來源 App、鎖定／AOD 狀態和背光來源，不記錄通知內容；測試結束後請關閉。"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = NotificationWakeTraceEnabled; label = "記錄通知喚醒事件"; default = 0; PostNotification = "com.user.notchnowplaying.preferences.changed"; }
     );
 }
