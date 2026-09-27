@@ -9,7 +9,7 @@ STRIP := 1
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME := NotchNowPlaying
-NotchNowPlaying_FILES := Tweak.xm NNPState.m NNPView.m NNPController.m NNPDiagnostics.m NNPPreferences.m NNPLockStateController.m NNPDisplayController.m
+NotchNowPlaying_FILES := Tweak.xm NNPState.m NNPView.m NNPController.m NNPDiagnostics.m NNPPreferences.m NNPLockStateController.m NNPDisplayController.m NNPSpotifyLyricsProbe.m
 NNP_SAFE_BOOT_TEST ?= 0
 NNP_DEBUG_SHOW_WHILE_UNLOCKED ?= 0
 NNP_ALLOW_ALL_MEDIA ?= 0
