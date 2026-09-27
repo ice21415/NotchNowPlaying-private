@@ -145,7 +145,7 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
             NSMutableArray<NSString *> *ancestors = [NSMutableArray array];
             UIView *ancestor = view.superview;
             NSUInteger ancestorDepth = 0;
-            while (ancestor && ancestorDepth++ < 8) {
+            while (ancestor && ancestorDepth++ < 24) {
                 NSString *ancestorName = NSStringFromClass(ancestor.class) ?: @"?";
                 if ([ancestor isKindOfClass:UIScrollView.class]) {
                     CGPoint offset = ((UIScrollView *)ancestor).contentOffset;
@@ -168,6 +168,10 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
             NSInteger centerRow = -1;
             NSUInteger visibleCellCount = 0;
             NSString *tableIdentity = @"none";
+            NSString *lyricsSurface = @"unknown";
+            NSString *ancestorPath = [ancestors componentsJoinedByString:@"<"];
+            if ([ancestorPath containsString:@"Lyrics_CardElementImpl.CardView"]) lyricsSurface = @"now-playing-card";
+            else if ([ancestorPath containsString:@"Lyrics_FullscreenElementPageImpl.FullscreenView"]) lyricsSurface = @"fullscreen";
             if (lyricsCell) {
                 NSIndexPath *indexPath = [lyricsTable indexPathForCell:lyricsCell];
                 cellRow = indexPath ? (NSInteger)indexPath.row : -1;
@@ -205,39 +209,13 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
                               @"tableCenterRow": @(centerRow),
                               @"tableVisibleCount": @(visibleCellCount),
                               @"tableIdentity": tableIdentity,
+                              @"lyricsSurface": lyricsSurface,
                               @"z": @(label.layer.zPosition),
                               @"textAttributes": [textAttributes componentsJoinedByString:@"|"]}];
         }
     }
     for (UIView *child in view.subviews)
         NNPSpotifyCollectLyricLabels(child, window, insideLyrics, rows, depth + 1);
-}
-
-static void NNPSpotifyCollectLyricMirrors(UIView *view, UIWindow *window, NSSet<NSString *> *lyricTexts,
-                                          NSMutableArray<NSString *> *matches, BOOL inLyricsPage, NSUInteger depth) {
-    if (!view || depth > 48 || matches.count >= 80 || view.hidden || view.alpha < 0.01) return;
-    NSString *className = NSStringFromClass(view.class) ?: @"";
-    BOOL insideLyrics = inLyricsPage || [className rangeOfString:@"Lyrics" options:NSCaseInsensitiveSearch].location != NSNotFound;
-    if ([view isKindOfClass:UILabel.class]) {
-        UILabel *label = (UILabel *)view;
-        NSString *text = NNPSpotifyNormalizeLyricsText(label.text ?: label.accessibilityLabel);
-        if (text.length && [lyricTexts containsObject:text]) {
-            CGRect frame = [view convertRect:view.bounds toView:window];
-            NSMutableArray<NSString *> *ancestors = [NSMutableArray array];
-            UIView *ancestor = view.superview;
-            NSUInteger ancestorDepth = 0;
-            while (ancestor && ancestorDepth++ < 16) {
-                [ancestors addObject:NSStringFromClass(ancestor.class) ?: @"?"];
-                ancestor = ancestor.superview;
-            }
-            [matches addObject:[NSString stringWithFormat:@"text=%@ frame=%.1f,%.1f,%.1f,%.1f id=%@ color=%@ ancestors=%@",
-                                text, frame.origin.x, frame.origin.y, frame.size.width, frame.size.height,
-                                label.accessibilityIdentifier ?: @"", label.textColor.description ?: @"",
-                                [ancestors componentsJoinedByString:@"<"]]];
-        }
-    }
-    for (UIView *child in view.subviews)
-        NNPSpotifyCollectLyricMirrors(child, window, lyricTexts, matches, insideLyrics, depth + 1);
 }
 
 static BOOL NNPSpotifyPublishLyrics(NSString *current, NSString *next, NSArray<NSString *> *visibleLines) {
@@ -299,24 +277,6 @@ static void NNPSpotifyLyricsProbeCapture(void) {
             [uniqueRows addObject:row];
         }
     }
-    NSMutableSet<NSString *> *lyricTexts = [NSMutableSet setWithArray:lines];
-    NSMutableArray<NSString *> *mirrors = [NSMutableArray array];
-    for (UIScene *scene in application.connectedScenes) {
-        if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState == UISceneActivationStateUnattached) continue;
-        for (UIWindow *window in ((UIWindowScene *)scene).windows) {
-            if (!window.hidden && window.alpha >= 0.01)
-                NNPSpotifyCollectLyricMirrors(window, window, lyricTexts, mirrors, NO, 0);
-        }
-    }
-    static NSTimeInterval lastMirrorLogTime;
-    static NSString *lastMirrorSignature;
-    NSString *mirrorSignature = [mirrors componentsJoinedByString:@"|"];
-    NSTimeInterval mirrorNow = NSDate.date.timeIntervalSince1970;
-    if (mirrors.count && (![mirrorSignature isEqualToString:lastMirrorSignature] || mirrorNow - lastMirrorLogTime >= 4.0)) {
-        lastMirrorSignature = mirrorSignature;
-        lastMirrorLogTime = mirrorNow;
-        NNPSpotifyProbeAppend([NSString stringWithFormat:@"RUNTIME lyric-mirrors=%@", mirrorSignature]);
-    }
     if (lines.count == 0) {
         // Background Spotify can temporarily detach or hide its lyrics scene.
         // Preserve the most recent line instead of replacing it with an empty
@@ -326,12 +286,24 @@ static void NNPSpotifyLyricsProbeCapture(void) {
 
     // The synced lyric row sits two rows before Spotify's full-list viewport
     // center. Prefer that row/index relationship over a screen-space Y guess.
+    BOOL hasNowPlayingCardRow = NO;
+    for (NSDictionary *row in uniqueRows) {
+        NSInteger rowIndex = [row[@"cellRow"] integerValue];
+        NSInteger centerIndex = [row[@"tableCenterRow"] integerValue];
+        if ([row[@"lyricsSurface"] isEqualToString:@"now-playing-card"] &&
+            rowIndex >= 0 && centerIndex >= 0 && rowIndex == centerIndex - 2) {
+            hasNowPlayingCardRow = YES;
+            break;
+        }
+    }
+
     NSDictionary *synchronizedRow = nil;
     NSUInteger largestTable = 0;
     for (NSDictionary *row in uniqueRows) {
         NSInteger rowIndex = [row[@"cellRow"] integerValue];
         NSInteger centerIndex = [row[@"tableCenterRow"] integerValue];
         NSUInteger visibleCount = [row[@"tableVisibleCount"] unsignedIntegerValue];
+        if (hasNowPlayingCardRow && ![row[@"lyricsSurface"] isEqualToString:@"now-playing-card"]) continue;
         if (rowIndex >= 0 && centerIndex >= 0 && rowIndex == centerIndex - 2 && visibleCount >= largestTable) {
             synchronizedRow = row;
             largestTable = visibleCount;
@@ -381,13 +353,15 @@ static void NNPSpotifyLyricsProbeCapture(void) {
         lastDiagnosticsTime = now;
         NSMutableArray<NSString *> *rowDetails = [NSMutableArray arrayWithCapacity:uniqueRows.count];
         for (NSDictionary *row in uniqueRows) {
-            [rowDetails addObject:[NSString stringWithFormat:@"%@ y=%.1f a=%.2f z=%.1f font=%@/%.1f color=%@ id=%@ cell=%@ ancestors=%@ attrs=%@ class=%@",
+            [rowDetails addObject:[NSString stringWithFormat:@"%@ y=%.1f a=%.2f z=%.1f font=%@/%.1f color=%@ id=%@ surface=%@ cell=%@ attrs=%@ class=%@",
                                    row[@"text"], [row[@"midY"] doubleValue], [row[@"alpha"] doubleValue],
                                    [row[@"z"] doubleValue], row[@"font"], [row[@"fontSize"] doubleValue], row[@"color"],
-                                   row[@"identifier"], row[@"cellState"], row[@"ancestors"], row[@"textAttributes"], row[@"class"]]];
+                                   row[@"identifier"], row[@"lyricsSurface"], row[@"cellState"],
+                                   row[@"textAttributes"], row[@"class"]]];
         }
         NNPSpotifyProbeAppend([NSString stringWithFormat:@"RUNTIME rows=%@ source=%@ current=%@ next=%@",
-                               [rowDetails componentsJoinedByString:@" | "], synchronizedRow ? @"spotify-row-sync" : @"screen-center-fallback",
+                               [rowDetails componentsJoinedByString:@" | "],
+                               synchronizedRow ? synchronizedRow[@"lyricsSurface"] : @"screen-center-fallback",
                                current, next]);
     }
     NNPSpotifyPublishLyrics(current, next, lines);
