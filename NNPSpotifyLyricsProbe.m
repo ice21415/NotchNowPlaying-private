@@ -33,6 +33,27 @@ static void NNPSpotifyProbeAppend(NSString *line) {
     close(fd);
 }
 
+BOOL NNPSpotifyLyricsProbeShouldTraceNetworkRequest(NSURLRequest *request) {
+    NSString *url = request.URL.absoluteString.lowercaseString ?: @"";
+    return [url containsString:@"lyrics"] || [url containsString:@"spclient.wg.spotify.com"];
+}
+
+void NNPSpotifyLyricsProbeCaptureNetworkResponse(NSURLRequest *request, NSData *data, NSURLResponse *response, NSError *error) {
+    NSString *url = request.URL.absoluteString ?: @"";
+    NSString *lowercase = url.lowercaseString;
+    if (!NNPSpotifyLyricsProbeShouldTraceNetworkRequest(request)) return;
+    NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 0;
+    if (![lowercase containsString:@"lyrics"]) {
+        NNPSpotifyProbeAppend([NSString stringWithFormat:@"NETWORK request status=%ld bytes=%lu url=%@", (long)status, (unsigned long)data.length, url]);
+        return;
+    }
+    NSData *sample = data.length > 65536 ? [data subdataWithRange:NSMakeRange(0, 65536)] : data;
+    NSString *text = [[NSString alloc] initWithData:sample encoding:NSUTF8StringEncoding];
+    NSString *body = text.length ? text : [sample base64EncodedStringWithOptions:0];
+    NNPSpotifyProbeAppend([NSString stringWithFormat:@"NETWORK-LYRICS status=%ld bytes=%lu error=%@ url=%@ body=%@",
+                           (long)status, (unsigned long)data.length, error.localizedDescription ?: @"", url, body ?: @""]);
+}
+
 static BOOL NNPSpotifyIsRelevantModelClass(Class cls) {
     NSString *name = NSStringFromClass(cls) ?: @"";
     return NNPSpotifyStringContainsAny(name, @[@"lyrics", @"line", @"progress", @"position", @"provider", @"model", @"event"]);
