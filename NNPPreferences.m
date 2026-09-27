@@ -8,6 +8,32 @@ static CFStringRef const NNPPreferencesDomain = CFSTR("com.user.notchnowplaying"
 static id NNPPreferenceValue(NSString *key) {
     return CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)key, NNPPreferencesDomain));
 }
+static NSDictionary *NNPSpotifyLyricsSnapshot(void) {
+    static NSString *cachedPreferencesPath;
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    if (cachedPreferencesPath.length) {
+        NSDictionary *snapshot = [NSDictionary dictionaryWithContentsOfFile:cachedPreferencesPath];
+        if (snapshot) return snapshot;
+        cachedPreferencesPath = nil;
+    }
+
+    NSString *containersPath = @"/private/var/mobile/Containers/Data/Application";
+    NSArray<NSString *> *containerNames = [fileManager contentsOfDirectoryAtPath:containersPath error:nil];
+    for (NSString *containerName in containerNames) {
+        NSString *preferencesDirectory = [[containersPath stringByAppendingPathComponent:containerName]
+            stringByAppendingPathComponent:@"Library/Preferences"];
+        NSString *spotifyDefaults = [preferencesDirectory stringByAppendingPathComponent:@"com.spotify.client.plist"];
+        NSString *lyricsPreferences = [preferencesDirectory stringByAppendingPathComponent:@"com.user.notchnowplaying.plist"];
+        if (![fileManager fileExistsAtPath:spotifyDefaults] || ![fileManager fileExistsAtPath:lyricsPreferences]) continue;
+        NSDictionary *snapshot = [NSDictionary dictionaryWithContentsOfFile:lyricsPreferences];
+        if (![snapshot[@"SpotifyLyricsText"] isKindOfClass:NSString.class]) continue;
+        cachedPreferencesPath = lyricsPreferences;
+        NNPDiagnosticSetBool(@"SpotifyLyricsContainerReadable", YES);
+        return snapshot;
+    }
+    NNPDiagnosticSetBool(@"SpotifyLyricsContainerReadable", NO);
+    return @{};
+}
 static BOOL NNPBool(NSString *key, BOOL fallback) {
     id value = NNPPreferenceValue(key);
     return value ? [value boolValue] : fallback;
@@ -60,9 +86,10 @@ static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observe
     self.showArtist = NNPBool(@"ShowArtist", YES);
     self.showProgress = NNPBool(@"ShowProgress", YES);
     self.showLyrics = NNPBool(@"ShowLyrics", YES);
-    self.spotifyLyricsText = NNPPreferenceValue(@"SpotifyLyricsText") ?: @"";
-    self.spotifyLyricsNextLine = NNPPreferenceValue(@"SpotifyLyricsNextLine") ?: @"";
-    self.spotifyLyricsTrackTitle = NNPPreferenceValue(@"SpotifyLyricsTrackTitle") ?: @"";
+    NSDictionary *lyrics = NNPSpotifyLyricsSnapshot();
+    self.spotifyLyricsText = [lyrics[@"SpotifyLyricsText"] isKindOfClass:NSString.class] ? lyrics[@"SpotifyLyricsText"] : @"";
+    self.spotifyLyricsNextLine = [lyrics[@"SpotifyLyricsNextLine"] isKindOfClass:NSString.class] ? lyrics[@"SpotifyLyricsNextLine"] : @"";
+    self.spotifyLyricsTrackTitle = [lyrics[@"SpotifyLyricsTrackTitle"] isKindOfClass:NSString.class] ? lyrics[@"SpotifyLyricsTrackTitle"] : @"";
     self.hideWhenPaused = NNPBool(@"HideWhenPaused", YES);
     self.aodPixelShiftEnabled = NNPBool(@"AODPixelShiftEnabled", YES);
     self.aodBrightnessMultiplier = (float)MAX(1.0, MIN(4.0, NNPFloat(@"AODBrightnessMultiplier", 100.0) / 100.0));
