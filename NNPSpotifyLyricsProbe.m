@@ -116,17 +116,14 @@ static BOOL NNPSpotifyPublishLyrics(NSString *current, NSString *next, NSArray<N
 
 static void NNPSpotifyLyricsProbeCapture(void) {
     UIApplication *application = UIApplication.sharedApplication;
-    BOOL hasForegroundScene = NO;
     NSMutableArray<NSDictionary *> *rows = [NSMutableArray array];
     for (UIScene *scene in application.connectedScenes) {
-        if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState != UISceneActivationStateForegroundActive) continue;
-        hasForegroundScene = YES;
+        if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState == UISceneActivationStateUnattached) continue;
         for (UIWindow *window in ((UIWindowScene *)scene).windows) {
             if (window.hidden || window.alpha < 0.01) continue;
             NNPSpotifyCollectLyricLabels(window, window, NO, rows, 0);
         }
     }
-    if (!hasForegroundScene) return; // Keep the last captured line while Spotify is backgrounded/playing.
 
     [rows sortUsingComparator:^NSComparisonResult(NSDictionary *left, NSDictionary *right) {
         return [left[@"midY"] compare:right[@"midY"]];
@@ -141,7 +138,9 @@ static void NNPSpotifyLyricsProbeCapture(void) {
         }
     }
     if (lines.count == 0) {
-        NNPSpotifyPublishLyrics(@"", @"", @[]);
+        // Background Spotify can temporarily detach or hide its lyrics scene.
+        // Preserve the most recent line instead of replacing it with an empty
+        // value while playback continues.
         return;
     }
 
