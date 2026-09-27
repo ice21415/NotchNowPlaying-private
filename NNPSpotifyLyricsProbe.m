@@ -69,7 +69,7 @@ static BOOL NNPSpotifyIvarStoresKnownObject(NSString *name, NSString *type) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         knownNames = @[@"lyricsmodel", @"selectedlines", @"progresseventsource",
-                       @"lyricslinemodels", @"lyricsline", @"lyricslines", @"lineprovider",
+                       @"lyricslinemodels", @"lyricslines", @"lineprovider",
                        @"viewmodel", @"datasource", @"eventsource", @"binder",
                        @"listener", @"delegate", @"element", @"translation"];
     });
@@ -84,12 +84,6 @@ static NSString *NNPSpotifyScalarIvarValue(id object, Ivar ivar) {
     if (offset < 0) return nil;
     NSUInteger instanceSize = class_getInstanceSize(object_getClass(object));
     const uint8_t *bytes = (const uint8_t *)(__bridge const void *)object;
-    if (!encoding[0]) {
-        uint64_t raw = 0;
-        if ((NSUInteger)offset + sizeof(raw) > instanceSize) return nil;
-        memcpy(&raw, bytes + offset, sizeof(raw));
-        return [NSString stringWithFormat:@"raw=0x%016llx", raw];
-    }
     switch (encoding[0]) {
         case 'c': case 'C': case 'B': {
             int8_t value = 0; if ((NSUInteger)offset + sizeof(value) > instanceSize) return nil;
@@ -360,9 +354,6 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
             if (lyricsCell) {
                 NNPSpotifyDumpLyricsObjectGraph(lyricsCell);
                 NNPSpotifyDumpLyricsResponderModels(lyricsCell);
-                if (lyricsTable.dataSource) {
-                    NNPSpotifyDumpLyricsObjectGraph(lyricsTable.dataSource);
-                }
                 NSIndexPath *indexPath = [lyricsTable indexPathForCell:lyricsCell];
                 cellRow = indexPath ? (NSInteger)indexPath.row : -1;
                 NSIndexPath *centerIndexPath = nil;
