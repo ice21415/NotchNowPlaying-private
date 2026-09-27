@@ -129,9 +129,18 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
     if (insideLyrics && [view isKindOfClass:UILabel.class]) {
         NSString *text = NNPSpotifyNormalizeLyricsText(((UILabel *)view).text ?: view.accessibilityLabel);
         CGRect frame = [view convertRect:view.bounds toView:window];
+        UITableViewCell *lyricsCell = nil;
+        UITableView *lyricsTable = nil;
+        for (UIView *candidate = view.superview; candidate; candidate = candidate.superview) {
+            if (!lyricsCell && [candidate isKindOfClass:UITableViewCell.class]) lyricsCell = (UITableViewCell *)candidate;
+            if ([candidate isKindOfClass:UITableView.class]) { lyricsTable = (UITableView *)candidate; break; }
+        }
+        NSIndexPath *visibleCellPath = lyricsCell && lyricsTable ? [lyricsTable indexPathForCell:lyricsCell] : nil;
+        BOOL belongsToVisibleLyricsCell = visibleCellPath &&
+            [[lyricsTable indexPathsForVisibleRows] containsObject:visibleCellPath];
         if (text.length >= 2 && !NNPSpotifyIsNonLyricLabel(text) &&
             frame.size.height >= 12.0 && frame.size.height <= 100.0 &&
-            CGRectIntersectsRect(frame, window.bounds)) {
+            (CGRectIntersectsRect(frame, window.bounds) || belongsToVisibleLyricsCell)) {
             UILabel *label = (UILabel *)view;
             NSMutableArray<NSString *> *ancestors = [NSMutableArray array];
             UIView *ancestor = view.superview;
@@ -154,20 +163,22 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
                 [textAttributes addObject:[NSString stringWithFormat:@"%lu:color=%@,font=%@", (unsigned long)range.length,
                                            foreground ?: @"default", font ?: @"default"]];
             }];
-            UITableViewCell *lyricsCell = nil;
-            UITableView *lyricsTable = nil;
-            for (UIView *candidate = view.superview; candidate; candidate = candidate.superview) {
-                if (!lyricsCell && [candidate isKindOfClass:UITableViewCell.class]) lyricsCell = (UITableViewCell *)candidate;
-                if ([candidate isKindOfClass:UITableView.class]) { lyricsTable = (UITableView *)candidate; break; }
-            }
             NSString *cellState = @"none";
+            NSInteger cellRow = -1;
+            NSInteger centerRow = -1;
+            NSUInteger visibleCellCount = 0;
+            NSString *tableIdentity = @"none";
             if (lyricsCell) {
                 NSIndexPath *indexPath = [lyricsTable indexPathForCell:lyricsCell];
+                cellRow = indexPath ? (NSInteger)indexPath.row : -1;
                 NSIndexPath *centerIndexPath = nil;
                 NSString *tableState = @"no-table";
                 if (lyricsTable) {
                     CGPoint center = CGPointMake(CGRectGetMidX(lyricsTable.bounds), CGRectGetMidY(lyricsTable.bounds));
                     centerIndexPath = [lyricsTable indexPathForRowAtPoint:center];
+                    centerRow = centerIndexPath ? (NSInteger)centerIndexPath.row : -1;
+                    visibleCellCount = lyricsTable.indexPathsForVisibleRows.count;
+                    tableIdentity = [NSString stringWithFormat:@"%p", lyricsTable];
                     CGRect tableFrame = [lyricsTable convertRect:lyricsTable.bounds toView:window];
                     tableState = [NSString stringWithFormat:@"table=%p frame=%.1f,%.1f,%.1f,%.1f centerRow=%ld visible=%lu offset=%.1f",
                                   lyricsTable, tableFrame.origin.x, tableFrame.origin.y, tableFrame.size.width, tableFrame.size.height,
@@ -190,6 +201,10 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
                               @"identifier": label.accessibilityIdentifier ?: @"",
                               @"ancestors": [ancestors componentsJoinedByString:@"<"],
                               @"cellState": cellState,
+                              @"cellRow": @(cellRow),
+                              @"tableCenterRow": @(centerRow),
+                              @"tableVisibleCount": @(visibleCellCount),
+                              @"tableIdentity": tableIdentity,
                               @"z": @(label.layer.zPosition),
                               @"textAttributes": [textAttributes componentsJoinedByString:@"|"]}];
         }
@@ -264,20 +279,57 @@ static void NNPSpotifyLyricsProbeCapture(void) {
         return;
     }
 
-    // Spotify auto-scrolls the lyrics view around the active verse. Use the
-    // visible line nearest the lyrics viewport's vertical center as the lead.
-    CGFloat targetY = UIScreen.mainScreen.bounds.size.height * 0.31;
-    NSUInteger activeIndex = 0;
-    CGFloat nearestDistance = CGFLOAT_MAX;
-    for (NSUInteger index = 0; index < uniqueRows.count; index++) {
-        CGFloat distance = fabs([uniqueRows[index][@"midY"] doubleValue] - targetY);
-        if (distance < nearestDistance) { nearestDistance = distance; activeIndex = index; }
+    // The synced lyric row sits two rows before Spotify's full-list viewport
+    // center. Prefer that row/index relationship over a screen-space Y guess.
+    NSDictionary *synchronizedRow = nil;
+    NSUInteger largestTable = 0;
+    for (NSDictionary *row in uniqueRows) {
+        NSInteger rowIndex = [row[@"cellRow"] integerValue];
+        NSInteger centerIndex = [row[@"tableCenterRow"] integerValue];
+        NSUInteger visibleCount = [row[@"tableVisibleCount"] unsignedIntegerValue];
+        if (rowIndex >= 0 && centerIndex >= 0 && rowIndex == centerIndex - 2 && visibleCount >= largestTable) {
+            synchronizedRow = row;
+            largestTable = visibleCount;
+        }
     }
-    NSString *current = lines[MIN(activeIndex, lines.count - 1)];
-    NSString *next = activeIndex + 1 < lines.count ? lines[activeIndex + 1] : @"";
+
+    NSString *current = nil;
+    NSString *next = @"";
+    if (synchronizedRow) {
+        NSString *tableIdentity = synchronizedRow[@"tableIdentity"];
+        NSInteger currentIndex = [synchronizedRow[@"cellRow"] integerValue];
+        NSMutableArray<NSDictionary *> *activeTableRows = [NSMutableArray array];
+        for (NSDictionary *row in uniqueRows) {
+            if ([row[@"tableIdentity"] isEqualToString:tableIdentity] && [row[@"cellRow"] integerValue] >= 0)
+                [activeTableRows addObject:row];
+        }
+        [activeTableRows sortUsingComparator:^NSComparisonResult(NSDictionary *left, NSDictionary *right) {
+            return [left[@"cellRow"] compare:right[@"cellRow"]];
+        }];
+        [lines removeAllObjects];
+        NSInteger lastRow = -1;
+        for (NSDictionary *row in activeTableRows) {
+            NSInteger rowIndex = [row[@"cellRow"] integerValue];
+            NSString *text = row[@"text"];
+            if (rowIndex != lastRow && text.length) [lines addObject:text];
+            if (rowIndex == currentIndex + 1) next = text ?: @"";
+            lastRow = rowIndex;
+        }
+        current = synchronizedRow[@"text"];
+    } else {
+        CGFloat targetY = UIScreen.mainScreen.bounds.size.height * 0.31;
+        NSUInteger activeIndex = 0;
+        CGFloat nearestDistance = CGFLOAT_MAX;
+        for (NSUInteger index = 0; index < uniqueRows.count; index++) {
+            CGFloat distance = fabs([uniqueRows[index][@"midY"] doubleValue] - targetY);
+            if (distance < nearestDistance) { nearestDistance = distance; activeIndex = index; }
+        }
+        current = lines[MIN(activeIndex, lines.count - 1)];
+        next = activeIndex + 1 < lines.count ? lines[activeIndex + 1] : @"";
+    }
     static NSString *lastSelectionSignature;
     static NSTimeInterval lastDiagnosticsTime;
-    NSString *selectionSignature = [NSString stringWithFormat:@"%lu|%@|%@", (unsigned long)activeIndex, current, next];
+    NSString *selectionSignature = [NSString stringWithFormat:@"%@|%@|%@", synchronizedRow[@"cellRow"] ?: @"fallback", current, next];
     NSTimeInterval now = NSDate.date.timeIntervalSince1970;
     if (![lastSelectionSignature isEqualToString:selectionSignature] || now - lastDiagnosticsTime >= 4.0) {
         lastSelectionSignature = selectionSignature;
@@ -289,8 +341,9 @@ static void NNPSpotifyLyricsProbeCapture(void) {
                                    [row[@"z"] doubleValue], row[@"font"], [row[@"fontSize"] doubleValue], row[@"color"],
                                    row[@"identifier"], row[@"cellState"], row[@"ancestors"], row[@"textAttributes"], row[@"class"]]];
         }
-        NNPSpotifyProbeAppend([NSString stringWithFormat:@"RUNTIME rows=%@ activeIndex=%lu targetY=%.1f",
-                               [rowDetails componentsJoinedByString:@" | "], (unsigned long)activeIndex, targetY]);
+        NNPSpotifyProbeAppend([NSString stringWithFormat:@"RUNTIME rows=%@ source=%@ current=%@ next=%@",
+                               [rowDetails componentsJoinedByString:@" | "], synchronizedRow ? @"spotify-row-sync" : @"screen-center-fallback",
+                               current, next]);
     }
     NNPSpotifyPublishLyrics(current, next, lines);
 }
