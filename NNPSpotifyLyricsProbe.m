@@ -166,6 +166,7 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
             NSString *cellState = @"none";
             NSInteger cellRow = -1;
             NSInteger centerRow = -1;
+            CGFloat tableCenterY = CGRectGetMidY(window.bounds);
             NSUInteger visibleCellCount = 0;
             NSString *tableIdentity = @"none";
             NSString *lyricsSurface = @"unknown";
@@ -184,6 +185,7 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
                     visibleCellCount = lyricsTable.indexPathsForVisibleRows.count;
                     tableIdentity = [NSString stringWithFormat:@"%p", lyricsTable];
                     CGRect tableFrame = [lyricsTable convertRect:lyricsTable.bounds toView:window];
+                    tableCenterY = CGRectGetMidY(tableFrame);
                     tableState = [NSString stringWithFormat:@"table=%p frame=%.1f,%.1f,%.1f,%.1f centerRow=%ld visible=%lu offset=%.1f",
                                   lyricsTable, tableFrame.origin.x, tableFrame.origin.y, tableFrame.size.width, tableFrame.size.height,
                                   centerIndexPath ? (long)centerIndexPath.row : -1L,
@@ -207,6 +209,7 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
                               @"cellState": cellState,
                               @"cellRow": @(cellRow),
                               @"tableCenterRow": @(centerRow),
+                              @"tableCenterY": @(tableCenterY),
                               @"tableVisibleCount": @(visibleCellCount),
                               @"tableIdentity": tableIdentity,
                               @"lyricsSurface": lyricsSurface,
@@ -270,12 +273,19 @@ static void NNPSpotifyLyricsProbeCapture(void) {
     }];
     NSMutableArray<NSDictionary *> *uniqueRows = [NSMutableArray arrayWithCapacity:rows.count];
     NSMutableArray<NSString *> *lines = [NSMutableArray arrayWithCapacity:rows.count];
+    NSMutableSet<NSString *> *seenRowKeys = [NSMutableSet set];
     for (NSDictionary *row in rows) {
         NSString *text = row[@"text"];
-        if (text.length && ![lines.lastObject isEqualToString:text]) {
-            [lines addObject:text];
-            [uniqueRows addObject:row];
-        }
+        if (!text.length) continue;
+        NSInteger rowIndex = [row[@"cellRow"] integerValue];
+        NSString *tableIdentity = row[@"tableIdentity"];
+        NSString *rowKey = rowIndex >= 0 && ![tableIdentity isEqualToString:@"none"]
+            ? [NSString stringWithFormat:@"%@|%ld", tableIdentity, (long)rowIndex]
+            : [NSString stringWithFormat:@"%@|%@|%.0f", row[@"lyricsSurface"], text, [row[@"midY"] doubleValue]];
+        if ([seenRowKeys containsObject:rowKey]) continue;
+        [seenRowKeys addObject:rowKey];
+        [uniqueRows addObject:row];
+        if (![lines.lastObject isEqualToString:text]) [lines addObject:text];
     }
     if (lines.count == 0) {
         // Background Spotify can temporarily detach or hide its lyrics scene.
@@ -284,29 +294,46 @@ static void NNPSpotifyLyricsProbeCapture(void) {
         return;
     }
 
-    // The synced lyric row sits two rows before Spotify's full-list viewport
-    // center. Prefer that row/index relationship over a screen-space Y guess.
-    BOOL hasNowPlayingCardRow = NO;
+    NSDictionary *synchronizedRow = nil;
+    NSInteger preferredSurfaceRank = -1;
+    // The fullscreen lyrics page owns the live, auto-following list when it is
+    // present. The compact Now Playing card can retain a separate stale offset.
+    // Spotify's auto-follow anchor is the row under the table's viewport center;
+    // do not compensate with a fixed row offset, which drifts across layouts.
     for (NSDictionary *row in uniqueRows) {
-        NSInteger rowIndex = [row[@"cellRow"] integerValue];
-        NSInteger centerIndex = [row[@"tableCenterRow"] integerValue];
-        if ([row[@"lyricsSurface"] isEqualToString:@"now-playing-card"] &&
-            rowIndex >= 0 && centerIndex >= 0 && rowIndex == centerIndex - 2) {
-            hasNowPlayingCardRow = YES;
-            break;
-        }
+        if ([row[@"cellRow"] integerValue] < 0 ||
+            [row[@"tableCenterRow"] integerValue] < 0 ||
+            [row[@"tableIdentity"] isEqualToString:@"none"]) continue;
+        NSString *surface = row[@"lyricsSurface"];
+        NSInteger rank = [surface isEqualToString:@"fullscreen"] ? 2 :
+                         [surface isEqualToString:@"now-playing-card"] ? 1 : 0;
+        preferredSurfaceRank = MAX(preferredSurfaceRank, rank);
     }
 
-    NSDictionary *synchronizedRow = nil;
-    NSUInteger largestTable = 0;
+    CGFloat nearestCenterDistance = CGFLOAT_MAX;
+    NSUInteger selectedVisibleCount = 0;
     for (NSDictionary *row in uniqueRows) {
+        if ([row[@"cellRow"] integerValue] < 0 ||
+            [row[@"tableIdentity"] isEqualToString:@"none"]) continue;
+        NSString *surface = row[@"lyricsSurface"];
+        NSInteger rank = [surface isEqualToString:@"fullscreen"] ? 2 :
+                         [surface isEqualToString:@"now-playing-card"] ? 1 : 0;
+        if (rank != preferredSurfaceRank) continue;
+
+        CGFloat distance = fabs([row[@"midY"] doubleValue] - [row[@"tableCenterY"] doubleValue]);
+        NSUInteger visibleCount = [row[@"tableVisibleCount"] unsignedIntegerValue];
         NSInteger rowIndex = [row[@"cellRow"] integerValue];
         NSInteger centerIndex = [row[@"tableCenterRow"] integerValue];
-        NSUInteger visibleCount = [row[@"tableVisibleCount"] unsignedIntegerValue];
-        if (hasNowPlayingCardRow && ![row[@"lyricsSurface"] isEqualToString:@"now-playing-card"]) continue;
-        if (rowIndex >= 0 && centerIndex >= 0 && rowIndex == centerIndex - 2 && visibleCount >= largestTable) {
+        BOOL isCenterRow = rowIndex == centerIndex;
+        BOOL selectedIsCenterRow = synchronizedRow &&
+            [synchronizedRow[@"cellRow"] integerValue] == [synchronizedRow[@"tableCenterRow"] integerValue];
+        if (!synchronizedRow ||
+            (isCenterRow && !selectedIsCenterRow) ||
+            (isCenterRow == selectedIsCenterRow && visibleCount > selectedVisibleCount) ||
+            (isCenterRow == selectedIsCenterRow && visibleCount == selectedVisibleCount && distance < nearestCenterDistance)) {
             synchronizedRow = row;
-            largestTable = visibleCount;
+            selectedVisibleCount = visibleCount;
+            nearestCenterDistance = distance;
         }
     }
 
@@ -325,11 +352,15 @@ static void NNPSpotifyLyricsProbeCapture(void) {
         }];
         [lines removeAllObjects];
         NSInteger lastRow = -1;
+        BOOL foundCurrent = NO;
         for (NSDictionary *row in activeTableRows) {
             NSInteger rowIndex = [row[@"cellRow"] integerValue];
             NSString *text = row[@"text"];
             if (rowIndex != lastRow && text.length) [lines addObject:text];
-            if (rowIndex == currentIndex + 1) next = text ?: @"";
+            if (!foundCurrent && rowIndex > currentIndex && text.length) {
+                next = text;
+                foundCurrent = YES;
+            }
             lastRow = rowIndex;
         }
         current = synchronizedRow[@"text"];
