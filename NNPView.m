@@ -434,11 +434,31 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     NSString *next = [nextLine stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
     NSString *text = current.length && next.length && ![current isEqualToString:next]
         ? [NSString stringWithFormat:@"%@\n%@", current, next] : current;
+    NSMutableAttributedString *styledText = [[NSMutableAttributedString alloc] initWithString:text attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:12.0 weight:UIFontWeightSemibold],
+        NSForegroundColorAttributeName: [UIColor colorWithWhite:1.0 alpha:0.92]
+    }];
+    if (current.length) {
+        [styledText addAttributes:@{
+            NSFontAttributeName: [UIFont systemFontOfSize:12.5 weight:UIFontWeightBold],
+            NSForegroundColorAttributeName: [self.accentColor colorWithAlphaComponent:1.0]
+        } range:NSMakeRange(0, current.length)];
+    }
+    if (next.length && text.length > current.length) {
+        [styledText addAttributes:@{
+            NSFontAttributeName: [UIFont systemFontOfSize:11.5 weight:UIFontWeightMedium],
+            NSForegroundColorAttributeName: [UIColor colorWithWhite:1.0 alpha:0.48]
+        } range:NSMakeRange(current.length + 1, next.length)];
+    }
     BOOL visible = self.showLyrics && text.length > 0;
-    if (![self.lyricsLabel.text isEqualToString:text]) {
-        [UIView transitionWithView:self.lyricsLabel duration:0.18 options:UIViewAnimationOptionTransitionCrossDissolve | UIViewAnimationOptionBeginFromCurrentState animations:^{
-            self.lyricsLabel.text = text;
+    BOOL textChanged = ![self.lyricsLabel.text isEqualToString:text];
+    BOOL styleChanged = ![self.lyricsLabel.attributedText isEqualToAttributedString:styledText];
+    if (textChanged) {
+        [UIView transitionWithView:self.lyricsLabel duration:0.38 options:UIViewAnimationOptionTransitionCrossDissolve | UIViewAnimationOptionBeginFromCurrentState animations:^{
+            self.lyricsLabel.attributedText = styledText;
         } completion:nil];
+    } else if (styleChanged) {
+        self.lyricsLabel.attributedText = styledText;
     }
     self.lyricsLabel.hidden = !visible;
     self.lyricsLabel.accessibilityLabel = text;
