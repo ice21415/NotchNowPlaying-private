@@ -1,4 +1,5 @@
 #import "NNPSpotifyLyricsProbe.h"
+#import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <fcntl.h>
 #import <stdlib.h>
@@ -92,6 +93,44 @@ static void NNPSpotifyLyricsProbeScan(NSUInteger pass) {
     NNPSpotifyProbePersistSnapshot();
 }
 
+static void NNPSpotifyLyricsProbeDumpView(UIView *view, NSUInteger depth, NSUInteger *logged) {
+    if (!view || depth > 40 || *logged >= 500) return;
+    if (view.hidden || view.alpha < 0.01 || view.bounds.size.width < 1 || view.bounds.size.height < 1) return;
+
+    NSMutableArray<NSString *> *values = [NSMutableArray array];
+    if (view.accessibilityLabel.length) [values addObject:[NSString stringWithFormat:@"a11y=%@", view.accessibilityLabel]];
+    if (view.accessibilityValue.length) [values addObject:[NSString stringWithFormat:@"value=%@", view.accessibilityValue]];
+    if ([view isKindOfClass:UILabel.class] && ((UILabel *)view).text.length)
+        [values addObject:[NSString stringWithFormat:@"text=%@", ((UILabel *)view).text]];
+    if ([view isKindOfClass:UITextView.class] && ((UITextView *)view).text.length)
+        [values addObject:[NSString stringWithFormat:@"text=%@", ((UITextView *)view).text]];
+    if ([view isKindOfClass:UIButton.class]) {
+        NSString *title = [(UIButton *)view titleForState:UIControlStateNormal];
+        if (title.length) [values addObject:[NSString stringWithFormat:@"title=%@", title]];
+    }
+    if (values.count) {
+        NNPSpotifyProbeAppend([NSString stringWithFormat:@"VIEW depth=%lu class=%@ frame=%@ %@", (unsigned long)depth,
+                               NSStringFromClass(view.class) ?: @"?", NSStringFromCGRect(view.frame), [values componentsJoinedByString:@" "]]);
+        (*logged)++;
+    }
+    for (UIView *child in view.subviews) NNPSpotifyLyricsProbeDumpView(child, depth + 1, logged);
+}
+
+static void NNPSpotifyLyricsProbeDumpVisibleText(NSUInteger pass) {
+    NSUInteger logged = 0;
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState != UISceneActivationStateForegroundActive) continue;
+        for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+            if (window.hidden || window.alpha < 0.01) continue;
+            NNPSpotifyProbeAppend([NSString stringWithFormat:@"VIEWTREE pass=%lu window=%@ key=%d", (unsigned long)pass,
+                                   NSStringFromClass(window.class), window.isKeyWindow]);
+            NNPSpotifyLyricsProbeDumpView(window, 0, &logged);
+        }
+    }
+    NNPSpotifyProbeAppend([NSString stringWithFormat:@"VIEWTREE_END pass=%lu text_nodes=%lu", (unsigned long)pass, (unsigned long)logged]);
+    NNPSpotifyProbePersistSnapshot();
+}
+
 void NNPSpotifyLyricsProbeStart(void) {
     [NSUserDefaults.standardUserDefaults setObject:[NSDate date] forKey:@"NNPSpotifyLyricsProbeStartedAt"];
     [NSUserDefaults.standardUserDefaults setObject:@(getpid()) forKey:@"NNPSpotifyLyricsProbePID"];
@@ -104,4 +143,9 @@ void NNPSpotifyLyricsProbeStart(void) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(30.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         NNPSpotifyLyricsProbeScan(2);
     });
+    for (NSUInteger pass = 1; pass <= 4; pass++) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((10.0 + 5.0 * (pass - 1)) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            NNPSpotifyLyricsProbeDumpVisibleText(pass);
+        });
+    }
 }
