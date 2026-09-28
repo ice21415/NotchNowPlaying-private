@@ -4,6 +4,10 @@
 #import <QuartzCore/QuartzCore.h>
 #import <math.h>
 
+#ifndef NNP_NOTIFICATION_SNAKE_GEOMETRY_DIAGNOSTICS
+#define NNP_NOTIFICATION_SNAKE_GEOMETRY_DIAGNOSTICS 0
+#endif
+
 #ifndef NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG
 #define NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG 0
 #endif
@@ -73,6 +77,34 @@ static UIBezierPath *NNPNotificationSnakeFinishPath(CGRect notch) {
     // The perimeter returns to the left playback-track endpoint.
     return NNPPlaybackTrackPath(notch, NO);
 }
+
+#if NNP_NOTIFICATION_SNAKE_GEOMETRY_DIAGNOSTICS
+static UIBezierPath *NNPNotificationSnakeCornerMarkersPath(CGRect notch) {
+    CGFloat pathLeft = CGRectGetMinX(notch) - 4.5;
+    CGFloat pathRight = CGRectGetMaxX(notch) + 4.5;
+    CGFloat pathTop = MAX(9.0, CGRectGetMinY(notch) + 9.0);
+    CGFloat pathBottom = CGRectGetMaxY(notch) + 4.0;
+    CGFloat radius = MIN(16.0, (pathBottom - pathTop) * 0.65);
+    CGFloat markerRadius = 2.5;
+    CGPoint points[] = {
+        CGPointMake(pathLeft, pathTop),
+        CGPointMake(pathLeft, pathBottom - radius),
+        CGPointMake(pathLeft + radius, pathBottom),
+        CGPointMake(pathRight - radius, pathBottom),
+        CGPointMake(pathRight, pathBottom - radius),
+        CGPointMake(pathRight, pathTop),
+    };
+    UIBezierPath *markers = [UIBezierPath bezierPath];
+    for (NSUInteger index = 0; index < sizeof(points) / sizeof(points[0]); index++) {
+        CGRect markerRect = CGRectMake(points[index].x - markerRadius,
+                                       points[index].y - markerRadius,
+                                       markerRadius * 2.0,
+                                       markerRadius * 2.0);
+        [markers appendPath:[UIBezierPath bezierPathWithOvalInRect:markerRect]];
+    }
+    return markers;
+}
+#endif
 
 static NSString *NNPPlaybackTimeString(NSTimeInterval seconds) {
     NSInteger wholeSeconds = (NSInteger)MAX(0.0, floor(seconds));
@@ -147,6 +179,10 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 @property(nonatomic, strong) UIColor *accentColor;
 @property(nonatomic, strong) CAShapeLayer *notificationSnakeLayer;
 @property(nonatomic, strong) CAShapeLayer *notificationSnakeFinishLayer;
+#if NNP_NOTIFICATION_SNAKE_GEOMETRY_DIAGNOSTICS
+@property(nonatomic, strong) CAShapeLayer *notificationSnakeDebugGuideLayer;
+@property(nonatomic, strong) CAShapeLayer *notificationSnakeDebugMarkersLayer;
+#endif
 @property(nonatomic) NSUInteger notificationSnakeGeneration;
 - (void)updateTitleMarquee;
 - (CGRect)notchRectUsingPrivateAPI:(BOOL *)usedPrivateAPI;
@@ -380,6 +416,16 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         self.notificationSnakeFinishLayer.path = NNPNotificationSnakeFinishPath(notch).CGPath;
         self.notificationSnakeFinishLayer.lineWidth = self.track.lineWidth + 2.5;
     }
+#if NNP_NOTIFICATION_SNAKE_GEOMETRY_DIAGNOSTICS
+    if (self.notificationSnakeDebugGuideLayer) {
+        self.notificationSnakeDebugGuideLayer.frame = self.bounds;
+        self.notificationSnakeDebugGuideLayer.path = NNPNotificationSnakeFinishPath(notch).CGPath;
+    }
+    if (self.notificationSnakeDebugMarkersLayer) {
+        self.notificationSnakeDebugMarkersLayer.frame = self.bounds;
+        self.notificationSnakeDebugMarkersLayer.path = NNPNotificationSnakeCornerMarkersPath(notch).CGPath;
+    }
+#endif
     [CATransaction commit];
     [self updateTitleMarquee];
 }
@@ -443,6 +489,24 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         self.notificationSnakeFinishLayer.contentsScale = MAX(UIScreen.mainScreen.scale, 1.0);
         [self.layer addSublayer:self.notificationSnakeFinishLayer];
     }
+#if NNP_NOTIFICATION_SNAKE_GEOMETRY_DIAGNOSTICS
+    if (!self.notificationSnakeDebugGuideLayer) {
+        self.notificationSnakeDebugGuideLayer = [CAShapeLayer layer];
+        self.notificationSnakeDebugGuideLayer.fillColor = UIColor.clearColor.CGColor;
+        self.notificationSnakeDebugGuideLayer.lineCap = kCALineCapRound;
+        self.notificationSnakeDebugGuideLayer.lineJoin = kCALineJoinRound;
+        self.notificationSnakeDebugGuideLayer.contentsScale = MAX(UIScreen.mainScreen.scale, 1.0);
+        [self.layer addSublayer:self.notificationSnakeDebugGuideLayer];
+    }
+    if (!self.notificationSnakeDebugMarkersLayer) {
+        self.notificationSnakeDebugMarkersLayer = [CAShapeLayer layer];
+        self.notificationSnakeDebugMarkersLayer.fillColor = [UIColor colorWithRed:1.0 green:0.1 blue:0.72 alpha:1.0].CGColor;
+        self.notificationSnakeDebugMarkersLayer.strokeColor = UIColor.whiteColor.CGColor;
+        self.notificationSnakeDebugMarkersLayer.lineWidth = 1.0;
+        self.notificationSnakeDebugMarkersLayer.contentsScale = MAX(UIScreen.mainScreen.scale, 1.0);
+        [self.layer addSublayer:self.notificationSnakeDebugMarkersLayer];
+    }
+#endif
 
     CAShapeLayer *snake = self.notificationSnakeLayer;
     CAShapeLayer *finish = self.notificationSnakeFinishLayer;
@@ -474,6 +538,47 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     finish.strokeEnd = 0.0;
     finish.opacity = 0.0;
     finish.hidden = NO;
+#if NNP_NOTIFICATION_SNAKE_GEOMETRY_DIAGNOSTICS
+    CGRect debugNotch = [self notchRectUsingPrivateAPI:NULL];
+    CAShapeLayer *debugGuide = self.notificationSnakeDebugGuideLayer;
+    debugGuide.frame = self.bounds;
+    debugGuide.path = NNPNotificationSnakeFinishPath(debugNotch).CGPath;
+    debugGuide.zPosition = 1002.0;
+    debugGuide.lineWidth = MAX(2.0, self.track.lineWidth + 1.0);
+    debugGuide.strokeColor = [UIColor colorWithRed:0.0 green:0.95 blue:1.0 alpha:0.92].CGColor;
+    debugGuide.lineDashPattern = @[@3.0, @2.0];
+    debugGuide.shadowColor = debugGuide.strokeColor;
+    debugGuide.shadowOpacity = 1.0;
+    debugGuide.shadowRadius = 7.0;
+    debugGuide.shadowOffset = CGSizeZero;
+    debugGuide.opacity = 1.0;
+    debugGuide.hidden = NO;
+
+    CAShapeLayer *debugMarkers = self.notificationSnakeDebugMarkersLayer;
+    debugMarkers.frame = self.bounds;
+    debugMarkers.path = NNPNotificationSnakeCornerMarkersPath(debugNotch).CGPath;
+    debugMarkers.zPosition = 1003.0;
+    debugMarkers.opacity = 1.0;
+    debugMarkers.hidden = NO;
+
+    NSMutableArray<NSString *> *ancestorDescriptions = [NSMutableArray array];
+    UIView *ancestor = self;
+    for (NSUInteger depth = 0; ancestor && depth < 10; depth++, ancestor = ancestor.superview) {
+        [ancestorDescriptions addObject:[NSString stringWithFormat:@"%@ frame=%@ bounds=%@ clips=%@ masks=%@ z=%.1f",
+            NSStringFromClass(ancestor.class), NSStringFromCGRect(ancestor.frame), NSStringFromCGRect(ancestor.bounds),
+            ancestor.clipsToBounds ? @"YES" : @"NO", ancestor.layer.masksToBounds ? @"YES" : @"NO", ancestor.layer.zPosition]];
+    }
+    CGFloat debugPathLeft = CGRectGetMinX(debugNotch) - 4.5;
+    CGFloat debugPathRight = CGRectGetMaxX(debugNotch) + 4.5;
+    CGFloat debugPathTop = MAX(9.0, CGRectGetMinY(debugNotch) + 9.0);
+    CGFloat debugPathBottom = CGRectGetMaxY(debugNotch) + 4.0;
+    CGFloat debugRadius = MIN(16.0, (debugPathBottom - debugPathTop) * 0.65);
+    NNPDiagnosticLogTransition([NSString stringWithFormat:
+        @"NOTIFICATION_SNAKE_GEOMETRY viewBounds=%@ notch=%@ U=(left=%.2f right=%.2f top=%.2f bottom=%.2f radius=%.2f) pixelShift=%@ ancestors=[%@] guide=cyan-dashed markers=magenta",
+        NSStringFromCGRect(self.bounds), NSStringFromCGRect(debugNotch), debugPathLeft, debugPathRight,
+        debugPathTop, debugPathBottom, debugRadius, NSStringFromCGPoint(self.pixelShiftPixels),
+        [ancestorDescriptions componentsJoinedByString:@" <- "]]);
+#endif
     [self updateNotificationSnakeCounterTransform];
 
     BOOL reduceMotion = UIAccessibilityIsReduceMotionEnabled();
@@ -570,6 +675,12 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         finish.opacity = 0.0;
         finish.strokeStart = 0.0;
         finish.strokeEnd = 0.0;
+#if NNP_NOTIFICATION_SNAKE_GEOMETRY_DIAGNOSTICS
+        self.notificationSnakeDebugGuideLayer.hidden = YES;
+        self.notificationSnakeDebugGuideLayer.opacity = 0.0;
+        self.notificationSnakeDebugMarkersLayer.hidden = YES;
+        self.notificationSnakeDebugMarkersLayer.opacity = 0.0;
+#endif
     });
     return YES;
 }

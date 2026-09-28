@@ -40,6 +40,7 @@ jobs:
             THEOS_PACKAGE_SCHEME=roothide \
             FINALPACKAGE=1 DEBUG=0 STRIP=1 \
             NNP_SAFE_BOOT_TEST=0 \
+            NNP_NOTIFICATION_SNAKE_GEOMETRY_DIAGNOSTICS=1 \
             NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE=1 \
             NNP_ENABLE_COVERSHEET_PRESENTATION=1 \
             NNP_ENABLE_SSH_SCREENSHOT_PROBE=1 \
@@ -55,7 +56,7 @@ jobs:
           package=$(find build-packages -maxdepth 1 -name '*.deb' -print -quit)
           test -n "$package"
           test "$(dpkg-deb -f "$package" Architecture)" = iphoneos-arm64e
-          test "$(dpkg-deb -f "$package" Version)" = 0.1.84
+          test "$(dpkg-deb -f "$package" Version)" = 0.1.85
           dpkg-deb -x "$package" /tmp/notchnowplaying-phase7
           dylib=$(find /tmp/notchnowplaying-phase7 -name NotchNowPlaying.dylib -print -quit)
           test -n "$dylib"
