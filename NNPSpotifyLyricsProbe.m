@@ -13,8 +13,146 @@
 static CFStringRef const NNPSpotifySharedPreferences = CFSTR("com.user.notchnowplaying");
 static CFStringRef const NNPSpotifyLyricsChangedNotification = CFSTR("com.user.notchnowplaying.preferences.changed");
 static BOOL NNPSpotifyStringContainsAny(NSString *value, NSArray<NSString *> *needles);
+static void NNPSpotifyProbeAppend(NSString *line);
 static char NNPSpotifyNetworkBodyAssociationKey;
 static char NNPSpotifyNetworkBodyTruncatedAssociationKey;
+static NSMutableDictionary<NSString *, NSDictionary *> *NNPSpotifyTrackContextByRequestPath;
+static NSObject *NNPSpotifyTrackContextLock;
+static dispatch_once_t NNPSpotifyTrackContextOnce;
+static NSString *NNPSpotifyVerifiedLyricsTrackTitle;
+static NSString *NNPSpotifyVerifiedLyricsTrackArtist;
+static NSString *NNPSpotifyVerifiedLyricsTrackIdentifierValue;
+
+static void NNPSpotifyEnsureTrackContextStore(void) {
+    dispatch_once(&NNPSpotifyTrackContextOnce, ^{
+        NNPSpotifyTrackContextByRequestPath = [NSMutableDictionary dictionary];
+        NNPSpotifyTrackContextLock = [NSObject new];
+    });
+}
+
+static BOOL NNPSpotifyMetadataStringMatches(NSString *left, NSString *right) {
+    NSString *first = [(left ?: @"") stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *second = [(right ?: @"") stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (!first.length || !second.length) return NO;
+    return [first compare:second options:NSCaseInsensitiveSearch | NSDiacriticInsensitiveSearch |
+            NSWidthInsensitiveSearch] == NSOrderedSame;
+}
+
+static BOOL NNPSpotifyTrackMetadataMatches(NSString *titleA, NSString *artistA,
+                                           NSString *titleB, NSString *artistB) {
+    if (!NNPSpotifyMetadataStringMatches(titleA, titleB)) return NO;
+    if (artistA.length && artistB.length && !NNPSpotifyMetadataStringMatches(artistA, artistB)) return NO;
+    return YES;
+}
+
+static NSString *NNPSpotifyTrackIdentifierFromMetadata(NSDictionary *metadata) {
+    id value = metadata[MPNowPlayingInfoPropertyExternalContentIdentifier];
+    if (![value isKindOfClass:NSString.class] || ![value length]) return @"";
+    NSString *identifier = [value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *lastComponent = [[identifier componentsSeparatedByCharactersInSet:
+                                [NSCharacterSet characterSetWithCharactersInString:@":/"]] lastObject];
+    NSRange queryStart = [lastComponent rangeOfString:@"?"];
+    if (queryStart.location != NSNotFound) lastComponent = [lastComponent substringToIndex:queryStart.location];
+    return lastComponent ?: @"";
+}
+
+static void NNPSpotifySetVerifiedLyricsTrack(NSString *title, NSString *artist, NSString *identifier) {
+    NNPSpotifyEnsureTrackContextStore();
+    @synchronized (NNPSpotifyTrackContextLock) {
+        NNPSpotifyVerifiedLyricsTrackTitle = [title copy] ?: @"";
+        NNPSpotifyVerifiedLyricsTrackArtist = [artist copy] ?: @"";
+        NNPSpotifyVerifiedLyricsTrackIdentifierValue = [identifier copy] ?: @"";
+    }
+}
+
+static NSString *NNPSpotifyVerifiedLyricsTrackIdentifier(void) {
+    NNPSpotifyEnsureTrackContextStore();
+    @synchronized (NNPSpotifyTrackContextLock) {
+        return [NNPSpotifyVerifiedLyricsTrackIdentifierValue copy] ?: @"";
+    }
+}
+
+static BOOL NNPSpotifyVisibleLyricsMatchVerifiedTrack(NSString *title, NSString *artist, NSString *identifier) {
+    NNPSpotifyEnsureTrackContextStore();
+    @synchronized (NNPSpotifyTrackContextLock) {
+        if (identifier.length && NNPSpotifyVerifiedLyricsTrackIdentifierValue.length)
+            return [identifier isEqualToString:NNPSpotifyVerifiedLyricsTrackIdentifierValue];
+        return NNPSpotifyTrackMetadataMatches(title, artist,
+                                              NNPSpotifyVerifiedLyricsTrackTitle,
+                                              NNPSpotifyVerifiedLyricsTrackArtist);
+    }
+}
+
+static void NNPSpotifyInitializeLyricsTrackAssociation(void) {
+    CFPreferencesAppSynchronize(NNPSpotifySharedPreferences);
+    id versionValue = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("SpotifyLyricsAssociationVersion"),
+                                                                   NNPSpotifySharedPreferences));
+    if (![versionValue isEqual:@3]) {
+        CFPreferencesSetAppValue(CFSTR("SpotifyLyricsText"), CFSTR(""), NNPSpotifySharedPreferences);
+        CFPreferencesSetAppValue(CFSTR("SpotifyLyricsNextLine"), CFSTR(""), NNPSpotifySharedPreferences);
+        CFPreferencesSetAppValue(CFSTR("SpotifyLyricsVisibleLines"), (__bridge CFArrayRef)@[], NNPSpotifySharedPreferences);
+        CFPreferencesSetAppValue(CFSTR("SpotifyLyricsTimedLines"), (__bridge CFArrayRef)@[], NNPSpotifySharedPreferences);
+        CFPreferencesSetAppValue(CFSTR("SpotifyLyricsTrackTitle"), CFSTR(""), NNPSpotifySharedPreferences);
+        CFPreferencesSetAppValue(CFSTR("SpotifyLyricsTrackArtist"), CFSTR(""), NNPSpotifySharedPreferences);
+        CFPreferencesSetAppValue(CFSTR("SpotifyLyricsTrackIdentifier"), CFSTR(""), NNPSpotifySharedPreferences);
+        CFPreferencesSetAppValue(CFSTR("SpotifyLyricsAssociationVersion"), (__bridge CFNumberRef)@3, NNPSpotifySharedPreferences);
+        Boolean synchronized = CFPreferencesAppSynchronize(NNPSpotifySharedPreferences);
+        NNPSpotifySetVerifiedLyricsTrack(@"", @"", @"");
+        if (synchronized) {
+            CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                                 NNPSpotifyLyricsChangedNotification, NULL, NULL, true);
+        }
+        NNPSpotifyProbeAppend(@"LYRICS snapshot reset for request-bound track association");
+        return;
+    }
+
+    id titleValue = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("SpotifyLyricsTrackTitle"), NNPSpotifySharedPreferences));
+    id artistValue = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("SpotifyLyricsTrackArtist"), NNPSpotifySharedPreferences));
+    id identifierValue = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("SpotifyLyricsTrackIdentifier"), NNPSpotifySharedPreferences));
+    id linesValue = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("SpotifyLyricsTimedLines"), NNPSpotifySharedPreferences));
+    NSString *title = [titleValue isKindOfClass:NSString.class] ? titleValue : @"";
+    NSString *artist = [artistValue isKindOfClass:NSString.class] ? artistValue : @"";
+    NSString *identifier = [identifierValue isKindOfClass:NSString.class] ? identifierValue : @"";
+    BOOL hasLines = [linesValue isKindOfClass:NSArray.class] && [linesValue count];
+    NNPSpotifySetVerifiedLyricsTrack(hasLines ? title : @"", hasLines ? artist : @"", hasLines ? identifier : @"");
+}
+
+static void NNPSpotifyRememberTrackForLyricsRequest(NSURLRequest *request) {
+    NSString *path = request.URL.path;
+    if (!path.length || ![request.URL.absoluteString.lowercaseString containsString:@"lyrics"]) return;
+    NSDictionary *nowPlaying = MPNowPlayingInfoCenter.defaultCenter.nowPlayingInfo ?: @{};
+    NSString *title = [nowPlaying[MPMediaItemPropertyTitle] isKindOfClass:NSString.class]
+        ? nowPlaying[MPMediaItemPropertyTitle] : @"";
+    NSString *artist = [nowPlaying[MPMediaItemPropertyArtist] isKindOfClass:NSString.class]
+        ? nowPlaying[MPMediaItemPropertyArtist] : @"";
+    NSString *identifier = request.URL.lastPathComponent ?: @"";
+    NSString *currentIdentifier = NNPSpotifyTrackIdentifierFromMetadata(nowPlaying);
+    NNPSpotifyEnsureTrackContextStore();
+    NSDictionary *context = @{@"capturedAt": @(NSDate.date.timeIntervalSince1970),
+                              @"title": title, @"artist": artist, @"identifier": identifier};
+    @synchronized (NNPSpotifyTrackContextLock) {
+        NSTimeInterval cutoff = NSDate.date.timeIntervalSince1970 - 300.0;
+        for (NSString *key in NNPSpotifyTrackContextByRequestPath.allKeys.copy) {
+            if ([NNPSpotifyTrackContextByRequestPath[key][@"capturedAt"] doubleValue] < cutoff)
+                [NNPSpotifyTrackContextByRequestPath removeObjectForKey:key];
+        }
+        if (NNPSpotifyTrackContextByRequestPath.count >= 64 && !NNPSpotifyTrackContextByRequestPath[path])
+            [NNPSpotifyTrackContextByRequestPath removeObjectForKey:NNPSpotifyTrackContextByRequestPath.allKeys.firstObject];
+        NNPSpotifyTrackContextByRequestPath[path] = context;
+    }
+    NNPSpotifyProbeAppend([NSString stringWithFormat:@"NETWORK-CONTEXT id=%@ currentID=%@ title=%@ artist=%@",
+                           identifier, currentIdentifier, title, artist]);
+}
+
+static NSDictionary *NNPSpotifyTrackContextForLyricsRequest(NSURLRequest *request) {
+    NSString *path = request.URL.path;
+    if (!path.length) return nil;
+    NNPSpotifyEnsureTrackContextStore();
+    @synchronized (NNPSpotifyTrackContextLock) {
+        return NNPSpotifyTrackContextByRequestPath[path];
+    }
+}
+
 static NSString *NNPSpotifyLyricsProbePath(void) {
     return [NSTemporaryDirectory() stringByAppendingPathComponent:@"nnp-spotify-lyrics-runtime.log"];
 }
@@ -168,6 +306,34 @@ static NSArray<NSDictionary *> *NNPSpotifyParseColorLyricsResponse(NSData *data,
 
 static void NNPSpotifyPublishTimedLyrics(NSArray<NSDictionary *> *lines, NSString *syncType, NSURLRequest *request) {
     NSDictionary *nowPlaying = MPNowPlayingInfoCenter.defaultCenter.nowPlayingInfo ?: @{};
+    NSDictionary *requestContext = NNPSpotifyTrackContextForLyricsRequest(request);
+    NSString *currentTrackTitle = [nowPlaying[MPMediaItemPropertyTitle] isKindOfClass:NSString.class]
+        ? nowPlaying[MPMediaItemPropertyTitle] : @"";
+    NSString *currentTrackArtist = [nowPlaying[MPMediaItemPropertyArtist] isKindOfClass:NSString.class]
+        ? nowPlaying[MPMediaItemPropertyArtist] : @"";
+    NSString *requestedTrackTitle = [requestContext[@"title"] isKindOfClass:NSString.class]
+        ? requestContext[@"title"] : @"";
+    NSString *requestedTrackArtist = [requestContext[@"artist"] isKindOfClass:NSString.class]
+        ? requestContext[@"artist"] : @"";
+    NSString *requestedTrackIdentifier = [requestContext[@"identifier"] isKindOfClass:NSString.class]
+        ? requestContext[@"identifier"] : @"";
+    NSString *currentTrackIdentifier = NNPSpotifyTrackIdentifierFromMetadata(nowPlaying);
+    BOOL identityMatches = NO;
+    NSString *identitySource = @"metadata";
+    if (requestedTrackIdentifier.length && currentTrackIdentifier.length) {
+        identityMatches = [requestedTrackIdentifier isEqualToString:currentTrackIdentifier];
+        identitySource = @"spotify-id";
+    } else if (requestedTrackTitle.length && currentTrackTitle.length) {
+        identityMatches = NNPSpotifyTrackMetadataMatches(requestedTrackTitle, requestedTrackArtist,
+                                                         currentTrackTitle, currentTrackArtist);
+    }
+    if (!requestContext || !identityMatches) {
+        NNPSpotifyProbeAppend([NSString stringWithFormat:
+                               @"NETWORK-PARSE dropped unverified response id=%@ currentID=%@ request=%@/%@ current=%@/%@",
+                               requestedTrackIdentifier, currentTrackIdentifier,
+                               requestedTrackTitle, requestedTrackArtist, currentTrackTitle, currentTrackArtist]);
+        return;
+    }
     id elapsedValue = nowPlaying[MPNowPlayingInfoPropertyElapsedPlaybackTime];
     NSTimeInterval elapsed = [elapsedValue respondsToSelector:@selector(doubleValue)] ? [elapsedValue doubleValue] : 0.0;
     NSUInteger currentIndex = 0;
@@ -177,21 +343,25 @@ static void NNPSpotifyPublishTimedLyrics(NSArray<NSDictionary *> *lines, NSStrin
     }
     NSString *current = lines[currentIndex][@"words"] ?: @"";
     NSString *next = currentIndex + 1 < lines.count ? (lines[currentIndex + 1][@"words"] ?: @"") : @"";
-    NSString *trackTitle = [nowPlaying[MPMediaItemPropertyTitle] isKindOfClass:NSString.class] ? nowPlaying[MPMediaItemPropertyTitle] : @"";
-    NSString *trackArtist = [nowPlaying[MPMediaItemPropertyArtist] isKindOfClass:NSString.class] ? nowPlaying[MPMediaItemPropertyArtist] : @"";
+    NSString *trackTitle = currentTrackTitle.length ? currentTrackTitle : requestedTrackTitle;
+    NSString *trackArtist = currentTrackArtist.length ? currentTrackArtist : requestedTrackArtist;
+    NSString *trackIdentifier = requestedTrackIdentifier;
     CFPreferencesSetAppValue(CFSTR("SpotifyLyricsTimedLines"), (__bridge CFArrayRef)lines, NNPSpotifySharedPreferences);
     CFPreferencesSetAppValue(CFSTR("SpotifyLyricsSyncType"), (__bridge CFStringRef)(syncType ?: @"UNSYNCED"), NNPSpotifySharedPreferences);
     CFPreferencesSetAppValue(CFSTR("SpotifyLyricsText"), (__bridge CFStringRef)current, NNPSpotifySharedPreferences);
     CFPreferencesSetAppValue(CFSTR("SpotifyLyricsNextLine"), (__bridge CFStringRef)next, NNPSpotifySharedPreferences);
     CFPreferencesSetAppValue(CFSTR("SpotifyLyricsTrackTitle"), (__bridge CFStringRef)trackTitle, NNPSpotifySharedPreferences);
     CFPreferencesSetAppValue(CFSTR("SpotifyLyricsTrackArtist"), (__bridge CFStringRef)trackArtist, NNPSpotifySharedPreferences);
+    CFPreferencesSetAppValue(CFSTR("SpotifyLyricsTrackIdentifier"), (__bridge CFStringRef)trackIdentifier, NNPSpotifySharedPreferences);
     CFPreferencesSetAppValue(CFSTR("SpotifyLyricsUpdatedAt"), (__bridge CFDateRef)NSDate.date, NNPSpotifySharedPreferences);
     Boolean synchronized = CFPreferencesAppSynchronize(NNPSpotifySharedPreferences);
+    if (synchronized) NNPSpotifySetVerifiedLyricsTrack(trackTitle, trackArtist, trackIdentifier);
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                          NNPSpotifyLyricsChangedNotification, NULL, NULL, true);
     NSString *trackID = request.URL.lastPathComponent ?: @"";
-    NNPSpotifyProbeAppend([NSString stringWithFormat:@"NETWORK-PARSED lines=%lu sync=%@ track=%@ firstStartMs=%@ shared=%@",
+    NNPSpotifyProbeAppend([NSString stringWithFormat:@"NETWORK-PARSED lines=%lu sync=%@ track=%@ identity=%@ source=%@ firstStartMs=%@ shared=%@",
                            (unsigned long)lines.count, syncType ?: @"UNSYNCED", trackID,
+                           trackIdentifier, identitySource,
                            lines.firstObject[@"startTimeMs"] ?: @"?", synchronized ? @"YES" : @"NO"]);
 }
 
@@ -221,6 +391,7 @@ void NNPSpotifyLyricsProbeCaptureNetworkResponse(NSURLRequest *request, NSData *
 
 void NNPSpotifyLyricsProbeCaptureNetworkTask(NSURLRequest *request) {
     if (!NNPSpotifyLyricsProbeShouldTraceNetworkRequest(request)) return;
+    NNPSpotifyRememberTrackForLyricsRequest(request);
     NSURLComponents *components = [NSURLComponents componentsWithURL:request.URL resolvingAgainstBaseURL:NO];
     NSMutableArray<NSString *> *queryKeys = [NSMutableArray array];
     for (NSURLQueryItem *item in components.queryItems ?: @[]) {
@@ -233,7 +404,7 @@ void NNPSpotifyLyricsProbeCaptureNetworkTask(NSURLRequest *request) {
 
 void NNPSpotifyLyricsProbeCaptureNetworkData(NSURLSessionTask *task, NSData *data) {
     if (!task || !data.length) return;
-    NSURLRequest *request = task.currentRequest ?: task.originalRequest;
+    NSURLRequest *request = task.originalRequest ?: task.currentRequest;
     if (!request || ![request.URL.absoluteString.lowercaseString containsString:@"lyrics"]) return;
 
     NSMutableData *body = objc_getAssociatedObject(task, &NNPSpotifyNetworkBodyAssociationKey);
@@ -254,7 +425,7 @@ void NNPSpotifyLyricsProbeCaptureNetworkData(NSURLSessionTask *task, NSData *dat
 
 void NNPSpotifyLyricsProbeCompleteNetworkTask(NSURLSessionTask *task, NSError *error) {
     if (!task) return;
-    NSURLRequest *request = task.currentRequest ?: task.originalRequest;
+    NSURLRequest *request = task.originalRequest ?: task.currentRequest;
     NSMutableData *body = objc_getAssociatedObject(task, &NNPSpotifyNetworkBodyAssociationKey);
     NSNumber *truncated = objc_getAssociatedObject(task, &NNPSpotifyNetworkBodyTruncatedAssociationKey);
     if (request && NNPSpotifyLyricsProbeShouldTraceNetworkRequest(request)) {
@@ -631,6 +802,17 @@ static BOOL NNPSpotifyPublishLyrics(NSString *current, NSString *next, NSArray<N
     NSDictionary *nowPlaying = MPNowPlayingInfoCenter.defaultCenter.nowPlayingInfo;
     NSString *trackTitle = [nowPlaying[MPMediaItemPropertyTitle] isKindOfClass:NSString.class] ? nowPlaying[MPMediaItemPropertyTitle] : @"";
     NSString *trackArtist = [nowPlaying[MPMediaItemPropertyArtist] isKindOfClass:NSString.class] ? nowPlaying[MPMediaItemPropertyArtist] : @"";
+    NSString *trackIdentifier = NNPSpotifyTrackIdentifierFromMetadata(nowPlaying);
+    if (!NNPSpotifyVisibleLyricsMatchVerifiedTrack(trackTitle, trackArtist, trackIdentifier)) {
+        static NSString *lastRejectedTitle;
+        static NSString *lastRejectedArtist;
+        if (![lastRejectedTitle isEqualToString:trackTitle] || ![lastRejectedArtist isEqualToString:trackArtist]) {
+            lastRejectedTitle = [trackTitle copy];
+            lastRejectedArtist = [trackArtist copy];
+            NNPSpotifyProbeAppend(@"LYRICS-SCREEN ignored until backend snapshot matches current track");
+        }
+        return NO;
+    }
     if ([lastCurrent isEqualToString:current] && [lastNext isEqualToString:next] &&
         [lastTrackTitle isEqualToString:trackTitle] && [lastTrackArtist isEqualToString:trackArtist] &&
         [lastLines isEqualToArray:visibleLines]) return NO;
@@ -649,8 +831,9 @@ static BOOL NNPSpotifyPublishLyrics(NSString *current, NSString *next, NSArray<N
     Boolean synchronized = CFPreferencesAppSynchronize(NNPSpotifySharedPreferences);
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                          NNPSpotifyLyricsChangedNotification, NULL, NULL, true);
-    NNPSpotifyProbeAppend([NSString stringWithFormat:@"LYRICS publish lines=%lu sync=%@ track=%@ current=%@", (unsigned long)visibleLines.count,
-                           synchronized ? @"YES" : @"NO", trackTitle, current]);
+    NNPSpotifyProbeAppend([NSString stringWithFormat:@"LYRICS publish lines=%lu sync=%@ track=%@ verifiedID=%@ current=%@", (unsigned long)visibleLines.count,
+                           synchronized ? @"YES" : @"NO", trackTitle,
+                           NNPSpotifyVerifiedLyricsTrackIdentifier(), current]);
     [NSUserDefaults.standardUserDefaults setBool:synchronized forKey:@"NNPSpotifyLyricsSharedWriteSucceeded"];
     [NSUserDefaults.standardUserDefaults synchronize];
     return YES;
@@ -816,6 +999,7 @@ void NNPSpotifyLyricsProbeStart(void) {
     [NSUserDefaults.standardUserDefaults synchronize];
     NNPSpotifyProbeAppend([NSString stringWithFormat:@"START pid=%d process=%@ bundle=%@", getpid(),
                            NSProcessInfo.processInfo.processName ?: @"?", NSBundle.mainBundle.bundleIdentifier ?: @"?"]);
+    NNPSpotifyInitializeLyricsTrackAssociation();
     NNPSpotifyDumpLyricsRuntime();
     dispatch_async(dispatch_get_main_queue(), ^{
         NNPSpotifyLyricsProbeCapture();

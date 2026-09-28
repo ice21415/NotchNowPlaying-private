@@ -13,6 +13,7 @@
 
 - (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request completionHandler:(void (^)(NSData *, NSURLResponse *, NSError *))completionHandler {
     if (!NNPSpotifyLyricsProbeShouldTraceNetworkRequest(request)) return %orig(request, completionHandler);
+    NNPSpotifyLyricsProbeCaptureNetworkTask(request);
     void (^wrappedHandler)(NSData *, NSURLResponse *, NSError *) = ^(NSData *data, NSURLResponse *response, NSError *error) {
         NNPSpotifyLyricsProbeCaptureNetworkResponse(request, data, response, error);
         if (completionHandler) completionHandler(data, response, error);
@@ -23,6 +24,7 @@
 - (NSURLSessionDataTask *)dataTaskWithURL:(NSURL *)URL completionHandler:(void (^)(NSData *, NSURLResponse *, NSError *))completionHandler {
     NSURLRequest *request = [NSURLRequest requestWithURL:URL];
     if (!NNPSpotifyLyricsProbeShouldTraceNetworkRequest(request)) return %orig(URL, completionHandler);
+    NNPSpotifyLyricsProbeCaptureNetworkTask(request);
     void (^wrappedHandler)(NSData *, NSURLResponse *, NSError *) = ^(NSData *data, NSURLResponse *response, NSError *error) {
         NNPSpotifyLyricsProbeCaptureNetworkResponse(request, data, response, error);
         if (completionHandler) completionHandler(data, response, error);
@@ -55,7 +57,7 @@ static IMP NNPSpotifyOriginalIMP(NSMutableDictionary<NSValue *, NSValue *> *orig
 
 static void NNPSpotifyURLSessionDidReceiveData(id self, SEL selector, NSURLSession *session,
                                                NSURLSessionDataTask *dataTask, NSData *data) {
-    NSURLRequest *request = dataTask.currentRequest ?: dataTask.originalRequest;
+    NSURLRequest *request = dataTask.originalRequest ?: dataTask.currentRequest;
     if ([request.URL.absoluteString.lowercaseString containsString:@"lyrics"]) {
         NSString *url = [NSString stringWithFormat:@"%@%@", request.URL.host ?: @"", request.URL.path ?: @""];
         NNPSpotifyLyricsProbeAppendDiagnostic([NSString stringWithFormat:@"NETWORK-CALLBACK receive class=%@ bytes=%lu url=%@",
@@ -69,7 +71,7 @@ static void NNPSpotifyURLSessionDidReceiveData(id self, SEL selector, NSURLSessi
 
 static void NNPSpotifyURLSessionTaskDidComplete(id self, SEL selector, NSURLSession *session,
                                                 NSURLSessionTask *task, NSError *error) {
-    NSURLRequest *request = task.currentRequest ?: task.originalRequest;
+    NSURLRequest *request = task.originalRequest ?: task.currentRequest;
     if ([request.URL.absoluteString.lowercaseString containsString:@"lyrics"]) {
         NSInteger status = [task.response isKindOfClass:NSHTTPURLResponse.class]
             ? ((NSHTTPURLResponse *)task.response).statusCode : 0;

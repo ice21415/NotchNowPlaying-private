@@ -15,6 +15,7 @@ FOUNDATION_EXPORT NSString * const NNPPreferencesDidChangeNotification;
 @property(nonatomic, copy, readonly) NSString *spotifyLyricsText;
 @property(nonatomic, copy, readonly) NSString *spotifyLyricsNextLine;
 @property(nonatomic, copy, readonly) NSString *spotifyLyricsTrackTitle;
+@property(nonatomic, copy, readonly) NSString *spotifyLyricsTrackArtist;
 @property(nonatomic, copy, readonly) NSArray<NSDictionary *> *spotifyLyricsTimedLines;
 @property(nonatomic, readonly) BOOL hideWhenPaused;
 @property(nonatomic, readonly) BOOL aodPixelShiftEnabled;

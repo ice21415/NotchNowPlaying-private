@@ -93,6 +93,14 @@ static BOOL NNPTrackTitleMatches(NSString *mediaTitle, NSString *lyricsTitle) {
     return MIN(media.length, lyrics.length) >= 4 &&
         ([media containsString:lyrics] || [lyrics containsString:media]);
 }
+static BOOL NNPTrackArtistMatches(NSString *mediaArtist, NSString *lyricsArtist) {
+    NSString *media = NNPNormalizedTrackTitle(mediaArtist);
+    NSString *lyrics = NNPNormalizedTrackTitle(lyricsArtist);
+    if (!media.length || !lyrics.length) return YES;
+    if ([media isEqualToString:lyrics]) return YES;
+    return MIN(media.length, lyrics.length) >= 4 &&
+        ([media containsString:lyrics] || [lyrics containsString:media]);
+}
 @interface NNPController (TouchDiagnostics)
 - (void)observeTouchEvent:(UIEvent *)event;
 @end
@@ -187,6 +195,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic) BOOL cachedLyricsTrackMatch;
 @property(nonatomic, copy) NSString *lyricsMatchMediaTitle;
 @property(nonatomic, copy) NSString *lyricsMatchSnapshotTitle;
+@property(nonatomic, copy) NSString *lyricsMatchMediaArtist;
+@property(nonatomic, copy) NSString *lyricsMatchSnapshotArtist;
 @property(nonatomic) BOOL didRecordReconcileState;
 @property(nonatomic) BOOL recordedReconcileLocked;
 @property(nonatomic) BOOL recordedReconcileVisible;
@@ -804,13 +814,20 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     BOOL spotifyTrack = [self.state.bundleIdentifier isEqualToString:NNPSpotify];
     NSString *mediaTitle = self.state.title ?: @"";
     NSString *snapshotTitle = self.preferences.spotifyLyricsTrackTitle ?: @"";
+    NSString *mediaArtist = self.state.artist ?: @"";
+    NSString *snapshotArtist = self.preferences.spotifyLyricsTrackArtist ?: @"";
     if (!self.hasCachedLyricsTrackMatch ||
         !NNPStringsEqual(self.lyricsMatchMediaTitle, mediaTitle) ||
-        !NNPStringsEqual(self.lyricsMatchSnapshotTitle, snapshotTitle)) {
+        !NNPStringsEqual(self.lyricsMatchSnapshotTitle, snapshotTitle) ||
+        !NNPStringsEqual(self.lyricsMatchMediaArtist, mediaArtist) ||
+        !NNPStringsEqual(self.lyricsMatchSnapshotArtist, snapshotArtist)) {
         self.hasCachedLyricsTrackMatch = YES;
         self.lyricsMatchMediaTitle = mediaTitle;
         self.lyricsMatchSnapshotTitle = snapshotTitle;
-        self.cachedLyricsTrackMatch = NNPTrackTitleMatches(mediaTitle, snapshotTitle);
+        self.lyricsMatchMediaArtist = mediaArtist;
+        self.lyricsMatchSnapshotArtist = snapshotArtist;
+        self.cachedLyricsTrackMatch = NNPTrackTitleMatches(mediaTitle, snapshotTitle) &&
+            NNPTrackArtistMatches(mediaArtist, snapshotArtist);
     }
     BOOL matchingTrack = self.cachedLyricsTrackMatch;
     if (!self.didRecordSpotifyLyricsTrackMatch || self.recordedSpotifyLyricsTrackMatch != matchingTrack) {

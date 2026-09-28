@@ -56,6 +56,7 @@ static CGFloat NNPFloat(NSString *key, CGFloat fallback) {
 @property(nonatomic, copy) NSString *spotifyLyricsText;
 @property(nonatomic, copy) NSString *spotifyLyricsNextLine;
 @property(nonatomic, copy) NSString *spotifyLyricsTrackTitle;
+@property(nonatomic, copy) NSString *spotifyLyricsTrackArtist;
 @property(nonatomic, copy) NSArray<NSDictionary *> *spotifyLyricsTimedLines;
 @property(nonatomic) BOOL hideWhenPaused;
 @property(nonatomic) BOOL aodPixelShiftEnabled;
@@ -107,6 +108,7 @@ static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observe
     self.spotifyLyricsText = [lyrics[@"SpotifyLyricsText"] isKindOfClass:NSString.class] ? lyrics[@"SpotifyLyricsText"] : @"";
     self.spotifyLyricsNextLine = [lyrics[@"SpotifyLyricsNextLine"] isKindOfClass:NSString.class] ? lyrics[@"SpotifyLyricsNextLine"] : @"";
     self.spotifyLyricsTrackTitle = [lyrics[@"SpotifyLyricsTrackTitle"] isKindOfClass:NSString.class] ? lyrics[@"SpotifyLyricsTrackTitle"] : @"";
+    self.spotifyLyricsTrackArtist = [lyrics[@"SpotifyLyricsTrackArtist"] isKindOfClass:NSString.class] ? lyrics[@"SpotifyLyricsTrackArtist"] : @"";
     self.spotifyLyricsTimedLines = [lyrics[@"SpotifyLyricsTimedLines"] isKindOfClass:NSArray.class] ? lyrics[@"SpotifyLyricsTimedLines"] : @[];
 }
 - (void)reloadAODBrightnessMultiplier {
