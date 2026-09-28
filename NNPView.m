@@ -339,7 +339,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     if (self.notificationSnakeFinishLayer) {
         self.notificationSnakeFinishLayer.frame = self.bounds;
         self.notificationSnakeFinishLayer.path = self.track.path;
-        self.notificationSnakeFinishLayer.lineWidth = self.track.lineWidth + 1.5;
+        self.notificationSnakeFinishLayer.lineWidth = self.track.lineWidth + 2.5;
     }
     [CATransaction commit];
     [self updateTitleMarquee];
@@ -399,20 +399,20 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     [finish removeAllAnimations];
     snake.frame = self.bounds;
     snake.path = [self notificationSnakePath].CGPath;
-    snake.lineWidth = 4.5;
+    snake.lineWidth = 6.5;
     snake.strokeColor = self.accentColor.CGColor;
     snake.shadowColor = self.accentColor.CGColor;
     snake.shadowOpacity = 1.0;
-    snake.shadowRadius = 11.0;
+    snake.shadowRadius = 16.0;
     snake.shadowOffset = CGSizeZero;
     snake.opacity = 1.0;
     finish.frame = self.bounds;
     finish.path = self.track.path;
-    finish.lineWidth = self.track.lineWidth + 1.5;
+    finish.lineWidth = self.track.lineWidth + 2.5;
     finish.strokeColor = self.accentColor.CGColor;
     finish.shadowColor = self.accentColor.CGColor;
     finish.shadowOpacity = 1.0;
-    finish.shadowRadius = 10.0;
+    finish.shadowRadius = 14.0;
     finish.shadowOffset = CGSizeZero;
     finish.strokeStart = 0.0;
     finish.strokeEnd = 0.0;
@@ -441,14 +441,14 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         snake.hidden = NO;
         finish.hidden = NO;
         snake.strokeStart = 0.0;
-        snake.strokeEnd = 0.06;
+        snake.strokeEnd = 0.10;
         CABasicAnimation *tail = [CABasicAnimation animationWithKeyPath:@"strokeStart"];
         tail.fromValue = @0.0;
-        tail.toValue = @0.94;
+        tail.toValue = @0.90;
         tail.duration = duration;
         tail.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
         CABasicAnimation *head = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
-        head.fromValue = @0.06;
+        head.fromValue = @0.10;
         head.toValue = @1.0;
         head.duration = duration;
         head.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
@@ -460,7 +460,17 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         laps.fillMode = kCAFillModeForwards;
         [snake addAnimation:laps forKey:@"nnp.notificationSnakeLaps"];
 
-        NSTimeInterval finishDuration = 0.9;
+        CABasicAnimation *glowPulse = [CABasicAnimation animationWithKeyPath:@"shadowOpacity"];
+        glowPulse.fromValue = @0.58;
+        glowPulse.toValue = @1.0;
+        glowPulse.duration = 0.55;
+        glowPulse.autoreverses = YES;
+        glowPulse.repeatCount = 4.0;
+        glowPulse.removedOnCompletion = NO;
+        glowPulse.fillMode = kCAFillModeForwards;
+        [snake addAnimation:glowPulse forKey:@"nnp.notificationSnakeGlowPulse"];
+
+        NSTimeInterval finishDuration = 1.0;
         CABasicAnimation *notchTrace = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
         notchTrace.fromValue = @0.0;
         notchTrace.toValue = @1.0;
@@ -469,7 +479,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 
         CAKeyframeAnimation *finishGlow = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
         finishGlow.values = @[@0.0, @1.0, @1.0, @0.0];
-        finishGlow.keyTimes = @[@0.0, @0.10, @0.76, @1.0];
+        finishGlow.keyTimes = @[@0.0, @0.08, @0.82, @1.0];
         finishGlow.duration = finishDuration;
 
         CAAnimationGroup *notchFinish = [CAAnimationGroup animation];
@@ -490,7 +500,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         [snake addAnimation:edgeFade forKey:@"nnp.notificationSnakeEdgeFade"];
     }
 
-    NSTimeInterval cleanupDelay = duration * (reduceMotion ? 1.0 : 2.0) + (reduceMotion ? 0.15 : 1.05);
+    NSTimeInterval cleanupDelay = duration * (reduceMotion ? 1.0 : 2.0) + (reduceMotion ? 0.15 : 1.15);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(cleanupDelay * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         if (generation != self.notificationSnakeGeneration) return;
