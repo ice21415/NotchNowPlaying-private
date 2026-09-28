@@ -583,6 +583,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 
     BOOL reduceMotion = UIAccessibilityIsReduceMotionEnabled();
     NSTimeInterval duration = 2.2;
+    NSTimeInterval finishDuration = 1.0;
+    NSTimeInterval handoffFadeDuration = 0.14;
     if (reduceMotion) {
         snake.hidden = YES;
         finish.strokeEnd = 1.0;
@@ -631,7 +633,6 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         glowPulse.fillMode = kCAFillModeForwards;
         [snake addAnimation:glowPulse forKey:@"nnp.notificationSnakeGlowPulse"];
 
-        NSTimeInterval finishDuration = 1.0;
         CABasicAnimation *notchTrace = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
         notchTrace.fromValue = @0.0;
         notchTrace.toValue = @1.0;
@@ -646,32 +647,35 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         CAAnimationGroup *notchFinish = [CAAnimationGroup animation];
         notchFinish.animations = @[notchTrace, finishGlow];
         notchFinish.duration = finishDuration;
-        notchFinish.beginTime = CACurrentMediaTime() + duration * 2.0;
+        notchFinish.beginTime = CACurrentMediaTime() + duration * 2.0 + handoffFadeDuration;
         notchFinish.removedOnCompletion = NO;
         notchFinish.fillMode = kCAFillModeBoth;
         [finish addAnimation:notchFinish forKey:@"nnp.notificationSnakeNotchFinish"];
 
         CABasicAnimation *edgeFade = [CABasicAnimation animationWithKeyPath:@"opacity"];
         edgeFade.fromValue = @1.0;
-        edgeFade.toValue = @0.08;
-        edgeFade.duration = 0.22;
+        edgeFade.toValue = @0.0;
+        edgeFade.duration = handoffFadeDuration;
         edgeFade.beginTime = CACurrentMediaTime() + duration * 2.0;
         edgeFade.removedOnCompletion = NO;
         edgeFade.fillMode = kCAFillModeBoth;
         [snake addAnimation:edgeFade forKey:@"nnp.notificationSnakeEdgeFade"];
     }
 
-    NSTimeInterval cleanupDelay = duration * (reduceMotion ? 1.0 : 2.0) + (reduceMotion ? 0.15 : 1.15);
+    NSTimeInterval cleanupDelay = duration * (reduceMotion ? 1.0 : 2.0) +
+        (reduceMotion ? 0.15 : handoffFadeDuration + finishDuration + 0.15);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(cleanupDelay * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         if (generation != self.notificationSnakeGeneration) return;
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        snake.hidden = YES;
+        finish.hidden = YES;
         [snake removeAllAnimations];
         [finish removeAllAnimations];
-        snake.hidden = YES;
         snake.opacity = 0.0;
         snake.strokeStart = 0.0;
         snake.strokeEnd = 0.0;
-        finish.hidden = YES;
         finish.opacity = 0.0;
         finish.strokeStart = 0.0;
         finish.strokeEnd = 0.0;
@@ -681,6 +685,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         self.notificationSnakeDebugMarkersLayer.hidden = YES;
         self.notificationSnakeDebugMarkersLayer.opacity = 0.0;
 #endif
+        [CATransaction commit];
     });
     return YES;
 }
