@@ -549,9 +549,22 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         NNPDiagnosticLogTransition(@"NOTIFICATION_SNAKE presentation unavailable; notification wake will pass through");
         return NO;
     }
-    BOOL presented = [self.view playNotificationSnakeAnimation];
+    BOOL mainViewPresented = [self.view playNotificationSnakeAnimation];
+    BOOL statusBarMirrorPresented = NO;
+    UIView *statusBarContainer = self.statusBarPlayerContainer;
+    NNPView *statusBarMirror = self.statusBarPlayerView;
+    BOOL statusBarMirrorVisible = statusBarMirror && statusBarMirror.window &&
+        statusBarContainer && statusBarContainer.window && !statusBarContainer.hidden &&
+        statusBarContainer.alpha > 0.01;
+    if (statusBarMirrorVisible && statusBarMirror != self.view) {
+        statusBarMirrorPresented = [statusBarMirror playNotificationSnakeAnimation];
+    }
+    BOOL presented = mainViewPresented || statusBarMirrorPresented;
     if (presented) {
-        NNPDiagnosticLogTransition(@"NOTIFICATION_SNAKE animation started laps=2");
+        NNPDiagnosticLogTransition([NSString stringWithFormat:
+            @"NOTIFICATION_SNAKE animation started mainView=%@ statusBarMirror=%@ mirrorClipBounds=%@",
+            mainViewPresented ? @"YES" : @"NO", statusBarMirrorPresented ? @"YES" : @"NO",
+            statusBarContainer ? NSStringFromCGRect(statusBarContainer.bounds) : @"none"]);
     }
     return presented;
 }
