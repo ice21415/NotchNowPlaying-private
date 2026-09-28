@@ -69,6 +69,11 @@ static UIBezierPath *NNPPlaybackTrackPath(CGRect notch, BOOL reversed) {
     return path;
 }
 
+static UIBezierPath *NNPNotificationSnakeFinishPath(CGRect notch) {
+    // The perimeter returns to the left playback-track endpoint.
+    return NNPPlaybackTrackPath(notch, NO);
+}
+
 static NSString *NNPPlaybackTimeString(NSTimeInterval seconds) {
     NSInteger wholeSeconds = (NSInteger)MAX(0.0, floor(seconds));
     NSInteger hours = wholeSeconds / 3600;
@@ -371,7 +376,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     }
     if (self.notificationSnakeFinishLayer) {
         self.notificationSnakeFinishLayer.frame = self.bounds;
-        self.notificationSnakeFinishLayer.path = NNPPlaybackTrackPath(notch, YES).CGPath;
+        self.notificationSnakeFinishLayer.path = NNPNotificationSnakeFinishPath(notch).CGPath;
         self.notificationSnakeFinishLayer.lineWidth = self.track.lineWidth + 2.5;
     }
     [CATransaction commit];
@@ -456,7 +461,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     finish.frame = self.bounds;
     // The closed perimeter ends at the track's left endpoint, so trace the U
     // from left to right as a visible, continuous final phase.
-    finish.path = NNPPlaybackTrackPath([self notchRectUsingPrivateAPI:NULL], NO).CGPath;
+    finish.path = NNPNotificationSnakeFinishPath([self notchRectUsingPrivateAPI:NULL]).CGPath;
     finish.zPosition = 1001.0;
     finish.lineWidth = self.track.lineWidth + 2.5;
     finish.strokeColor = self.accentColor.CGColor;
