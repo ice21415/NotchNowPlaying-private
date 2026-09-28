@@ -49,6 +49,9 @@ static NSString *NNPSpotifyTrackIdentifierFromMetadata(NSDictionary *metadata) {
     id value = metadata[MPNowPlayingInfoPropertyExternalContentIdentifier];
     if (![value isKindOfClass:NSString.class] || ![value length]) return @"";
     NSString *identifier = [value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSRange playbackInstance = [identifier rangeOfString:@"#"];
+    if (playbackInstance.location != NSNotFound)
+        identifier = [identifier substringToIndex:playbackInstance.location];
     NSString *lastComponent = [[identifier componentsSeparatedByCharactersInSet:
                                 [NSCharacterSet characterSetWithCharactersInString:@":/"]] lastObject];
     NSRange queryStart = [lastComponent rangeOfString:@"?"];
