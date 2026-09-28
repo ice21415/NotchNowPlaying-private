@@ -26,17 +26,18 @@
 static NSString *const NNPTitleMarqueeAnimationKey = @"nnp.titleMarquee";
 static const CGFloat NNPNotificationSnakeLineWidth = 6.5;
 
-static UIBezierPath *NNPPlaybackTrackPath(CGRect notch, BOOL reversed) {
+static void NNPAddPlaybackTrackSegments(UIBezierPath *path, CGRect notch, BOOL reversed, BOOL connectToCurrentPoint) {
     CGFloat pathLeft = CGRectGetMinX(notch) - 4.5;
     CGFloat pathRight = CGRectGetMaxX(notch) + 4.5;
     CGFloat pathTop = MAX(9.0, CGRectGetMinY(notch) + 9.0);
     CGFloat pathBottom = CGRectGetMaxY(notch) + 4.0;
     CGFloat radius = MIN(16.0, (pathBottom - pathTop) * 0.65);
     CGFloat arcControl = radius * 0.55228475;
-    UIBezierPath *path = [UIBezierPath bezierPath];
 
     if (reversed) {
-        [path moveToPoint:CGPointMake(pathRight, pathTop)];
+        CGPoint start = CGPointMake(pathRight, pathTop);
+        if (connectToCurrentPoint) [path addLineToPoint:start];
+        else [path moveToPoint:start];
         [path addLineToPoint:CGPointMake(pathRight, pathBottom - radius)];
         [path addCurveToPoint:CGPointMake(pathRight - radius, pathBottom)
                controlPoint1:CGPointMake(pathRight, pathBottom - radius + arcControl)
@@ -47,7 +48,9 @@ static UIBezierPath *NNPPlaybackTrackPath(CGRect notch, BOOL reversed) {
                controlPoint2:CGPointMake(pathLeft, pathBottom - radius + arcControl)];
         [path addLineToPoint:CGPointMake(pathLeft, pathTop)];
     } else {
-        [path moveToPoint:CGPointMake(pathLeft, pathTop)];
+        CGPoint start = CGPointMake(pathLeft, pathTop);
+        if (connectToCurrentPoint) [path addLineToPoint:start];
+        else [path moveToPoint:start];
         [path addLineToPoint:CGPointMake(pathLeft, pathBottom - radius)];
         [path addCurveToPoint:CGPointMake(pathLeft + radius, pathBottom)
                controlPoint1:CGPointMake(pathLeft, pathBottom - radius + arcControl)
@@ -58,6 +61,11 @@ static UIBezierPath *NNPPlaybackTrackPath(CGRect notch, BOOL reversed) {
                controlPoint2:CGPointMake(pathRight, pathBottom - radius + arcControl)];
         [path addLineToPoint:CGPointMake(pathRight, pathTop)];
     }
+}
+
+static UIBezierPath *NNPPlaybackTrackPath(CGRect notch, BOOL reversed) {
+    UIBezierPath *path = [UIBezierPath bezierPath];
+    NNPAddPlaybackTrackSegments(path, notch, reversed, NO);
     return path;
 }
 
@@ -390,8 +398,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     CGFloat notchTop = MAX(9.0, CGRectGetMinY(notch) + 9.0);
 
     UIBezierPath *path = [UIBezierPath bezierPath];
-    // Start and end on the actual playback-track endpoints. Leave the top
-    // opening across the physical notch instead of drawing a second cap there.
+    // Run around the display, then return to the start along the exact playback
+    // U so each lap is closed and the head never jumps across the notch.
     [path moveToPoint:CGPointMake(notchLeft, notchTop)];
     [path addLineToPoint:CGPointMake(notchLeft, top)];
     [path addLineToPoint:CGPointMake(left + radius, top)];
@@ -404,6 +412,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     [path addQuadCurveToPoint:CGPointMake(right - radius, top) controlPoint:CGPointMake(right, top)];
     [path addLineToPoint:CGPointMake(notchRight, top)];
     [path addLineToPoint:CGPointMake(notchRight, notchTop)];
+    NNPAddPlaybackTrackSegments(path, notch, YES, YES);
+    [path closePath];
     return path;
 }
 
@@ -451,7 +461,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     finish.shadowRadius = 14.0;
     finish.shadowOffset = CGSizeZero;
     finish.strokeStart = 0.0;
-    finish.strokeEnd = 0.0;
+    finish.strokeEnd = 1.0;
     finish.opacity = 0.0;
     finish.hidden = NO;
     [self updateNotificationSnakeCounterTransform];
@@ -507,24 +517,14 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         [snake addAnimation:glowPulse forKey:@"nnp.notificationSnakeGlowPulse"];
 
         NSTimeInterval finishDuration = 1.0;
-        CABasicAnimation *notchTrace = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
-        notchTrace.fromValue = @0.0;
-        notchTrace.toValue = @1.0;
-        notchTrace.duration = finishDuration;
-        notchTrace.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-
         CAKeyframeAnimation *finishGlow = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
         finishGlow.values = @[@0.0, @1.0, @1.0, @0.0];
         finishGlow.keyTimes = @[@0.0, @0.08, @0.82, @1.0];
         finishGlow.duration = finishDuration;
-
-        CAAnimationGroup *notchFinish = [CAAnimationGroup animation];
-        notchFinish.animations = @[notchTrace, finishGlow];
-        notchFinish.duration = finishDuration;
-        notchFinish.beginTime = CACurrentMediaTime() + duration * 2.0;
-        notchFinish.removedOnCompletion = NO;
-        notchFinish.fillMode = kCAFillModeBoth;
-        [finish addAnimation:notchFinish forKey:@"nnp.notificationSnakeNotchFinish"];
+        finishGlow.beginTime = CACurrentMediaTime() + duration * 2.0;
+        finishGlow.removedOnCompletion = NO;
+        finishGlow.fillMode = kCAFillModeBoth;
+        [finish addAnimation:finishGlow forKey:@"nnp.notificationSnakeNotchFinish"];
 
         CABasicAnimation *edgeFade = [CABasicAnimation animationWithKeyPath:@"opacity"];
         edgeFade.fromValue = @1.0;
