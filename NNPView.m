@@ -24,6 +24,7 @@
 #endif
 
 static NSString *const NNPTitleMarqueeAnimationKey = @"nnp.titleMarquee";
+static const CGFloat NNPNotificationSnakeLineWidth = 6.5;
 
 static UIBezierPath *NNPPlaybackTrackPath(CGRect notch, BOOL reversed) {
     CGFloat pathLeft = CGRectGetMinX(notch) - 4.5;
@@ -376,7 +377,12 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     CGFloat height = CGRectGetHeight(bounds);
     CGFloat left = 7.0;
     CGFloat right = MAX(left + 40.0, width - 7.0);
-    CGFloat top = 7.0;
+    CGFloat contentTop = CGRectGetMinY(self.titleViewport.frame);
+    if (!self.art.hidden) contentTop = MIN(contentTop, CGRectGetMinY(self.art.frame));
+    CGFloat topClearance = NNPNotificationSnakeLineWidth * 0.5 + 1.0;
+    // Keep the upper perimeter above the cover/title row so it stays visible
+    // continuously on both sides of the notch.
+    CGFloat top = MAX(1.5, MIN(7.0, contentTop - topClearance));
     CGFloat bottom = MAX(top + 80.0, height - 7.0);
     CGFloat radius = MIN(24.0, MIN((right - left) * 0.12, (bottom - top) * 0.055));
     CGFloat notchLeft = CGRectGetMinX(notch) - 4.5;
@@ -429,7 +435,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     [finish removeAllAnimations];
     snake.frame = self.bounds;
     snake.path = [self notificationSnakePath].CGPath;
-    snake.lineWidth = 6.5;
+    snake.lineWidth = NNPNotificationSnakeLineWidth;
     snake.strokeColor = self.accentColor.CGColor;
     snake.shadowColor = self.accentColor.CGColor;
     snake.shadowOpacity = 1.0;
