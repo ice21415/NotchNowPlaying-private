@@ -338,7 +338,9 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     }
     if (self.notificationSnakeFinishLayer) {
         self.notificationSnakeFinishLayer.frame = self.bounds;
-        self.notificationSnakeFinishLayer.path = self.track.path;
+        CGPathRef reverseTrackPath = self.track.path ? CGPathCreateCopyByReversingPath(self.track.path) : NULL;
+        self.notificationSnakeFinishLayer.path = reverseTrackPath;
+        if (reverseTrackPath) CGPathRelease(reverseTrackPath);
         self.notificationSnakeFinishLayer.lineWidth = self.track.lineWidth + 2.5;
     }
     [CATransaction commit];
@@ -347,6 +349,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 
 - (UIBezierPath *)notificationSnakePath {
     CGRect bounds = self.bounds;
+    CGRect notch = [self notchRectUsingPrivateAPI:NULL];
     CGFloat width = CGRectGetWidth(bounds);
     CGFloat height = CGRectGetHeight(bounds);
     CGFloat left = 7.0;
@@ -354,10 +357,15 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     CGFloat top = 7.0;
     CGFloat bottom = MAX(top + 80.0, height - 7.0);
     CGFloat radius = MIN(24.0, MIN((right - left) * 0.12, (bottom - top) * 0.055));
-    CGFloat startX = CGRectGetMidX(bounds);
+    CGFloat notchLeft = CGRectGetMinX(notch) - 4.5;
+    CGFloat notchRight = CGRectGetMaxX(notch) + 4.5;
+    CGFloat notchTop = MAX(9.0, CGRectGetMinY(notch) + 9.0);
 
     UIBezierPath *path = [UIBezierPath bezierPath];
-    [path moveToPoint:CGPointMake(startX, top)];
+    // Start and end on the actual playback-track endpoints. Leave the top
+    // opening across the physical notch instead of drawing a second cap there.
+    [path moveToPoint:CGPointMake(notchLeft, notchTop)];
+    [path addLineToPoint:CGPointMake(notchLeft, top)];
     [path addLineToPoint:CGPointMake(left + radius, top)];
     [path addQuadCurveToPoint:CGPointMake(left, top + radius) controlPoint:CGPointMake(left, top)];
     [path addLineToPoint:CGPointMake(left, bottom - radius)];
@@ -366,8 +374,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     [path addQuadCurveToPoint:CGPointMake(right, bottom - radius) controlPoint:CGPointMake(right, bottom)];
     [path addLineToPoint:CGPointMake(right, top + radius)];
     [path addQuadCurveToPoint:CGPointMake(right - radius, top) controlPoint:CGPointMake(right, top)];
-    [path addLineToPoint:CGPointMake(startX, top)];
-    [path closePath];
+    [path addLineToPoint:CGPointMake(notchRight, top)];
+    [path addLineToPoint:CGPointMake(notchRight, notchTop)];
     return path;
 }
 
@@ -407,7 +415,9 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     snake.shadowOffset = CGSizeZero;
     snake.opacity = 1.0;
     finish.frame = self.bounds;
-    finish.path = self.track.path;
+    CGPathRef reverseTrackPath = CGPathCreateCopyByReversingPath(self.track.path);
+    finish.path = reverseTrackPath;
+    if (reverseTrackPath) CGPathRelease(reverseTrackPath);
     finish.lineWidth = self.track.lineWidth + 2.5;
     finish.strokeColor = self.accentColor.CGColor;
     finish.shadowColor = self.accentColor.CGColor;
