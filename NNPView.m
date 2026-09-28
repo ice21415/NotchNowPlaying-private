@@ -163,6 +163,13 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 @property(nonatomic, strong) UILabel *title;
 @property(nonatomic, strong) UILabel *titleDuplicate;
 @property(nonatomic, strong) UILabel *artist;
+@property(nonatomic, strong) UIView *batteryStatus;
+@property(nonatomic, strong) UIImageView *batteryIcon;
+@property(nonatomic, strong) UILabel *batteryPercentage;
+@property(nonatomic, strong) UIImageView *batteryChargingIcon;
+@property(nonatomic) BOOL batteryStatusAvailable;
+@property(nonatomic) NSInteger batteryPercentageValue;
+@property(nonatomic) UIDeviceBatteryState batteryState;
 @property(nonatomic, strong) CAShapeLayer *track;
 @property(nonatomic, strong) CAShapeLayer *fill;
 @property(nonatomic, strong) UILabel *playbackTime;
@@ -203,6 +210,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 - (BOOL)presentNotificationCardWithPayload:(NSDictionary *)payload generation:(NSUInteger)generation;
 - (void)finishNotificationCardForGeneration:(NSUInteger)generation;
 - (void)recordNotificationIndicatorForPayload:(NSDictionary *)payload;
+- (void)batteryStatusDidChange:(NSNotification *)notification;
+- (void)updateBatteryStatus;
 @end
 
 @implementation NNPView
@@ -283,6 +292,25 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     _artist.textColor = [UIColor colorWithWhite:1.0 alpha:0.72];
     _artist.lineBreakMode = NSLineBreakByTruncatingTail;
 
+    _batteryStatus = [UIView new];
+    _batteryStatus.backgroundColor = UIColor.clearColor;
+    _batteryStatus.userInteractionEnabled = NO;
+    _batteryStatus.hidden = YES;
+    _batteryStatus.isAccessibilityElement = YES;
+    _batteryIcon = [UIImageView new];
+    _batteryIcon.contentMode = UIViewContentModeScaleAspectFit;
+    _batteryIcon.tintColor = [UIColor colorWithWhite:1.0 alpha:0.78];
+    _batteryPercentage = [UILabel new];
+    _batteryPercentage.font = [UIFont monospacedDigitSystemFontOfSize:10.0 weight:UIFontWeightMedium];
+    _batteryPercentage.textColor = [UIColor colorWithWhite:1.0 alpha:0.82];
+    _batteryChargingIcon = [UIImageView new];
+    _batteryChargingIcon.contentMode = UIViewContentModeScaleAspectFit;
+    _batteryChargingIcon.tintColor = UIColor.systemYellowColor;
+    _batteryChargingIcon.hidden = YES;
+    [_batteryStatus addSubview:_batteryIcon];
+    [_batteryStatus addSubview:_batteryPercentage];
+    [_batteryStatus addSubview:_batteryChargingIcon];
+
     _track = [CAShapeLayer layer];
     _track.fillColor = UIColor.clearColor.CGColor;
     _track.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.12].CGColor;
@@ -341,6 +369,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     [_contentContainer addSubview:_art];
     [_contentContainer addSubview:_titleViewport];
     [_contentContainer addSubview:_artist];
+    [_contentContainer addSubview:_batteryStatus];
     [_contentContainer addSubview:_playbackTime];
     [_contentContainer addSubview:_lyricsLabel];
     [_contentContainer addSubview:_notificationIndicatorStrip];
@@ -356,6 +385,17 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     _textSize = 14.0;
     _progressHeight = 3.0;
     _accentColor = [UIColor colorWithWhite:0.88 alpha:1.0];
+    UIDevice *device = UIDevice.currentDevice;
+    device.batteryMonitoringEnabled = YES;
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(batteryStatusDidChange:)
+                                                 name:UIDeviceBatteryLevelDidChangeNotification
+                                               object:device];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(batteryStatusDidChange:)
+                                                 name:UIDeviceBatteryStateDidChangeNotification
+                                               object:device];
+    [self updateBatteryStatus];
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(reduceMotionChanged:)
                                                  name:UIAccessibilityReduceMotionStatusDidChangeNotification
@@ -483,6 +523,13 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     self.artist.hidden = !self.showArtist;
     CGFloat artistTop = CGRectGetMaxY(self.titleViewport.frame) + 1.0;
     self.artist.frame = CGRectMake(textX, artistTop, textWidth, 17.0);
+    CGFloat batteryTop = self.showArtist ? CGRectGetMaxY(self.artist.frame) + 1.0
+                                         : CGRectGetMaxY(self.titleViewport.frame) + 2.0;
+    self.batteryStatus.frame = CGRectMake(textX, batteryTop, 58.0, 14.0);
+    self.batteryStatus.hidden = !self.batteryStatusAvailable || !self.playbackVisible;
+    self.batteryIcon.frame = CGRectMake(0.0, 1.0, 14.0, 12.0);
+    self.batteryPercentage.frame = CGRectMake(17.0, 0.0, 29.0, 14.0);
+    self.batteryChargingIcon.frame = CGRectMake(47.0, 1.0, 9.0, 12.0);
 
     CGFloat progressHeight = MAX(2.0, self.progressHeight);
     CGFloat pathLeft = notchLeft - 4.5;
@@ -496,6 +543,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     CGFloat lyricsTop = CGRectGetMaxY(self.playbackTime.frame) + 5.0;
     if (!self.notificationIndicatorStrip.hidden)
         lyricsTop = MAX(lyricsTop, CGRectGetMaxY(self.notificationIndicatorStrip.frame) + 4.0);
+    if (!self.batteryStatus.hidden)
+        lyricsTop = MAX(lyricsTop, CGRectGetMaxY(self.batteryStatus.frame) + 4.0);
     self.lyricsLabel.frame = CGRectMake(side, lyricsTop, MAX(1.0, width - side * 2.0), 34.0);
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
@@ -849,6 +898,45 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     self.notificationIndicatorStrip.transform = CGAffineTransformIdentity;
     for (UIImageView *iconView in self.notificationIndicatorImageViews) iconView.image = nil;
     self.notificationIndicatorOverflowLabel.text = nil;
+    [self setNeedsLayout];
+}
+
+- (void)batteryStatusDidChange:(__unused NSNotification *)notification {
+    if ([NSThread isMainThread]) {
+        [self updateBatteryStatus];
+    } else {
+        dispatch_async(dispatch_get_main_queue(), ^{ [self updateBatteryStatus]; });
+    }
+}
+
+- (void)updateBatteryStatus {
+    UIDevice *device = UIDevice.currentDevice;
+    float level = device.batteryLevel;
+    self.batteryStatusAvailable = isfinite(level) && level >= 0.0f;
+    if (!self.batteryStatusAvailable) {
+        self.batteryStatus.hidden = YES;
+        [self setNeedsLayout];
+        return;
+    }
+
+    self.batteryPercentageValue = (NSInteger)lroundf(MIN(1.0f, level) * 100.0f);
+    self.batteryState = device.batteryState;
+    NSString *symbolName = self.batteryPercentageValue < 15 ? @"battery.0percent" :
+        (self.batteryPercentageValue < 40 ? @"battery.25percent" :
+        (self.batteryPercentageValue < 65 ? @"battery.50percent" :
+        (self.batteryPercentageValue < 90 ? @"battery.75percent" : @"battery.100percent")));
+    UIImage *batteryImage = [UIImage systemImageNamed:symbolName];
+    if (!batteryImage) batteryImage = [UIImage systemImageNamed:@"battery.100"];
+    self.batteryIcon.image = batteryImage;
+    self.batteryIcon.tintColor = self.batteryPercentageValue <= 20
+        ? UIColor.systemRedColor : [UIColor colorWithWhite:1.0 alpha:0.78];
+    self.batteryPercentage.text = [NSString stringWithFormat:@"%ld%%", (long)self.batteryPercentageValue];
+    BOOL charging = self.batteryState == UIDeviceBatteryStateCharging;
+    self.batteryChargingIcon.image = charging ? [UIImage systemImageNamed:@"bolt.fill"] : nil;
+    self.batteryChargingIcon.hidden = !charging;
+    self.batteryStatus.accessibilityLabel = charging
+        ? [NSString stringWithFormat:@"電量 %ld%%，正在充電", (long)self.batteryPercentageValue]
+        : [NSString stringWithFormat:@"電量 %ld%%", (long)self.batteryPercentageValue];
     [self setNeedsLayout];
 }
 
