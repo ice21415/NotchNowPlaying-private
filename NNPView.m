@@ -163,6 +163,9 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 @property(nonatomic, strong) UILabel *title;
 @property(nonatomic, strong) UILabel *titleDuplicate;
 @property(nonatomic, strong) UILabel *artist;
+@property(nonatomic, strong) UILabel *clockLabel;
+@property(nonatomic, copy) NSString *lastClockDisplay;
+@property(nonatomic) NSInteger lastClockMinute;
 @property(nonatomic, strong) UIView *batteryStatus;
 @property(nonatomic, strong) UIImageView *batteryIcon;
 @property(nonatomic, strong) UILabel *batteryPercentage;
@@ -215,6 +218,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 - (void)recordNotificationIndicatorForPayload:(NSDictionary *)payload;
 - (void)batteryStatusDidChange:(NSNotification *)notification;
 - (void)updateBatteryStatus;
+- (void)updateClock;
 @end
 
 @implementation NNPView
@@ -295,6 +299,12 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     _artist.textColor = [UIColor colorWithWhite:1.0 alpha:0.72];
     _artist.lineBreakMode = NSLineBreakByTruncatingTail;
 
+    _clockLabel = [UILabel new];
+    _clockLabel.font = [UIFont monospacedDigitSystemFontOfSize:10.0 weight:UIFontWeightMedium];
+    _clockLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.72];
+    _clockLabel.hidden = YES;
+    _clockLabel.accessibilityTraits = UIAccessibilityTraitStaticText;
+
     _batteryStatus = [UIView new];
     _batteryStatus.backgroundColor = UIColor.clearColor;
     _batteryStatus.userInteractionEnabled = NO;
@@ -372,6 +382,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     [_contentContainer addSubview:_art];
     [_contentContainer addSubview:_titleViewport];
     [_contentContainer addSubview:_artist];
+    [_contentContainer addSubview:_clockLabel];
     [_contentContainer addSubview:_batteryStatus];
     [_contentContainer addSubview:_playbackTime];
     [_contentContainer addSubview:_lyricsLabel];
@@ -526,8 +537,11 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     self.artist.hidden = !self.showArtist;
     CGFloat artistTop = CGRectGetMaxY(self.titleViewport.frame) + 1.0;
     self.artist.frame = CGRectMake(textX, artistTop, textWidth, 17.0);
-    CGFloat batteryTop = self.showArtist ? CGRectGetMaxY(self.artist.frame) + 1.0
-                                         : CGRectGetMaxY(self.titleViewport.frame) + 2.0;
+    CGFloat clockTop = self.showArtist ? CGRectGetMaxY(self.artist.frame) + 1.0
+                                       : CGRectGetMaxY(self.titleViewport.frame) + 2.0;
+    self.clockLabel.frame = CGRectMake(textX, clockTop, MIN(76.0, textWidth), 14.0);
+    self.clockLabel.hidden = !self.playbackVisible;
+    CGFloat batteryTop = CGRectGetMaxY(self.clockLabel.frame) + 1.0;
     self.batteryStatus.frame = CGRectMake(textX, batteryTop, 58.0, 14.0);
     self.batteryStatus.hidden = !self.batteryStatusAvailable || !self.playbackVisible;
     self.batteryIcon.frame = CGRectMake(0.0, 1.0, 14.0, 12.0);
@@ -546,6 +560,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     CGFloat lyricsTop = CGRectGetMaxY(self.playbackTime.frame) + 5.0;
     if (!self.notificationIndicatorStrip.hidden)
         lyricsTop = MAX(lyricsTop, CGRectGetMaxY(self.notificationIndicatorStrip.frame) + 4.0);
+    if (!self.clockLabel.hidden)
+        lyricsTop = MAX(lyricsTop, CGRectGetMaxY(self.clockLabel.frame) + 4.0);
     if (!self.batteryStatus.hidden)
         lyricsTop = MAX(lyricsTop, CGRectGetMaxY(self.batteryStatus.frame) + 4.0);
     self.lyricsLabel.frame = CGRectMake(side, lyricsTop, MAX(1.0, width - side * 2.0), 34.0);
@@ -1184,6 +1200,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 }
 
 - (void)updateElapsed:(NSTimeInterval)elapsed duration:(NSTimeInterval)duration playing:(BOOL)playing {
+    [self updateClock];
     BOOL valid = duration > 0.0 && isfinite(duration);
     self.track.hidden = self.fill.hidden = !valid || !self.showProgress;
     self.playbackTime.hidden = !valid || !self.showProgress;
@@ -1212,6 +1229,28 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     self.fill.strokeEnd = self.fraction;
     self.fill.opacity = playing ? 1.0 : 0.55;
     [CATransaction commit];
+}
+
+- (void)updateClock {
+    NSDate *now = NSDate.date;
+    NSInteger minute = (NSInteger)floor(now.timeIntervalSince1970 / 60.0);
+    if (minute == self.lastClockMinute && self.lastClockDisplay.length) return;
+
+    static NSDateFormatter *formatter;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        formatter = [NSDateFormatter new];
+        formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        formatter.timeZone = NSTimeZone.localTimeZone;
+        formatter.dateFormat = @"HH:mm";
+    });
+    NSString *display = [formatter stringFromDate:now];
+    if (![self.lastClockDisplay isEqualToString:display]) {
+        self.clockLabel.text = display;
+        self.clockLabel.accessibilityLabel = [NSString stringWithFormat:@"目前時間 %@", display];
+        self.lastClockDisplay = display;
+    }
+    self.lastClockMinute = minute;
 }
 
 - (void)updateLyricsText:(NSString *)currentLine nextLine:(NSString *)nextLine {
