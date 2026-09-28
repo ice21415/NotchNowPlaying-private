@@ -181,7 +181,6 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic, strong) NSTimer *pixelShiftTimer;
 @property(nonatomic) NSTimeInterval progressTimerInterval;
 @property(nonatomic) BOOL reconcilePending;
-@property(nonatomic) NSUInteger spotifyLyricsRefreshGeneration;
 @property(nonatomic) BOOL didRecordSpotifyLyricsTrackMatch;
 @property(nonatomic) BOOL recordedSpotifyLyricsTrackMatch;
 @property(nonatomic) BOOL hasCachedLyricsTrackMatch;
@@ -213,7 +212,6 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic) BOOL locked;
 @property(nonatomic) BOOL installed;
 - (void)applyLyricsPreferences;
-- (void)refreshSpotifyLyricsForCurrentTrack;
 - (void)revealCoverSheetControls;
 - (void)revealCoverSheetControlsWithReason:(NSString *)reason;
 - (void)clearLockedPresentationBackgroundForUnlock;
@@ -389,10 +387,6 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         BOOL bundleChanged = firstState || !NNPStringsEqual(previous.bundleIdentifier, state.bundleIdentifier);
         BOOL spotifyChanged = firstState || [self isAllowedMedia:previous] != [self isAllowedMedia:state];
         BOOL playbackChanged = firstState || previous.playing != state.playing;
-        BOOL trackChanged = firstState || bundleChanged ||
-            !NNPStringsEqual(previous.title, state.title) ||
-            !NNPStringsEqual(previous.artist, state.artist) ||
-            !NNPStringsEqual(previous.uniqueIdentifier, state.uniqueIdentifier);
         BOOL presentationChanged = firstState || bundleChanged || playbackChanged ||
             !NNPStringsEqual(previous.title, state.title) ||
             !NNPStringsEqual(previous.artist, state.artist) ||
@@ -403,7 +397,6 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         if (bundleChanged) NNPDiagnosticSetString(@"ActiveMediaBundle", state.bundleIdentifier ?: @"");
         if (spotifyChanged) NNPDiagnosticSetBool(@"SpotifyDetected", [self isAllowedMedia:state]);
         if (playbackChanged) NNPDiagnosticSetBool(@"PlaybackActive", state.playing);
-        if (trackChanged) [self refreshSpotifyLyricsForCurrentTrack];
         if (presentationChanged) [self reconcile];
         else [self updateProgress];
     };
@@ -855,28 +848,6 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     }
     [self.view updateLyricsText:currentLine nextLine:nextLine];
 }
-- (void)refreshSpotifyLyricsForCurrentTrack {
-    NSUInteger generation = ++self.spotifyLyricsRefreshGeneration;
-    NSString *trackTitle = self.state.title ?: @"";
-    if (![self.state.bundleIdentifier isEqualToString:NNPSpotify] || !trackTitle.length) return;
-
-    NSArray<NSNumber *> *retryDelays = @[@0.0, @0.45, @1.1, @2.2, @4.5];
-    __weak typeof(self) weakSelf = self;
-    for (NSNumber *delay in retryDelays) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (!strongSelf || generation != strongSelf.spotifyLyricsRefreshGeneration ||
-                ![strongSelf.state.bundleIdentifier isEqualToString:NNPSpotify] ||
-                !NNPStringsEqual(strongSelf.state.title, trackTitle)) return;
-
-            [strongSelf.preferences reloadSpotifyLyricsSnapshot];
-            [strongSelf applyLyricsPreferences];
-            if (NNPTrackTitleMatches(trackTitle, strongSelf.preferences.spotifyLyricsTrackTitle))
-                strongSelf.spotifyLyricsRefreshGeneration++;
-        });
-    }
-}
 - (void)updateUnlimitedMediaPauseWithEligibleMedia:(BOOL)mediaEligible activeSession:(BOOL)activeSession {
     BOOL shouldWait = self.preferences.experimentalUnlimitedDuration && activeSession && !mediaEligible;
     if (!shouldWait) {
@@ -1070,6 +1041,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 }
 - (void)updateProgress {
     if (!self.state || !self.window || self.window.hidden) return;
+    [self.preferences reloadSpotifyLyricsSnapshot];
     [self applyLyricsPreferences];
     NSTimeInterval elapsed = self.state.elapsed;
     if (self.state.playing && self.state.playbackRate > 0.0 && self.state.timestamp > 0.0)
