@@ -7,13 +7,13 @@
 %hook NSURLSession
 
 - (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request {
-    NNPSpotifyLyricsProbeCaptureNetworkTask(request);
+    NNPSpotifyLyricsProbeCaptureNetworkTask(self, request);
     return %orig(request);
 }
 
 - (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request completionHandler:(void (^)(NSData *, NSURLResponse *, NSError *))completionHandler {
     if (!NNPSpotifyLyricsProbeShouldTraceNetworkRequest(request)) return %orig(request, completionHandler);
-    NNPSpotifyLyricsProbeCaptureNetworkTask(request);
+    NNPSpotifyLyricsProbeCaptureNetworkTask(self, request);
     void (^wrappedHandler)(NSData *, NSURLResponse *, NSError *) = ^(NSData *data, NSURLResponse *response, NSError *error) {
         NNPSpotifyLyricsProbeCaptureNetworkResponse(request, data, response, error);
         if (completionHandler) completionHandler(data, response, error);
@@ -24,7 +24,7 @@
 - (NSURLSessionDataTask *)dataTaskWithURL:(NSURL *)URL completionHandler:(void (^)(NSData *, NSURLResponse *, NSError *))completionHandler {
     NSURLRequest *request = [NSURLRequest requestWithURL:URL];
     if (!NNPSpotifyLyricsProbeShouldTraceNetworkRequest(request)) return %orig(URL, completionHandler);
-    NNPSpotifyLyricsProbeCaptureNetworkTask(request);
+    NNPSpotifyLyricsProbeCaptureNetworkTask(self, request);
     void (^wrappedHandler)(NSData *, NSURLResponse *, NSError *) = ^(NSData *data, NSURLResponse *response, NSError *error) {
         NNPSpotifyLyricsProbeCaptureNetworkResponse(request, data, response, error);
         if (completionHandler) completionHandler(data, response, error);

@@ -17,8 +17,11 @@ static void NNPSpotifyProbeAppend(NSString *line);
 static char NNPSpotifyNetworkBodyAssociationKey;
 static char NNPSpotifyNetworkBodyTruncatedAssociationKey;
 static NSMutableDictionary<NSString *, NSDictionary *> *NNPSpotifyTrackContextByRequestPath;
+static NSMutableDictionary<NSString *, NSNumber *> *NNPSpotifyLyricsFetchAttempts;
 static NSObject *NNPSpotifyTrackContextLock;
 static dispatch_once_t NNPSpotifyTrackContextOnce;
+static NSURLSession *NNPSpotifyLyricsRequestSession;
+static NSURLRequest *NNPSpotifyLyricsRequestTemplate;
 static NSString *NNPSpotifyVerifiedLyricsTrackTitle;
 static NSString *NNPSpotifyVerifiedLyricsTrackArtist;
 static NSString *NNPSpotifyVerifiedLyricsTrackIdentifierValue;
@@ -26,6 +29,7 @@ static NSString *NNPSpotifyVerifiedLyricsTrackIdentifierValue;
 static void NNPSpotifyEnsureTrackContextStore(void) {
     dispatch_once(&NNPSpotifyTrackContextOnce, ^{
         NNPSpotifyTrackContextByRequestPath = [NSMutableDictionary dictionary];
+        NNPSpotifyLyricsFetchAttempts = [NSMutableDictionary dictionary];
         NNPSpotifyTrackContextLock = [NSObject new];
     });
 }
@@ -392,9 +396,15 @@ void NNPSpotifyLyricsProbeCaptureNetworkResponse(NSURLRequest *request, NSData *
     }
 }
 
-void NNPSpotifyLyricsProbeCaptureNetworkTask(NSURLRequest *request) {
+void NNPSpotifyLyricsProbeCaptureNetworkTask(NSURLSession *session, NSURLRequest *request) {
     if (!NNPSpotifyLyricsProbeShouldTraceNetworkRequest(request)) return;
     NNPSpotifyRememberTrackForLyricsRequest(request);
+    if ([request.URL.absoluteString.lowercaseString containsString:@"lyrics"]) {
+        @synchronized (NNPSpotifyTrackContextLock) {
+            if (session) NNPSpotifyLyricsRequestSession = session;
+            NNPSpotifyLyricsRequestTemplate = [request copy];
+        }
+    }
     NSURLComponents *components = [NSURLComponents componentsWithURL:request.URL resolvingAgainstBaseURL:NO];
     NSMutableArray<NSString *> *queryKeys = [NSMutableArray array];
     for (NSURLQueryItem *item in components.queryItems ?: @[]) {
@@ -996,6 +1006,76 @@ static void NNPSpotifyLyricsProbeCapture(void) {
     NNPSpotifyPublishLyrics(current, next, lines);
 }
 
+static void NNPSpotifyLyricsProbeEnsureCurrentTrackLyrics(void) {
+    NSDictionary *nowPlaying = MPNowPlayingInfoCenter.defaultCenter.nowPlayingInfo ?: @{};
+    NSString *trackIdentifier = NNPSpotifyTrackIdentifierFromMetadata(nowPlaying);
+    NSString *trackTitle = [nowPlaying[MPMediaItemPropertyTitle] isKindOfClass:NSString.class]
+        ? nowPlaying[MPMediaItemPropertyTitle] : @"";
+    NSString *trackArtist = [nowPlaying[MPMediaItemPropertyArtist] isKindOfClass:NSString.class]
+        ? nowPlaying[MPMediaItemPropertyArtist] : @"";
+    if (!trackIdentifier.length || !trackTitle.length) return;
+    if ([trackIdentifier isEqualToString:NNPSpotifyVerifiedLyricsTrackIdentifier()]) return;
+
+    NSURLSession *session = nil;
+    NSURLRequest *template = nil;
+    NSMutableURLRequest *lyricsRequest = nil;
+    NSString *requestPath = nil;
+    @synchronized (NNPSpotifyTrackContextLock) {
+        session = NNPSpotifyLyricsRequestSession;
+        template = NNPSpotifyLyricsRequestTemplate;
+        if (!session || !template.URL) {
+            static NSString *lastMissingTemplateTrack;
+            if (![lastMissingTemplateTrack isEqualToString:trackIdentifier]) {
+                lastMissingTemplateTrack = [trackIdentifier copy];
+                NNPSpotifyProbeAppend([NSString stringWithFormat:@"LYRICS-PREFETCH waiting for Spotify request template track=%@", trackIdentifier]);
+            }
+            return;
+        }
+
+        NSURLComponents *components = [NSURLComponents componentsWithURL:template.URL resolvingAgainstBaseURL:NO];
+        NSString *path = components.path ?: @"";
+        NSString *marker = @"/color-lyrics/v2/track/";
+        NSRange markerRange = [path rangeOfString:marker];
+        if (markerRange.location == NSNotFound) return;
+        components.path = [[path substringToIndex:NSMaxRange(markerRange)] stringByAppendingString:trackIdentifier];
+        NSURL *targetURL = components.URL;
+        if (!targetURL) return;
+        requestPath = targetURL.path;
+
+        NSTimeInterval now = NSDate.date.timeIntervalSince1970;
+        NSDictionary *recentRequest = NNPSpotifyTrackContextByRequestPath[requestPath];
+        if ([recentRequest[@"capturedAt"] respondsToSelector:@selector(doubleValue)] &&
+            now - [recentRequest[@"capturedAt"] doubleValue] < 15.0) return;
+        NSNumber *lastAttempt = NNPSpotifyLyricsFetchAttempts[trackIdentifier];
+        if (lastAttempt && now - lastAttempt.doubleValue < 30.0) return;
+        NNPSpotifyLyricsFetchAttempts[trackIdentifier] = @(now);
+        for (NSString *key in NNPSpotifyLyricsFetchAttempts.allKeys.copy) {
+            if (now - NNPSpotifyLyricsFetchAttempts[key].doubleValue > 300.0)
+                [NNPSpotifyLyricsFetchAttempts removeObjectForKey:key];
+        }
+
+        lyricsRequest = [template mutableCopy];
+        lyricsRequest.URL = targetURL;
+        lyricsRequest.HTTPMethod = @"GET";
+        lyricsRequest.HTTPBody = nil;
+        [lyricsRequest setValue:nil forHTTPHeaderField:@"If-None-Match"];
+        [lyricsRequest setValue:nil forHTTPHeaderField:@"If-Modified-Since"];
+    }
+
+    if (!lyricsRequest) return;
+    NNPSpotifyProbeAppend([NSString stringWithFormat:@"LYRICS-PREFETCH start id=%@ title=%@ artist=%@",
+                           trackIdentifier, trackTitle, trackArtist]);
+    NSURLSessionDataTask *task = [session dataTaskWithRequest:lyricsRequest completionHandler:^(__unused NSData *data,
+                                                                                               NSURLResponse *response,
+                                                                                               NSError *error) {
+        NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class]
+            ? ((NSHTTPURLResponse *)response).statusCode : 0;
+        NNPSpotifyProbeAppend([NSString stringWithFormat:@"LYRICS-PREFETCH finished id=%@ status=%ld error=%@",
+                               trackIdentifier, (long)status, error.localizedDescription ?: @""]);
+    }];
+    [task resume];
+}
+
 void NNPSpotifyLyricsProbeStart(void) {
     [NSUserDefaults.standardUserDefaults setObject:[NSDate date] forKey:@"NNPSpotifyLyricsProbeStartedAt"];
     [NSUserDefaults.standardUserDefaults setObject:@(getpid()) forKey:@"NNPSpotifyLyricsProbePID"];
@@ -1008,6 +1088,9 @@ void NNPSpotifyLyricsProbeStart(void) {
         NNPSpotifyLyricsProbeCapture();
         [NSTimer scheduledTimerWithTimeInterval:0.2 repeats:YES block:^(__unused NSTimer *timer) {
             NNPSpotifyLyricsProbeCapture();
+        }];
+        [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(__unused NSTimer *timer) {
+            NNPSpotifyLyricsProbeEnsureCurrentTrackLyrics();
         }];
     });
 }
