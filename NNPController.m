@@ -5,6 +5,7 @@
 #import "NNPPreferences.h"
 #import "NNPLockStateController.h"
 #import "NNPDisplayController.h"
+#import "NNPNotificationDiagnostics.h"
 #import "NNPDiagnostics.h"
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
@@ -14,6 +15,59 @@
 
 static NSString * const NNPLog = @"[NotchNowPlaying]";
 static NSString * const NNPSpotify = @"com.spotify.client";
+static id NNPInvokeObjectMethod(id object, const char *selectorName) {
+    SEL selector = sel_registerName(selectorName);
+    if (!object || ![object respondsToSelector:selector]) return nil;
+    return ((id (*)(id, SEL))objc_msgSend)(object, selector);
+}
+static id NNPInvokeObjectMethodWithObject(id object, const char *selectorName, id argument) {
+    SEL selector = sel_registerName(selectorName);
+    if (!object || ![object respondsToSelector:selector]) return nil;
+    return ((id (*)(id, SEL, id))objc_msgSend)(object, selector, argument);
+}
+static NSDictionary *NNPResolvedNotificationPresentationPayload(NSDictionary *source) {
+    if (![source isKindOfClass:NSDictionary.class]) return nil;
+    NSMutableDictionary *payload = [source mutableCopy];
+    NSString *bundleIdentifier = [source[@"bundleIdentifier"] isKindOfClass:NSString.class]
+        ? source[@"bundleIdentifier"] : nil;
+    NSString *appName = [source[@"appName"] isKindOfClass:NSString.class] ? source[@"appName"] : nil;
+
+    if (bundleIdentifier.length) {
+        @try {
+            Class applicationControllerClass = NSClassFromString(@"SBApplicationController");
+            id applicationController = NNPInvokeObjectMethod(applicationControllerClass, "sharedInstance");
+            id application = NNPInvokeObjectMethodWithObject(applicationController, "applicationWithBundleIdentifier:", bundleIdentifier);
+            id displayName = NNPInvokeObjectMethod(application, "displayName");
+            if ([displayName isKindOfClass:NSString.class] && [displayName length]) appName = displayName;
+
+            Class iconControllerClass = NSClassFromString(@"SBIconController");
+            id iconController = NNPInvokeObjectMethod(iconControllerClass, "sharedInstance");
+            id iconModel = NNPInvokeObjectMethod(iconController, "model");
+            if (!iconModel) {
+                iconModel = NNPInvokeObjectMethod(NSClassFromString(@"SBIconModel"), "sharedInstance");
+            }
+            id icon = NNPInvokeObjectMethodWithObject(iconModel, "applicationIconForBundleIdentifier:", bundleIdentifier);
+            if (!icon && iconModel) {
+                icon = NNPInvokeObjectMethodWithObject(iconModel, "expectedIconForDisplayIdentifier:", bundleIdentifier);
+            }
+            id iconImage = nil;
+            SEL getIconImageSelector = sel_registerName("getIconImage:");
+            if ([icon respondsToSelector:getIconImageSelector]) {
+                iconImage = ((id (*)(id, SEL, int))objc_msgSend)(icon, getIconImageSelector, 2);
+            }
+            if (![iconImage isKindOfClass:UIImage.class]) iconImage = NNPInvokeObjectMethod(icon, "icon");
+            if ([iconImage isKindOfClass:UIImage.class]) payload[@"icon"] = iconImage;
+        } @catch (__unused NSException *exception) {
+        }
+    }
+
+    if (appName.length) payload[@"appName"] = appName;
+    else if (bundleIdentifier.length) payload[@"appName"] = bundleIdentifier;
+    id contentIcon = source[@"contentIcon"];
+    if (![payload[@"icon"] isKindOfClass:UIImage.class] && [contentIcon isKindOfClass:UIImage.class])
+        payload[@"icon"] = contentIcon;
+    return [payload copy];
+}
 static NSString *NNPNormalizedTrackTitle(NSString *title) {
     NSString *folded = [(title ?: @"") stringByFoldingWithOptions:NSDiacriticInsensitiveSearch | NSCaseInsensitiveSearch | NSWidthInsensitiveSearch
                                                             locale:NSLocale.currentLocale];
@@ -540,6 +594,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 }
 - (BOOL)showNotificationSnakeAnimation {
     if (![NSThread isMainThread]) return NO;
+    NSDictionary *pendingNotificationPayload = NNPNotificationDiagnosticsConsumePendingPresentationPayload();
     UIWindow *presentationWindow = self.view.window;
     BOOL aodReady = self.locked && self.display.aodPresentationActive &&
         self.display.lifecycleState == NNPDisplayLifecycleStateActive &&
@@ -549,7 +604,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         NNPDiagnosticLogTransition(@"NOTIFICATION_SNAKE presentation unavailable; notification wake will pass through");
         return NO;
     }
-    BOOL mainViewPresented = [self.view playNotificationSnakeAnimation];
+    NSDictionary *notificationPayload = NNPResolvedNotificationPresentationPayload(pendingNotificationPayload);
+    BOOL mainViewPresented = [self.view playNotificationSnakeAnimationWithPayload:notificationPayload];
     BOOL statusBarMirrorPresented = NO;
     UIView *statusBarContainer = self.statusBarPlayerContainer;
     NNPView *statusBarMirror = self.statusBarPlayerView;
@@ -797,6 +853,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         }
         [self startProgressTimer]; [self startAODPixelShiftTimer]; [self updateProgress]; }); }
 - (void)hide {
+    [self.view cancelNotificationSnakeAnimation];
+    [self.statusBarPlayerView cancelNotificationSnakeAnimation];
     [self stopAODPixelShiftTimer];
     BOOL keepAmbient = [self shouldPresentInsideCoverSheet];
     if (keepAmbient) {

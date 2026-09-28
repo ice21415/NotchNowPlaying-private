@@ -9,6 +9,7 @@
 #import <stdlib.h>
 #import <dlfcn.h>
 #import <mach/mach_time.h>
+#import <os/lock.h>
 
 static CFStringRef const NNPNotificationPreferencesDomain = CFSTR("com.user.notchnowplaying");
 static NSString * const NNPNotificationTracePreference = @"NotificationWakeTraceEnabled";
@@ -22,6 +23,8 @@ static _Atomic(bool) gNNPNotificationSnakeWakeEnabled = false;
 static _Atomic(bool) gNNPNotificationTraceLocked = false;
 static _Atomic(bool) gNNPNotificationTraceAODActive = false;
 static _Atomic(uint64_t) gNNPLastAODNotificationDispatchTicks = 0;
+static os_unfair_lock gNNPPendingNotificationPayloadLock = OS_UNFAIR_LOCK_INIT;
+static NSDictionary *gNNPPendingNotificationPayload;
 static _Atomic(unsigned int) gNNPNotificationTraceNotificationCount = 0;
 static _Atomic(unsigned int) gNNPNotificationTraceBacklightCount = 0;
 static IMP gNNPOriginalNotificationDispatch;
@@ -74,11 +77,66 @@ static NSString *NNPNotificationSourceBundle(id request) {
     return [value isKindOfClass:NSString.class] && [value length] ? value : @"unknown";
 }
 
+static id NNPNotificationObjectForSelector(id object, const char *selectorName) {
+    SEL selector = sel_registerName(selectorName);
+    if (!object || ![object respondsToSelector:selector]) return nil;
+    return ((id (*)(id, SEL))objc_msgSend)(object, selector);
+}
+
+static NSString *NNPNotificationStringForSelector(id object, const char *selectorName, NSUInteger maximumLength) {
+    id value = NNPNotificationObjectForSelector(object, selectorName);
+    if (![value isKindOfClass:NSString.class]) return nil;
+    NSString *text = [(NSString *)value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (!text.length) return nil;
+    if (text.length <= maximumLength) return [text copy];
+    NSUInteger end = maximumLength;
+    NSRange composedRange = [text rangeOfComposedCharacterSequenceAtIndex:end - 1];
+    return [[text substringToIndex:NSMaxRange(composedRange)] copy];
+}
+
+static NSDictionary *NNPNotificationPayloadFromRequest(id request) {
+    id content = NNPNotificationObjectForSelector(request, "content");
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    NSString *bundleIdentifier = NNPNotificationSourceBundle(request);
+    if (![bundleIdentifier isEqualToString:@"unknown"]) payload[@"bundleIdentifier"] = bundleIdentifier;
+
+    NSString *appName = NNPNotificationStringForSelector(content, "header", 80);
+    NSString *title = NNPNotificationStringForSelector(content, "title", 120);
+    NSString *subtitle = NNPNotificationStringForSelector(content, "subtitle", 160);
+    NSString *message = NNPNotificationStringForSelector(content, "message", 360);
+    if (!message.length) message = NNPNotificationStringForSelector(content, "body", 360);
+    if (!message.length) message = NNPNotificationStringForSelector(content, "hiddenPreviewsBodyPlaceholder", 160);
+    id icon = NNPNotificationObjectForSelector(content, "icon");
+    Class imageClass = NSClassFromString(@"UIImage");
+
+    if (appName.length) payload[@"appName"] = appName;
+    if (title.length) payload[@"title"] = title;
+    if (subtitle.length) payload[@"subtitle"] = subtitle;
+    if (message.length) payload[@"message"] = message;
+    if (imageClass && [icon isKindOfClass:imageClass]) payload[@"contentIcon"] = icon;
+    return [payload copy];
+}
+
+static void NNPNotificationSetPendingPresentationPayload(NSDictionary *payload) {
+    os_unfair_lock_lock(&gNNPPendingNotificationPayloadLock);
+    gNNPPendingNotificationPayload = [payload copy];
+    os_unfair_lock_unlock(&gNNPPendingNotificationPayloadLock);
+}
+
 static void NNPNotificationDispatchReplacement(id self, SEL selector, id request) {
     if (atomic_load_explicit(&gNNPNotificationSnakeWakeEnabled, memory_order_acquire) &&
         atomic_load_explicit(&gNNPNotificationTraceLocked, memory_order_acquire) &&
         atomic_load_explicit(&gNNPNotificationTraceAODActive, memory_order_acquire)) {
-        atomic_store_explicit(&gNNPLastAODNotificationDispatchTicks, mach_absolute_time(), memory_order_release);
+        uint64_t dispatchTicks = mach_absolute_time();
+        atomic_store_explicit(&gNNPLastAODNotificationDispatchTicks, dispatchTicks, memory_order_release);
+        NNPNotificationSetPendingPresentationPayload(NNPNotificationPayloadFromRequest(request));
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.2 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            if (atomic_load_explicit(&gNNPLastAODNotificationDispatchTicks, memory_order_acquire) == dispatchTicks) {
+                atomic_store_explicit(&gNNPLastAODNotificationDispatchTicks, 0, memory_order_release);
+                NNPNotificationSetPendingPresentationPayload(nil);
+            }
+        });
     }
 
     if (atomic_load_explicit(&gNNPNotificationTraceEnabled, memory_order_acquire)) {
@@ -171,13 +229,14 @@ static void NNPNotificationDiagnosticsReloadPreference(void) {
     if (traceEnabled && !wasTraceEnabled) {
         atomic_store_explicit(&gNNPNotificationTraceNotificationCount, 0, memory_order_relaxed);
         atomic_store_explicit(&gNNPNotificationTraceBacklightCount, 0, memory_order_relaxed);
-        NNPDiagnosticLog(@"NOTIFICATION_TRACE enabled; content and notification identifiers are not recorded");
+        NNPDiagnosticLog(@"NOTIFICATION_TRACE enabled; notification content is never written to diagnostic logs");
     } else if (!traceEnabled && wasTraceEnabled) {
         NNPDiagnosticLog(@"NOTIFICATION_TRACE disabled");
     }
 
     if (!snakeWakeEnabled) {
         atomic_store_explicit(&gNNPLastAODNotificationDispatchTicks, 0, memory_order_release);
+        NNPNotificationSetPendingPresentationPayload(nil);
     }
     if (traceEnabled || snakeWakeEnabled) {
         NNPInstallNotificationHooks(traceEnabled);
@@ -212,6 +271,7 @@ void NNPNotificationDiagnosticsSetDisplayState(BOOL locked, BOOL aodActive) {
     atomic_store_explicit(&gNNPNotificationTraceAODActive, aodActive, memory_order_release);
     if (!locked || !aodActive) {
         atomic_store_explicit(&gNNPLastAODNotificationDispatchTicks, 0, memory_order_release);
+        NNPNotificationSetPendingPresentationPayload(nil);
     }
 }
 
@@ -228,12 +288,18 @@ BOOL NNPNotificationDiagnosticsConsumeWakeForSnakeAnimation(NSInteger state, NSI
         atomic_load_explicit(&gNNPNotificationSnakeWakeEnabled, memory_order_acquire) &&
         atomic_load_explicit(&gNNPNotificationTraceLocked, memory_order_acquire) &&
         atomic_load_explicit(&gNNPNotificationTraceAODActive, memory_order_acquire);
-    if (!eligible || !dispatchTicks) return NO;
+    if (!eligible || !dispatchTicks) {
+        NNPNotificationSetPendingPresentationPayload(nil);
+        return NO;
+    }
 
     uint64_t now = mach_absolute_time();
     uint64_t window = NNPNotificationTicksForSeconds(NNPNotificationWakeCorrelationWindowSeconds);
     if (!window || !gNNPNotificationTimebase.numer || !gNNPNotificationTimebase.denom ||
-        now < dispatchTicks || now - dispatchTicks > window) return NO;
+        now < dispatchTicks || now - dispatchTicks > window) {
+        NNPNotificationSetPendingPresentationPayload(nil);
+        return NO;
+    }
 
     double ageSeconds = ((double)(now - dispatchTicks) * (double)gNNPNotificationTimebase.numer /
                          (double)gNNPNotificationTimebase.denom) / 1000000000.0;
@@ -241,4 +307,12 @@ BOOL NNPNotificationDiagnosticsConsumeWakeForSnakeAnimation(NSInteger state, NSI
         @"NOTIFICATION_SNAKE matched state=%ld source=%ld age=%.3fs; preserving locked AOD",
         (long)state, (long)source, ageSeconds]);
     return YES;
+}
+
+NSDictionary *NNPNotificationDiagnosticsConsumePendingPresentationPayload(void) {
+    os_unfair_lock_lock(&gNNPPendingNotificationPayloadLock);
+    NSDictionary *payload = [gNNPPendingNotificationPayload copy];
+    gNNPPendingNotificationPayload = nil;
+    os_unfair_lock_unlock(&gNNPPendingNotificationPayloadLock);
+    return payload;
 }

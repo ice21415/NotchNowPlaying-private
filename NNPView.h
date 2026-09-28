@@ -17,4 +17,6 @@
 - (void)updateLyricsText:(NSString *)currentLine nextLine:(NSString *)nextLine;
 - (void)stopContentAnimation;
 - (BOOL)playNotificationSnakeAnimation;
+- (BOOL)playNotificationSnakeAnimationWithPayload:(NSDictionary *)payload;
+- (void)cancelNotificationSnakeAnimation;
 @end

@@ -179,6 +179,12 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 @property(nonatomic, strong) UIColor *accentColor;
 @property(nonatomic, strong) CAShapeLayer *notificationSnakeLayer;
 @property(nonatomic, strong) CAShapeLayer *notificationSnakeFinishLayer;
+@property(nonatomic, strong) UIView *notificationCard;
+@property(nonatomic, strong) UIImageView *notificationCardIcon;
+@property(nonatomic, strong) UILabel *notificationCardAppName;
+@property(nonatomic, strong) UILabel *notificationCardTitle;
+@property(nonatomic, strong) UILabel *notificationCardMessage;
+@property(nonatomic) BOOL notificationCardActive;
 #if NNP_NOTIFICATION_SNAKE_GEOMETRY_DIAGNOSTICS
 @property(nonatomic, strong) CAShapeLayer *notificationSnakeDebugGuideLayer;
 @property(nonatomic, strong) CAShapeLayer *notificationSnakeDebugMarkersLayer;
@@ -188,6 +194,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 - (CGRect)notchRectUsingPrivateAPI:(BOOL *)usedPrivateAPI;
 - (UIBezierPath *)notificationSnakePath;
 - (void)updateNotificationSnakeCounterTransform;
+- (BOOL)presentNotificationCardWithPayload:(NSDictionary *)payload generation:(NSUInteger)generation;
+- (void)finishNotificationCardForGeneration:(NSUInteger)generation;
 @end
 
 @implementation NNPView
@@ -210,7 +218,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 
 - (void)setContentOpacity:(CGFloat)contentOpacity {
     _contentOpacity = MIN(1.0, MAX(0.0, contentOpacity));
-    self.contentContainer.alpha = _contentOpacity;
+    if (!self.notificationCardActive) self.contentContainer.alpha = _contentOpacity;
 }
 
 - (void)stopContentAnimation {
@@ -416,6 +424,19 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         self.notificationSnakeFinishLayer.path = NNPNotificationSnakeFinishPath(notch).CGPath;
         self.notificationSnakeFinishLayer.lineWidth = self.track.lineWidth + 2.5;
     }
+    if (self.notificationCard) {
+        CGFloat cardWidth = MIN(340.0, MAX(1.0, width - 32.0));
+        CGFloat cardHeight = 92.0;
+        CGFloat cardTop = CGRectGetMaxY(notch) + 16.0;
+        if (cardTop + cardHeight > CGRectGetHeight(self.bounds) - 24.0)
+            cardTop = MAX(8.0, CGRectGetHeight(self.bounds) * 0.18);
+        self.notificationCard.frame = CGRectMake((width - cardWidth) / 2.0, cardTop, cardWidth, cardHeight);
+        self.notificationCardIcon.frame = CGRectMake(12.0, 24.0, 44.0, 44.0);
+        CGFloat textWidth = MAX(1.0, cardWidth - 80.0);
+        self.notificationCardAppName.frame = CGRectMake(68.0, 9.0, textWidth, 14.0);
+        self.notificationCardTitle.frame = CGRectMake(68.0, 25.0, textWidth, 19.0);
+        self.notificationCardMessage.frame = CGRectMake(68.0, 45.0, textWidth, 38.0);
+    }
 #if NNP_NOTIFICATION_SNAKE_GEOMETRY_DIAGNOSTICS
     if (self.notificationSnakeDebugGuideLayer) {
         self.notificationSnakeDebugGuideLayer.frame = self.bounds;
@@ -470,6 +491,10 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 }
 
 - (BOOL)playNotificationSnakeAnimation {
+    return [self playNotificationSnakeAnimationWithPayload:nil];
+}
+
+- (BOOL)playNotificationSnakeAnimationWithPayload:(NSDictionary *)payload {
     if (![NSThread isMainThread] || !self.window || CGRectIsEmpty(self.bounds)) return NO;
     if (!self.track.path) [self layoutIfNeeded];
     if (!self.track.path) return NO;
@@ -513,6 +538,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     NSUInteger generation = ++self.notificationSnakeGeneration;
     [snake removeAllAnimations];
     [finish removeAllAnimations];
+    [self.notificationCard.layer removeAllAnimations];
+    [self.contentContainer.layer removeAllAnimations];
     snake.frame = self.bounds;
     snake.path = [self notificationSnakePath].CGPath;
     snake.lineWidth = NNPNotificationSnakeLineWidth;
@@ -523,6 +550,11 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     snake.shadowRadius = 16.0;
     snake.shadowOffset = CGSizeZero;
     snake.opacity = 1.0;
+    self.notificationCardActive = NO;
+    self.contentContainer.alpha = self.contentOpacity;
+    self.notificationCard.hidden = YES;
+    self.notificationCard.alpha = 0.0;
+    self.notificationCard.transform = CGAffineTransformIdentity;
     finish.frame = self.bounds;
     // The closed perimeter ends at the track's left endpoint, so trace the U
     // from left to right as a visible, continuous final phase.
@@ -580,6 +612,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         [ancestorDescriptions componentsJoinedByString:@" <- "]]);
 #endif
     [self updateNotificationSnakeCounterTransform];
+
+    [self presentNotificationCardWithPayload:payload generation:generation];
 
     BOOL reduceMotion = UIAccessibilityIsReduceMotionEnabled();
     NSTimeInterval duration = 2.2;
@@ -686,8 +720,157 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         self.notificationSnakeDebugMarkersLayer.opacity = 0.0;
 #endif
         [CATransaction commit];
+        [self finishNotificationCardForGeneration:generation];
     });
     return YES;
+}
+
+- (BOOL)presentNotificationCardWithPayload:(NSDictionary *)payload generation:(NSUInteger)generation {
+    if (![payload isKindOfClass:NSDictionary.class]) return NO;
+    NSString *appName = [payload[@"appName"] isKindOfClass:NSString.class] ? payload[@"appName"] : @"";
+    NSString *title = [payload[@"title"] isKindOfClass:NSString.class] ? payload[@"title"] : @"";
+    NSString *subtitle = [payload[@"subtitle"] isKindOfClass:NSString.class] ? payload[@"subtitle"] : @"";
+    NSString *message = [payload[@"message"] isKindOfClass:NSString.class] ? payload[@"message"] : @"";
+    NSString *primaryText = title.length ? title : (subtitle.length ? subtitle : message);
+    NSString *secondaryText = @"";
+    if (title.length) {
+        if (subtitle.length && message.length) secondaryText = [NSString stringWithFormat:@"%@ · %@", subtitle, message];
+        else secondaryText = subtitle.length ? subtitle : message;
+    }
+    if (!primaryText.length && !secondaryText.length) primaryText = @"有新通知";
+    UIImage *icon = [payload[@"icon"] isKindOfClass:UIImage.class] ? payload[@"icon"] : nil;
+    if (!appName.length && !primaryText.length && !secondaryText.length && !icon) return NO;
+
+    if (!self.notificationCard) {
+        UIView *card = [UIView new];
+        card.backgroundColor = [UIColor colorWithWhite:0.055 alpha:0.96];
+        card.layer.cornerRadius = 22.0;
+        card.layer.cornerCurve = kCACornerCurveContinuous;
+        card.layer.borderWidth = 1.0 / MAX(UIScreen.mainScreen.scale, 1.0);
+        card.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.16].CGColor;
+        card.layer.shadowColor = UIColor.blackColor.CGColor;
+        card.layer.shadowOpacity = 0.42;
+        card.layer.shadowRadius = 18.0;
+        card.layer.shadowOffset = CGSizeMake(0.0, 7.0);
+        card.layer.zPosition = 1004.0;
+        card.userInteractionEnabled = NO;
+
+        UIImageView *iconView = [UIImageView new];
+        iconView.contentMode = UIViewContentModeScaleAspectFill;
+        iconView.clipsToBounds = YES;
+        iconView.layer.cornerRadius = 12.0;
+        iconView.layer.cornerCurve = kCACornerCurveContinuous;
+        iconView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.10];
+
+        UILabel *appLabel = [UILabel new];
+        appLabel.font = [UIFont systemFontOfSize:10.5 weight:UIFontWeightSemibold];
+        appLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.62];
+        appLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+
+        UILabel *titleLabel = [UILabel new];
+        titleLabel.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightSemibold];
+        titleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.96];
+        titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+
+        UILabel *messageLabel = [UILabel new];
+        messageLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightMedium];
+        messageLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.76];
+        messageLabel.numberOfLines = 2;
+        messageLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+
+        [card addSubview:iconView];
+        [card addSubview:appLabel];
+        [card addSubview:titleLabel];
+        [card addSubview:messageLabel];
+        [self addSubview:card];
+        self.notificationCard = card;
+        self.notificationCardIcon = iconView;
+        self.notificationCardAppName = appLabel;
+        self.notificationCardTitle = titleLabel;
+        self.notificationCardMessage = messageLabel;
+    }
+
+    self.notificationCardAppName.text = appName;
+    self.notificationCardTitle.text = primaryText;
+    self.notificationCardTitle.hidden = !primaryText.length;
+    self.notificationCardMessage.text = secondaryText;
+    self.notificationCardMessage.hidden = !secondaryText.length;
+    UIImage *displayIcon = icon ?: [UIImage systemImageNamed:@"app.fill"];
+    self.notificationCardIcon.image = displayIcon;
+    self.notificationCard.accessibilityLabel = [@[appName ?: @"", primaryText ?: @"", secondaryText ?: @""]
+        componentsJoinedByString:@", "];
+    self.notificationCardActive = YES;
+    self.notificationCard.hidden = NO;
+    self.notificationCard.alpha = 0.0;
+    self.notificationCard.transform = CGAffineTransformMakeTranslation(0.0, -12.0);
+    self.notificationCard.transform = CGAffineTransformScale(self.notificationCard.transform, 0.94, 0.94);
+    [self setNeedsLayout];
+    [self layoutIfNeeded];
+
+    NSTimeInterval delay = UIAccessibilityIsReduceMotionEnabled() ? 0.05 : 0.28;
+    NSTimeInterval duration = UIAccessibilityIsReduceMotionEnabled() ? 0.18 : 0.34;
+    [UIView animateWithDuration:duration delay:delay
+                        options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState
+                     animations:^{
+        if (generation != self.notificationSnakeGeneration) return;
+        self.contentContainer.alpha = 0.0;
+        self.notificationCard.alpha = 1.0;
+        self.notificationCard.transform = CGAffineTransformIdentity;
+    } completion:nil];
+    return YES;
+}
+
+- (void)finishNotificationCardForGeneration:(NSUInteger)generation {
+    if (!self.notificationCardActive || generation != self.notificationSnakeGeneration) return;
+    NSTimeInterval duration = UIAccessibilityIsReduceMotionEnabled() ? 0.10 : 0.18;
+    [UIView animateWithDuration:duration delay:0.0
+                        options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState
+                     animations:^{
+        self.notificationCard.alpha = 0.0;
+        self.contentContainer.alpha = self.contentOpacity;
+    } completion:^(__unused BOOL finished) {
+        if (generation != self.notificationSnakeGeneration) return;
+        self.notificationCard.hidden = YES;
+        self.notificationCard.transform = CGAffineTransformIdentity;
+        self.notificationCardActive = NO;
+        self.contentContainer.alpha = self.contentOpacity;
+        self.notificationCardIcon.image = nil;
+        self.notificationCardAppName.text = nil;
+        self.notificationCardTitle.text = nil;
+        self.notificationCardMessage.text = nil;
+        self.notificationCard.accessibilityLabel = nil;
+    }];
+}
+
+- (void)cancelNotificationSnakeAnimation {
+    self.notificationSnakeGeneration++;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    [self.notificationSnakeLayer removeAllAnimations];
+    [self.notificationSnakeFinishLayer removeAllAnimations];
+    self.notificationSnakeLayer.hidden = YES;
+    self.notificationSnakeFinishLayer.hidden = YES;
+    self.notificationSnakeLayer.opacity = 0.0;
+    self.notificationSnakeFinishLayer.opacity = 0.0;
+#if NNP_NOTIFICATION_SNAKE_GEOMETRY_DIAGNOSTICS
+    [self.notificationSnakeDebugGuideLayer removeAllAnimations];
+    [self.notificationSnakeDebugMarkersLayer removeAllAnimations];
+    self.notificationSnakeDebugGuideLayer.hidden = YES;
+    self.notificationSnakeDebugMarkersLayer.hidden = YES;
+#endif
+    [CATransaction commit];
+    [self.notificationCard.layer removeAllAnimations];
+    [self.contentContainer.layer removeAllAnimations];
+    self.notificationCard.hidden = YES;
+    self.notificationCard.alpha = 0.0;
+    self.notificationCard.transform = CGAffineTransformIdentity;
+    self.notificationCardActive = NO;
+    self.contentContainer.alpha = self.contentOpacity;
+    self.notificationCardIcon.image = nil;
+    self.notificationCardAppName.text = nil;
+    self.notificationCardTitle.text = nil;
+    self.notificationCardMessage.text = nil;
+    self.notificationCard.accessibilityLabel = nil;
 }
 
 - (void)updateTitleMarquee {
