@@ -15,6 +15,9 @@
 
 static NSString * const NNPLog = @"[NotchNowPlaying]";
 static NSString * const NNPSpotify = @"com.spotify.client";
+static BOOL NNPStringsEqual(NSString *left, NSString *right) {
+    return [(left ?: @"") isEqualToString:(right ?: @"")];
+}
 static id NNPInvokeObjectMethod(id object, const char *selectorName) {
     SEL selector = sel_registerName(selectorName);
     if (!object || ![object respondsToSelector:selector]) return nil;
@@ -176,6 +179,23 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic, strong) NNPState *state;
 @property(nonatomic, strong) NSTimer *progressTimer;
 @property(nonatomic, strong) NSTimer *pixelShiftTimer;
+@property(nonatomic) NSTimeInterval progressTimerInterval;
+@property(nonatomic) BOOL reconcilePending;
+@property(nonatomic) BOOL didRecordSpotifyLyricsTrackMatch;
+@property(nonatomic) BOOL recordedSpotifyLyricsTrackMatch;
+@property(nonatomic) BOOL hasCachedLyricsTrackMatch;
+@property(nonatomic) BOOL cachedLyricsTrackMatch;
+@property(nonatomic, copy) NSString *lyricsMatchMediaTitle;
+@property(nonatomic, copy) NSString *lyricsMatchSnapshotTitle;
+@property(nonatomic) BOOL didRecordReconcileState;
+@property(nonatomic) BOOL recordedReconcileLocked;
+@property(nonatomic) BOOL recordedReconcileVisible;
+@property(nonatomic) BOOL recordedReconcileEligible;
+@property(nonatomic) NSInteger recordedReconcileLifecycle;
+@property(nonatomic) BOOL didRecordMediaSwitchAODState;
+@property(nonatomic) BOOL recordedMediaSwitchAODState;
+@property(nonatomic) BOOL didRecordAODBrightnessRequest;
+@property(nonatomic) float recordedAODBrightnessRequest;
 @property(nonatomic) BOOL unlimitedMediaPausePending;
 @property(nonatomic) NSUInteger unlimitedMediaPauseGeneration;
 @property(nonatomic, weak) UIView *coverSheetHostView;
@@ -333,7 +353,10 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
             touch.view ? NSStringFromClass(touch.view.class) : @"none", location.x, location.y]);
     }
 }
-- (void)preferencesChanged:(NSNotification *)note { [self.preferences reload]; [self reconcile]; }
+- (void)preferencesChanged:(__unused NSNotification *)note {
+    // NNPPreferences reloads its values before posting this local notification.
+    [self reconcile];
+}
 - (void)refreshDiagnosticUI { [self reconcile]; }
 - (void)setLocked:(BOOL)locked {
     if (_locked == locked) {
@@ -356,7 +379,30 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [self recordPresentationDiagnostics:locked ? @"logical-lock" : @"logical-unlock"];
     [self reconcile];
 }
-- (void)receive:(NNPState *)state { dispatch_async(dispatch_get_main_queue(), ^{ self.state = state; NNPDiagnosticSetString(@"ActiveMediaBundle", state.bundleIdentifier ?: @""); NNPDiagnosticSetBool(@"SpotifyDetected", [self isAllowedMedia:state]); NNPDiagnosticSetBool(@"PlaybackActive", state.playing); [self reconcile]; }); }
+- (void)receive:(NNPState *)state {
+    if (!state) return;
+    void (^applyState)(void) = ^{
+        NNPState *previous = self.state;
+        BOOL firstState = previous == nil;
+        BOOL bundleChanged = firstState || !NNPStringsEqual(previous.bundleIdentifier, state.bundleIdentifier);
+        BOOL spotifyChanged = firstState || [self isAllowedMedia:previous] != [self isAllowedMedia:state];
+        BOOL playbackChanged = firstState || previous.playing != state.playing;
+        BOOL presentationChanged = firstState || bundleChanged || playbackChanged ||
+            !NNPStringsEqual(previous.title, state.title) ||
+            !NNPStringsEqual(previous.artist, state.artist) ||
+            !NNPStringsEqual(previous.album, state.album) ||
+            !NNPStringsEqual(previous.uniqueIdentifier, state.uniqueIdentifier) ||
+            ((previous.artwork == nil) != (state.artwork == nil));
+        self.state = state;
+        if (bundleChanged) NNPDiagnosticSetString(@"ActiveMediaBundle", state.bundleIdentifier ?: @"");
+        if (spotifyChanged) NNPDiagnosticSetBool(@"SpotifyDetected", [self isAllowedMedia:state]);
+        if (playbackChanged) NNPDiagnosticSetBool(@"PlaybackActive", state.playing);
+        if (presentationChanged) [self reconcile];
+        else [self updateProgress];
+    };
+    if ([NSThread isMainThread]) applyState();
+    else dispatch_async(dispatch_get_main_queue(), applyState);
+}
 - (BOOL)isAllowedMedia:(NNPState *)state { if (!state.bundleIdentifier.length) return NO; return !self.preferences.spotifyOnly || [state.bundleIdentifier isEqualToString:NNPSpotify]; }
 - (BOOL)shouldShow {
     NNPState *state = self.state;
@@ -726,11 +772,19 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)applyLockedBackground {
     BOOL dedicatedBlackPresentation = self.locked;
     UIColor *background = dedicatedBlackPresentation ? UIColor.blackColor : UIColor.clearColor;
+    UIColor *playerBackground = self.coverSheetHostView && self.view.superview == self.coverSheetHostView
+        ? UIColor.clearColor : background;
+    BOOL backgroundChanged = self.window.opaque != dedicatedBlackPresentation ||
+        ![self.window.backgroundColor isEqual:background] ||
+        self.window.rootViewController.view.opaque != dedicatedBlackPresentation ||
+        ![self.window.rootViewController.view.backgroundColor isEqual:background] ||
+        ![self.view.backgroundColor isEqual:playerBackground];
+    if (!backgroundChanged) return;
     self.window.opaque = dedicatedBlackPresentation;
     self.window.backgroundColor = background;
     self.window.rootViewController.view.opaque = dedicatedBlackPresentation;
     self.window.rootViewController.view.backgroundColor = background;
-    self.view.backgroundColor = self.coverSheetHostView && self.view.superview == self.coverSheetHostView ? UIColor.clearColor : background;
+    self.view.backgroundColor = playerBackground;
     NNPDiagnosticSetBool(@"PresentationDedicatedBlack", dedicatedBlackPresentation);
     [self recordPresentationDiagnostics:dedicatedBlackPresentation ? @"black-presentation" : @"transparent-presentation"];
 }
@@ -744,13 +798,26 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     self.view.textSize = self.preferences.textSize;
     self.view.progressHeight = self.preferences.progressHeight;
 
-    [self applyLyricsPreferences];
     [self.view setNeedsLayout];
 }
 - (void)applyLyricsPreferences {
     BOOL spotifyTrack = [self.state.bundleIdentifier isEqualToString:NNPSpotify];
-    BOOL matchingTrack = NNPTrackTitleMatches(self.state.title, self.preferences.spotifyLyricsTrackTitle);
-    NNPDiagnosticSetBool(@"SpotifyLyricsTrackMatch", matchingTrack);
+    NSString *mediaTitle = self.state.title ?: @"";
+    NSString *snapshotTitle = self.preferences.spotifyLyricsTrackTitle ?: @"";
+    if (!self.hasCachedLyricsTrackMatch ||
+        !NNPStringsEqual(self.lyricsMatchMediaTitle, mediaTitle) ||
+        !NNPStringsEqual(self.lyricsMatchSnapshotTitle, snapshotTitle)) {
+        self.hasCachedLyricsTrackMatch = YES;
+        self.lyricsMatchMediaTitle = mediaTitle;
+        self.lyricsMatchSnapshotTitle = snapshotTitle;
+        self.cachedLyricsTrackMatch = NNPTrackTitleMatches(mediaTitle, snapshotTitle);
+    }
+    BOOL matchingTrack = self.cachedLyricsTrackMatch;
+    if (!self.didRecordSpotifyLyricsTrackMatch || self.recordedSpotifyLyricsTrackMatch != matchingTrack) {
+        self.didRecordSpotifyLyricsTrackMatch = YES;
+        self.recordedSpotifyLyricsTrackMatch = matchingTrack;
+        NNPDiagnosticSetBool(@"SpotifyLyricsTrackMatch", matchingTrack);
+    }
     NSString *currentLine = @"";
     NSString *nextLine = @"";
     if (self.preferences.showLyrics && spotifyTrack && matchingTrack) {
@@ -760,11 +827,17 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
             if (self.state.playing && self.state.playbackRate > 0.0 && self.state.timestamp > 0.0)
                 elapsed += MAX(0.0, NSDate.date.timeIntervalSince1970 - self.state.timestamp) * self.state.playbackRate;
             elapsed += self.preferences.lyricsSyncOffsetMilliseconds / 1000.0;
-            NSUInteger activeIndex = 0;
-            for (NSUInteger index = 1; index < timedLines.count; index++) {
-                if ([timedLines[index][@"startTimeMs"] doubleValue] > elapsed * 1000.0) break;
-                activeIndex = index;
+            double targetTimeMilliseconds = elapsed * 1000.0;
+            NSUInteger lowerBound = 0;
+            NSUInteger upperBound = timedLines.count;
+            while (lowerBound < upperBound) {
+                NSUInteger middle = lowerBound + (upperBound - lowerBound) / 2;
+                if ([timedLines[middle][@"startTimeMs"] doubleValue] <= targetTimeMilliseconds)
+                    lowerBound = middle + 1;
+                else
+                    upperBound = middle;
             }
+            NSUInteger activeIndex = lowerBound > 0 ? lowerBound - 1 : 0;
             currentLine = [timedLines[activeIndex][@"words"] isKindOfClass:NSString.class] ? timedLines[activeIndex][@"words"] : @"";
             if (activeIndex + 1 < timedLines.count)
                 nextLine = [timedLines[activeIndex + 1][@"words"] isKindOfClass:NSString.class] ? timedLines[activeIndex + 1][@"words"] : @"";
@@ -805,7 +878,15 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         [strongSelf reconcile];
     });
 }
-- (void)reconcile { dispatch_async(dispatch_get_main_queue(), ^{
+- (void)reconcile {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ [self reconcile]; });
+        return;
+    }
+    if (self.reconcilePending) return;
+    self.reconcilePending = YES;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.reconcilePending = NO;
         BOOL experimentEligible = NO;
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
         self.display.deviceLocked = self.locked;
@@ -817,23 +898,44 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         [self updateUnlimitedMediaPauseWithEligibleMedia:mediaEligible activeSession:activeSession];
         experimentEligible = self.preferences.experimentalLockedVisible && self.preferences.enabled &&
             self.preferences.showOnLockScreen && (mediaEligible || activeSession);
-        NNPDiagnosticSetBool(@"MediaSwitchAODSessionRetained", activeSession && !mediaEligible && experimentEligible);
+        BOOL mediaSwitchAODState = activeSession && !mediaEligible && experimentEligible;
+        if (!self.didRecordMediaSwitchAODState || self.recordedMediaSwitchAODState != mediaSwitchAODState) {
+            self.didRecordMediaSwitchAODState = YES;
+            self.recordedMediaSwitchAODState = mediaSwitchAODState;
+            NNPDiagnosticSetBool(@"MediaSwitchAODSessionRetained", mediaSwitchAODState);
+        }
         if (experimentEligible) {
-            [self.preferences reloadAODBrightnessMultiplier];
             float brightnessMultiplier = self.preferences.aodBrightnessMultiplier;
             self.display.aodBrightnessMultiplier = brightnessMultiplier;
-            // Publish directly on every eligible reconcile so the hook's
-            // atomic value cannot lag behind a cached display-controller value.
-            NNPPhase7SetAODBrightnessMultiplier(brightnessMultiplier);
-            NNPDiagnosticSetDouble(@"Phase7RequestedAODBrightnessMultiplier", brightnessMultiplier);
+            // Preferences reloads on its Darwin notification; this setter republishes
+            // the cached value to the native hook without synchronizing preferences.
+            if (!self.didRecordAODBrightnessRequest ||
+                fabsf(self.recordedAODBrightnessRequest - brightnessMultiplier) >= 0.001f) {
+                self.didRecordAODBrightnessRequest = YES;
+                self.recordedAODBrightnessRequest = brightnessMultiplier;
+                NNPDiagnosticSetDouble(@"Phase7RequestedAODBrightnessMultiplier", brightnessMultiplier);
+            }
             [self.display startLockedVisibleMode];
         } else {
             [self.display stopLockedVisibleMode];
         }
 #endif
         BOOL show = [self shouldShow];
-        NNPDiagnosticSetBool(@"UIVisible", show);
-        NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER reconcile locked=%@ show=%@ experimentEligible=%@ lifecycle=%ld", self.locked ? @"YES" : @"NO", show ? @"YES" : @"NO", experimentEligible ? @"YES" : @"NO", (long)self.display.lifecycleState]);
+        NSInteger lifecycle = self.display.lifecycleState;
+        BOOL reconcileStateChanged = !self.didRecordReconcileState ||
+            self.recordedReconcileLocked != self.locked ||
+            self.recordedReconcileVisible != show ||
+            self.recordedReconcileEligible != experimentEligible ||
+            self.recordedReconcileLifecycle != lifecycle;
+        if (reconcileStateChanged) {
+            self.didRecordReconcileState = YES;
+            self.recordedReconcileLocked = self.locked;
+            self.recordedReconcileVisible = show;
+            self.recordedReconcileEligible = experimentEligible;
+            self.recordedReconcileLifecycle = lifecycle;
+            NNPDiagnosticSetBool(@"UIVisible", show);
+            NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER reconcile locked=%@ show=%@ experimentEligible=%@ lifecycle=%ld", self.locked ? @"YES" : @"NO", show ? @"YES" : @"NO", experimentEligible ? @"YES" : @"NO", (long)lifecycle]);
+        }
         if (!show) { [self hide]; return; }
         [self makeWindow];
         BOOL becomingVisible = self.window.hidden;
@@ -857,7 +959,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
                                  self.statusBarPlayerView.contentOpacity = 1.0;
                              } completion:nil];
         }
-        [self startProgressTimer]; [self startAODPixelShiftTimer]; [self updateProgress]; }); }
+        [self startProgressTimer]; [self startAODPixelShiftTimer]; [self updateProgress]; });
+}
 - (void)hide {
     [self.view cancelNotificationSnakeAnimation];
     [self.statusBarPlayerView cancelNotificationSnakeAnimation];
@@ -923,8 +1026,29 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     NNPDiagnosticSetInteger(@"AODPixelShiftX", 0);
     NNPDiagnosticSetInteger(@"AODPixelShiftY", 0);
 }
-- (void)startProgressTimer { if (self.progressTimer) return; __weak typeof(self) weakSelf = self; self.progressTimer = [NSTimer scheduledTimerWithTimeInterval:self.preferences.progressUpdateInterval repeats:YES block:^(__unused NSTimer *timer) { [weakSelf updateProgress]; }]; }
-- (void)updateProgress { if (!self.state || self.window.hidden) return; [self.preferences reloadSpotifyLyricsSnapshot]; [self applyLyricsPreferences]; [self updateCoverSheetPresentation]; NSTimeInterval elapsed = self.state.elapsed; if (self.state.playing && self.state.playbackRate > 0.0 && self.state.timestamp > 0.0) elapsed += MAX(0.0, NSDate.date.timeIntervalSince1970 - self.state.timestamp) * self.state.playbackRate; if (self.state.duration > 0.0) elapsed = MIN(self.state.duration, MAX(0.0, elapsed)); [self.view updateElapsed:elapsed duration:self.state.duration playing:self.state.playing]; [self.statusBarPlayerView updateElapsed:elapsed duration:self.state.duration playing:self.state.playing]; }
+- (void)startProgressTimer {
+    NSTimeInterval interval = self.preferences.progressUpdateInterval;
+    if (self.progressTimer && fabs(self.progressTimerInterval - interval) < 0.01) return;
+    [self.progressTimer invalidate];
+    self.progressTimer = nil;
+    self.progressTimerInterval = interval;
+    __weak typeof(self) weakSelf = self;
+    self.progressTimer = [NSTimer timerWithTimeInterval:interval repeats:YES block:^(__unused NSTimer *timer) {
+        [weakSelf updateProgress];
+    }];
+    self.progressTimer.tolerance = MIN(0.1, interval * 0.1);
+    [[NSRunLoop mainRunLoop] addTimer:self.progressTimer forMode:NSRunLoopCommonModes];
+}
+- (void)updateProgress {
+    if (!self.state || !self.window || self.window.hidden) return;
+    [self applyLyricsPreferences];
+    NSTimeInterval elapsed = self.state.elapsed;
+    if (self.state.playing && self.state.playbackRate > 0.0 && self.state.timestamp > 0.0)
+        elapsed += MAX(0.0, NSDate.date.timeIntervalSince1970 - self.state.timestamp) * self.state.playbackRate;
+    if (self.state.duration > 0.0) elapsed = MIN(self.state.duration, MAX(0.0, elapsed));
+    [self.view updateElapsed:elapsed duration:self.state.duration playing:self.state.playing];
+    [self.statusBarPlayerView updateElapsed:elapsed duration:self.state.duration playing:self.state.playing];
+}
 - (void)dealloc {
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
     [_display stopLockedVisibleMode];

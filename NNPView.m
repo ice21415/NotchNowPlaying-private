@@ -174,6 +174,9 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 @property(nonatomic, strong) CAShapeLayer *fill;
 @property(nonatomic, strong) UILabel *playbackTime;
 @property(nonatomic, strong) UILabel *lyricsLabel;
+@property(nonatomic, copy) NSString *lastPlaybackTimeDisplay;
+@property(nonatomic, copy) NSString *lastLyricsCurrentLine;
+@property(nonatomic, copy) NSString *lastLyricsNextLine;
 @property(nonatomic) CGFloat fraction;
 @property(nonatomic) CGRect lastNotchRect;
 @property(nonatomic) BOOL lastNotchRectPrivate;
@@ -912,15 +915,22 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 - (void)updateBatteryStatus {
     UIDevice *device = UIDevice.currentDevice;
     float level = device.batteryLevel;
-    self.batteryStatusAvailable = isfinite(level) && level >= 0.0f;
-    if (!self.batteryStatusAvailable) {
+    BOOL available = isfinite(level) && level >= 0.0f;
+    BOOL availabilityChanged = self.batteryStatusAvailable != available;
+    if (!available) {
+        self.batteryStatusAvailable = NO;
         self.batteryStatus.hidden = YES;
-        [self setNeedsLayout];
+        if (availabilityChanged) [self setNeedsLayout];
         return;
     }
 
-    self.batteryPercentageValue = (NSInteger)lroundf(MIN(1.0f, level) * 100.0f);
-    self.batteryState = device.batteryState;
+    NSInteger percentage = (NSInteger)lroundf(MIN(1.0f, level) * 100.0f);
+    UIDeviceBatteryState batteryState = device.batteryState;
+    BOOL valueChanged = availabilityChanged || percentage != self.batteryPercentageValue || batteryState != self.batteryState;
+    self.batteryStatusAvailable = YES;
+    if (!valueChanged) return;
+    self.batteryPercentageValue = percentage;
+    self.batteryState = batteryState;
     NSString *symbolName = self.batteryPercentageValue < 15 ? @"battery.0percent" :
         (self.batteryPercentageValue < 40 ? @"battery.25percent" :
         (self.batteryPercentageValue < 65 ? @"battery.50percent" :
@@ -937,7 +947,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     self.batteryStatus.accessibilityLabel = charging
         ? [NSString stringWithFormat:@"電量 %ld%%，正在充電", (long)self.batteryPercentageValue]
         : [NSString stringWithFormat:@"電量 %ld%%", (long)self.batteryPercentageValue];
-    [self setNeedsLayout];
+    if (availabilityChanged) [self setNeedsLayout];
 }
 
 - (BOOL)presentNotificationCardWithPayload:(NSDictionary *)payload generation:(NSUInteger)generation {
@@ -1158,6 +1168,9 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     if (self.accentArtwork != artwork) {
         self.accentArtwork = artwork;
         self.accentColor = NNPAccentColorForArtwork(artwork);
+        self.lastPlaybackTimeDisplay = nil;
+        self.lastLyricsCurrentLine = nil;
+        self.lastLyricsNextLine = nil;
         self.art.layer.borderColor = [self.accentColor colorWithAlphaComponent:0.38].CGColor;
         self.artist.textColor = [self.accentColor colorWithAlphaComponent:0.82];
         self.track.strokeColor = [self.accentColor colorWithAlphaComponent:0.17].CGColor;
@@ -1179,20 +1192,26 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     NSString *played = NNPPlaybackTimeString(elapsed);
     NSString *remaining = [@"−" stringByAppendingString:NNPPlaybackTimeString(ceil(duration - elapsed))];
     NSString *display = [NSString stringWithFormat:@"%@  ·  %@", played, remaining];
-    NSMutableAttributedString *styled = [[NSMutableAttributedString alloc] initWithString:display
-        attributes:@{ NSFontAttributeName: self.playbackTime.font,
-                      NSForegroundColorAttributeName: [UIColor colorWithWhite:1.0 alpha:0.9] }];
-    [styled addAttribute:NSForegroundColorAttributeName
-                   value:[self.accentColor colorWithAlphaComponent:0.95]
-                   range:NSMakeRange(0, played.length)];
-    [styled addAttribute:NSForegroundColorAttributeName
-                   value:[UIColor colorWithWhite:1.0 alpha:0.48]
-                   range:NSMakeRange(played.length, display.length - played.length)];
-    self.playbackTime.attributedText = styled;
-    self.playbackTime.accessibilityLabel = [NSString stringWithFormat:@"已播放 %@，剩餘 %@", played, remaining];
+    if (![self.lastPlaybackTimeDisplay isEqualToString:display]) {
+        NSMutableAttributedString *styled = [[NSMutableAttributedString alloc] initWithString:display
+            attributes:@{ NSFontAttributeName: self.playbackTime.font,
+                          NSForegroundColorAttributeName: [UIColor colorWithWhite:1.0 alpha:0.9] }];
+        [styled addAttribute:NSForegroundColorAttributeName
+                       value:[self.accentColor colorWithAlphaComponent:0.95]
+                       range:NSMakeRange(0, played.length)];
+        [styled addAttribute:NSForegroundColorAttributeName
+                       value:[UIColor colorWithWhite:1.0 alpha:0.48]
+                       range:NSMakeRange(played.length, display.length - played.length)];
+        self.playbackTime.attributedText = styled;
+        self.playbackTime.accessibilityLabel = [NSString stringWithFormat:@"已播放 %@，剩餘 %@", played, remaining];
+        self.lastPlaybackTimeDisplay = display;
+    }
     self.fraction = elapsed / duration;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    self.fill.strokeEnd = self.fraction;
     self.fill.opacity = playing ? 1.0 : 0.55;
-    [self setNeedsLayout];
+    [CATransaction commit];
 }
 
 - (void)updateLyricsText:(NSString *)currentLine nextLine:(NSString *)nextLine {
@@ -1200,6 +1219,14 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     NSString *next = [nextLine stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
     NSString *text = current.length && next.length && ![current isEqualToString:next]
         ? [NSString stringWithFormat:@"%@\n%@", current, next] : current;
+    if ([self.lastLyricsCurrentLine isEqualToString:current] &&
+        [self.lastLyricsNextLine isEqualToString:next]) {
+        self.lyricsLabel.hidden = !self.showLyrics || text.length == 0;
+        self.lyricsLabel.accessibilityLabel = text;
+        return;
+    }
+    self.lastLyricsCurrentLine = current;
+    self.lastLyricsNextLine = next;
     NSMutableAttributedString *styledText = [[NSMutableAttributedString alloc] initWithString:text attributes:@{
         NSFontAttributeName: [UIFont systemFontOfSize:12.0 weight:UIFontWeightSemibold],
         NSForegroundColorAttributeName: [UIColor colorWithWhite:1.0 alpha:0.92]
