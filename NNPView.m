@@ -330,7 +330,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     }
     CGFloat notchLeft = CGRectGetMinX(notch);
     CGFloat notchRight = CGRectGetMaxX(notch);
-    CGFloat top = MAX(5.0, CGRectGetMinY(notch) + 5.0);
+    // Leave physical room for the notification outline above the metadata row.
+    CGFloat top = MAX(11.0, CGRectGetMinY(notch) + 11.0);
     CGFloat leftLaneWidth = MAX(28.0, notchLeft - side - 8.0);
     CGFloat artSize = MIN(MAX(28.0, self.artworkSize), leftLaneWidth);
     BOOL artworkVisible = self.showArtwork;
