@@ -25,6 +25,41 @@
 
 static NSString *const NNPTitleMarqueeAnimationKey = @"nnp.titleMarquee";
 
+static UIBezierPath *NNPPlaybackTrackPath(CGRect notch, BOOL reversed) {
+    CGFloat pathLeft = CGRectGetMinX(notch) - 4.5;
+    CGFloat pathRight = CGRectGetMaxX(notch) + 4.5;
+    CGFloat pathTop = MAX(9.0, CGRectGetMinY(notch) + 9.0);
+    CGFloat pathBottom = CGRectGetMaxY(notch) + 4.0;
+    CGFloat radius = MIN(16.0, (pathBottom - pathTop) * 0.65);
+    CGFloat arcControl = radius * 0.55228475;
+    UIBezierPath *path = [UIBezierPath bezierPath];
+
+    if (reversed) {
+        [path moveToPoint:CGPointMake(pathRight, pathTop)];
+        [path addLineToPoint:CGPointMake(pathRight, pathBottom - radius)];
+        [path addCurveToPoint:CGPointMake(pathRight - radius, pathBottom)
+               controlPoint1:CGPointMake(pathRight, pathBottom - radius + arcControl)
+               controlPoint2:CGPointMake(pathRight - radius + arcControl, pathBottom)];
+        [path addLineToPoint:CGPointMake(pathLeft + radius, pathBottom)];
+        [path addCurveToPoint:CGPointMake(pathLeft, pathBottom - radius)
+               controlPoint1:CGPointMake(pathLeft + radius - arcControl, pathBottom)
+               controlPoint2:CGPointMake(pathLeft, pathBottom - radius + arcControl)];
+        [path addLineToPoint:CGPointMake(pathLeft, pathTop)];
+    } else {
+        [path moveToPoint:CGPointMake(pathLeft, pathTop)];
+        [path addLineToPoint:CGPointMake(pathLeft, pathBottom - radius)];
+        [path addCurveToPoint:CGPointMake(pathLeft + radius, pathBottom)
+               controlPoint1:CGPointMake(pathLeft, pathBottom - radius + arcControl)
+               controlPoint2:CGPointMake(pathLeft + radius - arcControl, pathBottom)];
+        [path addLineToPoint:CGPointMake(pathRight - radius, pathBottom)];
+        [path addCurveToPoint:CGPointMake(pathRight, pathBottom - radius)
+               controlPoint1:CGPointMake(pathRight - radius + arcControl, pathBottom)
+               controlPoint2:CGPointMake(pathRight, pathBottom - radius + arcControl)];
+        [path addLineToPoint:CGPointMake(pathRight, pathTop)];
+    }
+    return path;
+}
+
 static NSString *NNPPlaybackTimeString(NSTimeInterval seconds) {
     NSInteger wholeSeconds = (NSInteger)MAX(0.0, floor(seconds));
     NSInteger hours = wholeSeconds / 3600;
@@ -308,18 +343,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     CGFloat pathTop = MAX(9.0, CGRectGetMinY(notch) + 9.0);
     CGFloat pathBottom = CGRectGetMaxY(notch) + 4.0;
     CGFloat radius = MIN(16.0, (pathBottom - pathTop) * 0.65);
-    CGFloat arcControl = radius * 0.55228475;
-    UIBezierPath *path = [UIBezierPath bezierPath];
-    [path moveToPoint:CGPointMake(pathLeft, pathTop)];
-    [path addLineToPoint:CGPointMake(pathLeft, pathBottom - radius)];
-    [path addCurveToPoint:CGPointMake(pathLeft + radius, pathBottom)
-           controlPoint1:CGPointMake(pathLeft, pathBottom - radius + arcControl)
-           controlPoint2:CGPointMake(pathLeft + radius - arcControl, pathBottom)];
-    [path addLineToPoint:CGPointMake(pathRight - radius, pathBottom)];
-    [path addCurveToPoint:CGPointMake(pathRight, pathBottom - radius)
-           controlPoint1:CGPointMake(pathRight - radius + arcControl, pathBottom)
-           controlPoint2:CGPointMake(pathRight, pathBottom - radius + arcControl)];
-    [path addLineToPoint:CGPointMake(pathRight, pathTop)];
+    UIBezierPath *path = NNPPlaybackTrackPath(notch, NO);
     self.playbackTime.frame = CGRectMake(pathLeft + radius, pathBottom + 3.0,
                                          MAX(1.0, pathRight - pathLeft - radius * 2.0), 15.0);
     CGFloat lyricsTop = CGRectGetMaxY(self.playbackTime.frame) + 5.0;
@@ -338,9 +362,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     }
     if (self.notificationSnakeFinishLayer) {
         self.notificationSnakeFinishLayer.frame = self.bounds;
-        CGPathRef reverseTrackPath = self.track.path ? CGPathCreateCopyByReversingPath(self.track.path) : NULL;
-        self.notificationSnakeFinishLayer.path = reverseTrackPath;
-        if (reverseTrackPath) CGPathRelease(reverseTrackPath);
+        self.notificationSnakeFinishLayer.path = NNPPlaybackTrackPath(notch, YES).CGPath;
         self.notificationSnakeFinishLayer.lineWidth = self.track.lineWidth + 2.5;
     }
     [CATransaction commit];
@@ -415,9 +437,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     snake.shadowOffset = CGSizeZero;
     snake.opacity = 1.0;
     finish.frame = self.bounds;
-    CGPathRef reverseTrackPath = CGPathCreateCopyByReversingPath(self.track.path);
-    finish.path = reverseTrackPath;
-    if (reverseTrackPath) CGPathRelease(reverseTrackPath);
+    finish.path = NNPPlaybackTrackPath([self notchRectUsingPrivateAPI:NULL], YES).CGPath;
     finish.lineWidth = self.track.lineWidth + 2.5;
     finish.strokeColor = self.accentColor.CGColor;
     finish.shadowColor = self.accentColor.CGColor;
