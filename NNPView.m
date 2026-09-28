@@ -185,6 +185,12 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 @property(nonatomic, strong) UILabel *notificationCardTitle;
 @property(nonatomic, strong) UILabel *notificationCardMessage;
 @property(nonatomic) BOOL notificationCardActive;
+@property(nonatomic, strong) UIView *notificationIndicatorStrip;
+@property(nonatomic, strong) NSArray<UIImageView *> *notificationIndicatorImageViews;
+@property(nonatomic, strong) UIView *notificationIndicatorOverflow;
+@property(nonatomic, strong) UILabel *notificationIndicatorOverflowLabel;
+@property(nonatomic, strong) NSMutableArray<UIImage *> *notificationIndicatorImages;
+@property(nonatomic) NSUInteger notificationIndicatorCount;
 #if NNP_NOTIFICATION_SNAKE_GEOMETRY_DIAGNOSTICS
 @property(nonatomic, strong) CAShapeLayer *notificationSnakeDebugGuideLayer;
 @property(nonatomic, strong) CAShapeLayer *notificationSnakeDebugMarkersLayer;
@@ -196,6 +202,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 - (void)updateNotificationSnakeCounterTransform;
 - (BOOL)presentNotificationCardWithPayload:(NSDictionary *)payload generation:(NSUInteger)generation;
 - (void)finishNotificationCardForGeneration:(NSUInteger)generation;
+- (void)recordNotificationIndicatorForPayload:(NSDictionary *)payload;
 @end
 
 @implementation NNPView
@@ -302,11 +309,41 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     _lyricsLabel.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.55];
     _lyricsLabel.shadowOffset = CGSizeMake(0.0, 1.0);
 
+    _notificationIndicatorImages = [NSMutableArray array];
+    _notificationIndicatorStrip = [UIView new];
+    _notificationIndicatorStrip.backgroundColor = UIColor.clearColor;
+    _notificationIndicatorStrip.userInteractionEnabled = NO;
+    _notificationIndicatorStrip.hidden = YES;
+    NSMutableArray<UIImageView *> *indicatorViews = [NSMutableArray arrayWithCapacity:3];
+    for (NSUInteger index = 0; index < 3; index++) {
+        UIImageView *iconView = [UIImageView new];
+        iconView.contentMode = UIViewContentModeScaleAspectFill;
+        iconView.clipsToBounds = YES;
+        iconView.layer.cornerRadius = 3.0;
+        iconView.layer.borderWidth = 0.5 / MAX(UIScreen.mainScreen.scale, 1.0);
+        iconView.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.35].CGColor;
+        iconView.hidden = YES;
+        [_notificationIndicatorStrip addSubview:iconView];
+        [indicatorViews addObject:iconView];
+    }
+    _notificationIndicatorImageViews = [indicatorViews copy];
+    _notificationIndicatorOverflow = [UIView new];
+    _notificationIndicatorOverflow.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.16];
+    _notificationIndicatorOverflow.layer.cornerRadius = 6.0;
+    _notificationIndicatorOverflow.hidden = YES;
+    _notificationIndicatorOverflowLabel = [UILabel new];
+    _notificationIndicatorOverflowLabel.font = [UIFont systemFontOfSize:8.0 weight:UIFontWeightSemibold];
+    _notificationIndicatorOverflowLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.96];
+    _notificationIndicatorOverflowLabel.textAlignment = NSTextAlignmentCenter;
+    [_notificationIndicatorOverflow addSubview:_notificationIndicatorOverflowLabel];
+    [_notificationIndicatorStrip addSubview:_notificationIndicatorOverflow];
+
     [_contentContainer addSubview:_art];
     [_contentContainer addSubview:_titleViewport];
     [_contentContainer addSubview:_artist];
     [_contentContainer addSubview:_playbackTime];
     [_contentContainer addSubview:_lyricsLabel];
+    [_contentContainer addSubview:_notificationIndicatorStrip];
     [_contentContainer.layer addSublayer:_track];
     [_contentContainer.layer addSublayer:_fill];
 
@@ -382,6 +419,57 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     self.art.hidden = !artworkVisible;
     self.art.frame = CGRectMake(side + (leftLaneWidth - artSize) / 2.0, top, artSize, artSize);
     self.art.layer.cornerRadius = MIN(self.cornerRadius, artSize / 2.0);
+    CGFloat indicatorTop = CGRectGetMaxY(self.art.frame) + 3.0;
+    CGFloat indicatorIconSize = 12.0;
+    CGFloat indicatorSpacing = 2.0;
+    CGFloat indicatorOverflowWidth = 22.0;
+    NSString *overflowText = @"";
+    BOOL hasOverflow = self.notificationIndicatorCount > 3;
+    NSUInteger visibleIconCount = MIN(hasOverflow ? (NSUInteger)2 : (NSUInteger)3,
+                                      self.notificationIndicatorImages.count);
+    if (hasOverflow) {
+        NSUInteger hiddenCount = self.notificationIndicatorCount - visibleIconCount;
+        overflowText = hiddenCount > 99 ? @"+99+" : [NSString stringWithFormat:@"+%lu", (unsigned long)hiddenCount];
+        CGFloat labelWidth = ceil([overflowText sizeWithAttributes:@{
+            NSFontAttributeName: self.notificationIndicatorOverflowLabel.font
+        }].width) + 8.0;
+        indicatorOverflowWidth = MAX(20.0, labelWidth);
+        while (visibleIconCount > 0) {
+            CGFloat proposedWidth = visibleIconCount * indicatorIconSize +
+                (visibleIconCount - 1) * indicatorSpacing + indicatorSpacing + indicatorOverflowWidth;
+            if (proposedWidth <= leftLaneWidth) break;
+            visibleIconCount--;
+            NSUInteger adjustedHiddenCount = self.notificationIndicatorCount - visibleIconCount;
+            overflowText = adjustedHiddenCount > 99 ? @"+99+" : [NSString stringWithFormat:@"+%lu", (unsigned long)adjustedHiddenCount];
+            indicatorOverflowWidth = MAX(20.0, ceil([overflowText sizeWithAttributes:@{
+                NSFontAttributeName: self.notificationIndicatorOverflowLabel.font
+            }].width) + 8.0);
+        }
+    }
+    CGFloat indicatorWidth = visibleIconCount * indicatorIconSize +
+        (visibleIconCount > 0 ? (visibleIconCount - 1) * indicatorSpacing : 0.0);
+    if (hasOverflow) indicatorWidth += (visibleIconCount > 0 ? indicatorSpacing : 0.0) + indicatorOverflowWidth;
+    CGFloat indicatorX = CGRectGetMidX(self.art.frame) - indicatorWidth / 2.0;
+    self.notificationIndicatorStrip.frame = CGRectMake(indicatorX, indicatorTop, indicatorWidth, indicatorIconSize);
+    self.notificationIndicatorStrip.hidden = self.notificationIndicatorCount == 0 || !self.showArtwork || !self.playbackVisible;
+    for (NSUInteger index = 0; index < self.notificationIndicatorImageViews.count; index++) {
+        UIImageView *iconView = self.notificationIndicatorImageViews[index];
+        iconView.hidden = index >= visibleIconCount;
+        if (index < visibleIconCount) {
+            NSUInteger firstVisibleImage = self.notificationIndicatorImages.count - visibleIconCount;
+            iconView.image = self.notificationIndicatorImages[firstVisibleImage + index];
+            iconView.frame = CGRectMake(index * (indicatorIconSize + indicatorSpacing), 0.0,
+                                        indicatorIconSize, indicatorIconSize);
+        }
+    }
+    self.notificationIndicatorOverflow.hidden = !hasOverflow;
+    if (hasOverflow) {
+        CGFloat overflowX = visibleIconCount * (indicatorIconSize + indicatorSpacing);
+        if (visibleIconCount > 0) overflowX -= indicatorSpacing;
+        self.notificationIndicatorOverflow.frame = CGRectMake(overflowX, 0.0, indicatorOverflowWidth, indicatorIconSize);
+        self.notificationIndicatorOverflowLabel.frame = self.notificationIndicatorOverflow.bounds;
+        self.notificationIndicatorOverflowLabel.text = overflowText;
+    }
 
     CGFloat textX = notchRight + 10.0;
     CGFloat textWidth = MAX(1.0, width - side - textX);
@@ -406,6 +494,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     self.playbackTime.frame = CGRectMake(pathLeft + radius, pathBottom + 3.0,
                                          MAX(1.0, pathRight - pathLeft - radius * 2.0), 15.0);
     CGFloat lyricsTop = CGRectGetMaxY(self.playbackTime.frame) + 5.0;
+    if (!self.notificationIndicatorStrip.hidden)
+        lyricsTop = MAX(lyricsTop, CGRectGetMaxY(self.notificationIndicatorStrip.frame) + 4.0);
     self.lyricsLabel.frame = CGRectMake(side, lyricsTop, MAX(1.0, width - side * 2.0), 34.0);
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
@@ -498,6 +588,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     if (![NSThread isMainThread] || !self.window || CGRectIsEmpty(self.bounds)) return NO;
     if (!self.track.path) [self layoutIfNeeded];
     if (!self.track.path) return NO;
+    if ([payload isKindOfClass:NSDictionary.class]) [self recordNotificationIndicatorForPayload:payload];
     if (!self.notificationSnakeLayer) {
         self.notificationSnakeLayer = [CAShapeLayer layer];
         self.notificationSnakeLayer.fillColor = UIColor.clearColor.CGColor;
@@ -723,6 +814,42 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         [self finishNotificationCardForGeneration:generation];
     });
     return YES;
+}
+
+- (void)recordNotificationIndicatorForPayload:(NSDictionary *)payload {
+    id candidate = payload[@"icon"];
+    UIImage *icon = [candidate isKindOfClass:UIImage.class] ? candidate : nil;
+    if (!icon) icon = [UIImage systemImageNamed:@"app.fill"];
+    if (!icon) return;
+
+    BOOL wasHidden = self.notificationIndicatorStrip.hidden;
+    self.notificationIndicatorCount++;
+    [self.notificationIndicatorImages addObject:icon];
+    while (self.notificationIndicatorImages.count > 3) [self.notificationIndicatorImages removeObjectAtIndex:0];
+    [self setNeedsLayout];
+    [self layoutIfNeeded];
+    if (wasHidden && !self.notificationIndicatorStrip.hidden) {
+        self.notificationIndicatorStrip.alpha = 0.0;
+        self.notificationIndicatorStrip.transform = CGAffineTransformMakeScale(0.88, 0.88);
+        [UIView animateWithDuration:UIAccessibilityIsReduceMotionEnabled() ? 0.12 : 0.24
+                              delay:0.0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState
+                         animations:^{
+            self.notificationIndicatorStrip.alpha = 1.0;
+            self.notificationIndicatorStrip.transform = CGAffineTransformIdentity;
+        } completion:nil];
+    }
+}
+
+- (void)clearNotificationIndicators {
+    self.notificationIndicatorCount = 0;
+    [self.notificationIndicatorImages removeAllObjects];
+    [self.notificationIndicatorStrip.layer removeAllAnimations];
+    self.notificationIndicatorStrip.hidden = YES;
+    self.notificationIndicatorStrip.alpha = 1.0;
+    self.notificationIndicatorStrip.transform = CGAffineTransformIdentity;
+    for (UIImageView *iconView in self.notificationIndicatorImageViews) iconView.image = nil;
+    self.notificationIndicatorOverflowLabel.text = nil;
+    [self setNeedsLayout];
 }
 
 - (BOOL)presentNotificationCardWithPayload:(NSDictionary *)payload generation:(NSUInteger)generation {

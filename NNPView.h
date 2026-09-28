@@ -19,4 +19,5 @@
 - (BOOL)playNotificationSnakeAnimation;
 - (BOOL)playNotificationSnakeAnimationWithPayload:(NSDictionary *)payload;
 - (void)cancelNotificationSnakeAnimation;
+- (void)clearNotificationIndicators;
 @end

@@ -296,7 +296,11 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         NNPController *controller = weakSelf;
         if (!controller) return;
         void (^update)(void) = ^{
-            if (!controller.display.aodPresentationActive) [controller hide];
+            if (!controller.display.aodPresentationActive) {
+                [controller.view clearNotificationIndicators];
+                [controller.statusBarPlayerView clearNotificationIndicators];
+                [controller hide];
+            }
             [controller reconcile];
         };
         if ([NSThread isMainThread]) update();
@@ -338,6 +342,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     }
     _locked = locked;
     if (!locked) {
+        [self.view clearNotificationIndicators];
+        [self.statusBarPlayerView clearNotificationIndicators];
         [self clearLockedPresentationBackgroundForUnlock];
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
         self.display.deviceLocked = NO;
