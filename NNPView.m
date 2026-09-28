@@ -446,6 +446,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     snake.frame = self.bounds;
     snake.path = [self notificationSnakePath].CGPath;
     snake.lineWidth = NNPNotificationSnakeLineWidth;
+    snake.zPosition = 1000.0;
     snake.strokeColor = self.accentColor.CGColor;
     snake.shadowColor = self.accentColor.CGColor;
     snake.shadowOpacity = 1.0;
@@ -453,7 +454,10 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     snake.shadowOffset = CGSizeZero;
     snake.opacity = 1.0;
     finish.frame = self.bounds;
-    finish.path = NNPPlaybackTrackPath([self notchRectUsingPrivateAPI:NULL], YES).CGPath;
+    // The closed perimeter ends at the track's left endpoint, so trace the U
+    // from left to right as a visible, continuous final phase.
+    finish.path = NNPPlaybackTrackPath([self notchRectUsingPrivateAPI:NULL], NO).CGPath;
+    finish.zPosition = 1001.0;
     finish.lineWidth = self.track.lineWidth + 2.5;
     finish.strokeColor = self.accentColor.CGColor;
     finish.shadowColor = self.accentColor.CGColor;
@@ -461,7 +465,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     finish.shadowRadius = 14.0;
     finish.shadowOffset = CGSizeZero;
     finish.strokeStart = 0.0;
-    finish.strokeEnd = 1.0;
+    finish.strokeEnd = 0.0;
     finish.opacity = 0.0;
     finish.hidden = NO;
     [self updateNotificationSnakeCounterTransform];
@@ -517,14 +521,24 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         [snake addAnimation:glowPulse forKey:@"nnp.notificationSnakeGlowPulse"];
 
         NSTimeInterval finishDuration = 1.0;
+        CABasicAnimation *notchTrace = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
+        notchTrace.fromValue = @0.0;
+        notchTrace.toValue = @1.0;
+        notchTrace.duration = finishDuration;
+        notchTrace.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+
         CAKeyframeAnimation *finishGlow = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
         finishGlow.values = @[@0.0, @1.0, @1.0, @0.0];
         finishGlow.keyTimes = @[@0.0, @0.08, @0.82, @1.0];
         finishGlow.duration = finishDuration;
-        finishGlow.beginTime = CACurrentMediaTime() + duration * 2.0;
-        finishGlow.removedOnCompletion = NO;
-        finishGlow.fillMode = kCAFillModeBoth;
-        [finish addAnimation:finishGlow forKey:@"nnp.notificationSnakeNotchFinish"];
+
+        CAAnimationGroup *notchFinish = [CAAnimationGroup animation];
+        notchFinish.animations = @[notchTrace, finishGlow];
+        notchFinish.duration = finishDuration;
+        notchFinish.beginTime = CACurrentMediaTime() + duration * 2.0;
+        notchFinish.removedOnCompletion = NO;
+        notchFinish.fillMode = kCAFillModeBoth;
+        [finish addAnimation:notchFinish forKey:@"nnp.notificationSnakeNotchFinish"];
 
         CABasicAnimation *edgeFade = [CABasicAnimation animationWithKeyPath:@"opacity"];
         edgeFade.fromValue = @1.0;

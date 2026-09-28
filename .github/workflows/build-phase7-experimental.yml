@@ -55,7 +55,7 @@ jobs:
           package=$(find build-packages -maxdepth 1 -name '*.deb' -print -quit)
           test -n "$package"
           test "$(dpkg-deb -f "$package" Architecture)" = iphoneos-arm64e
-          test "$(dpkg-deb -f "$package" Version)" = 0.1.81
+          test "$(dpkg-deb -f "$package" Version)" = 0.1.82
           dpkg-deb -x "$package" /tmp/notchnowplaying-phase7
           dylib=$(find /tmp/notchnowplaying-phase7 -name NotchNowPlaying.dylib -print -quit)
           test -n "$dylib"
