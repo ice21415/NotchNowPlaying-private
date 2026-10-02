@@ -114,7 +114,7 @@ typedef uint64_t (*NNPHIDTimestamp)(CFTypeRef);
     [_timer invalidate];
     __weak typeof(self) weakSelf = self;
     _timer = [NSTimer timerWithTimeInterval:interval repeats:NO block:^(__unused NSTimer *timer) { [weakSelf sample]; }];
-    _timer.tolerance = MIN(3.0, interval * 0.2);
+    _timer.tolerance = MIN(0.5, interval * 0.1);
     [[NSRunLoop mainRunLoop] addTimer:_timer forMode:NSRunLoopCommonModes];
     NNPDiagnosticSetDouble(@"AODAmbientSampleInterval", interval);
 }
@@ -136,7 +136,7 @@ typedef uint64_t (*NNPHIDTimestamp)(CFTypeRef);
         });
         return;
     }
-    [self scheduleNextSampleAfter:5];
+    [self scheduleNextSampleAfter:2];
     [self sample];
 }
 - (void)dealloc {
