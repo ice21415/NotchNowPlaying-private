@@ -52,7 +52,7 @@ int main(int argc, char **argv) {
                 record[@"unix_time"] = @([NSDate timeIntervalSinceReferenceDate] + NSTimeIntervalSince1970);
                 record[@"sample"] = @(index);
                 if (count == 1) record[@"battery"] = JSONSafe(battery);
-                else for (NSString *key in @[@"InstantAmperage", @"Amperage", @"Voltage", @"Temperature", @"CurrentCapacity", @"MaxCapacity", @"AppleRawCurrentCapacity", @"AppleRawMaxCapacity", @"IsCharging", @"ExternalConnected", @"BatteryData"]) {
+                else for (NSString *key in @[@"InstantAmperage", @"Amperage", @"Voltage", @"Temperature", @"CurrentCapacity", @"MaxCapacity", @"AppleRawCurrentCapacity", @"AppleRawMaxCapacity", @"IsCharging", @"ExternalConnected", @"UpdateTime", @"PowerTelemetryData"]) {
                     if (battery[key]) record[key] = JSONSafe(battery[key]);
                 }
                 NSError *error = nil;
