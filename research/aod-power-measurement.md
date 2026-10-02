@@ -3,7 +3,11 @@
 The standalone `research/tools/aod_power_probe.m` is built with Apple Clang by
 `.github/workflows/build-power-probe.yml`. It only reads battery registry
 properties; it does not activate ALS, modify battery settings, or install a daemon.
-Measurements and device identifiers must remain in ignored `build-packages/`.
+The sampler also has explicit `--get-brightness` / `--brightness` test controls
+using the mobile preference service. They change only plugin brightness preferences;
+sampling itself remains read-only. Direct plist edits did not reliably update the
+running preference cache. Measurements and device identifiers must remain in
+ignored `build-packages/`.
 
 ## Device validation
 
@@ -34,6 +38,16 @@ Reject the comparison if auto brightness drifts materially during the phases.
 Save original preference values before changes and restore them afterward.
 Native dimming settings also differ between automatic and manual modes; this
 test compares the two complete modes rather than isolated sensor hardware power.
+
+For the user's requested 15-minute test, shorten phases to 225 seconds each and
+sample every ten seconds. Still exclude the first minute of each phase. Include
+driver `UpdateTime` and deduplicate identical gauge updates in analysis; ten-second
+polling does not imply ten-second independent gauge updates. The local orchestration
+script restores the original absent automatic preference and 400% manual preference
+on exit, including interrupted exit. Confirm restored settings and live diagnostics.
+`research/tools/analyze_aod_power.py` summarizes downloaded private JSONL and phase
+metadata. Boundary diagnostics may lag a preference notification; only settled end
+states are used to verify phases, and early transitions are excluded.
 
 For each phase report average and median discharge current, voltage, estimated
 battery power `-InstantAmperage * Voltage / 1e6` watts, sample dispersion, valid
