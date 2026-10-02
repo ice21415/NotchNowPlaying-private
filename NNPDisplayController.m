@@ -99,7 +99,7 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
     return self;
 }
 
-- (void)setAODBrightnessMultiplier:(float)multiplier {
+- (void)setAodBrightnessMultiplier:(float)multiplier {
     float clamped = (float)MAX(1.0, MIN(4.0, multiplier));
     // Re-publish even when the Objective-C property is unchanged. The native
     // hook owns a separate atomic value, which can be reset during controller
