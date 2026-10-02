@@ -1,6 +1,8 @@
 #import "NNPDisplayController.h"
 #import "NNPDiagnostics.h"
 #import "NNPNotificationDiagnostics.h"
+#import "NNPChargingPolicy.h"
+#import "NNPPreferences.h"
 #import <mach/mach_time.h>
 #import <pthread.h>
 #import <stdatomic.h>
@@ -58,13 +60,74 @@ static _Atomic(float) gNNPPhase7SubstitutedFactor = 0.0f;
 typedef void (*NNPProviderTransitionIMP)(id self, SEL _cmd, long long mode, double duration);
 typedef void (*NNPSetScreenBlankedFunction)(BOOL blanked);
 typedef void (*NNPBacklightStateIMP)(id self, SEL _cmd, NSInteger state, NSInteger source, BOOL animated, id completion);
+typedef void (*NNPPowerWakeIMP)(id self, SEL _cmd, NSInteger unlockSource);
+typedef void (*NNPChargingPresentationIMP)(id self, SEL _cmd, BOOL animated);
 static NNPProviderTransitionIMP gNNPOriginalProviderTransition;
 static NNPSetScreenBlankedFunction gNNPOriginalSetScreenBlanked;
 static NNPBacklightStateIMP gNNPOriginalBacklightState;
+static NNPPowerWakeIMP gNNPOriginalPowerWake;
+static NNPChargingPresentationIMP gNNPOriginalChargingPresentation;
+static NSUInteger gNNPChargingWakeSuppressedCount;
+static NSUInteger gNNPChargingPresentationSuppressedCount;
 static void NNPPhase7BacklightFactorReplacement(int displayID, float factor, float fadeDuration);
 static void NNPPhase7ProviderTransitionReplacement(id self, SEL _cmd, long long mode, double duration);
 static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked);
 static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger state, NSInteger source, BOOL animated, id completion);
+static void NNPPhase7PowerWakeReplacement(id self, SEL _cmd, NSInteger unlockSource);
+static void NNPPhase7ChargingPresentationReplacement(id self, SEL _cmd, BOOL animated);
+
+static BOOL NNPPhase7ChargingReplacementEligible(NSInteger unlockSource) {
+    if (![NSThread isMainThread]) return NO;
+    NNPPreferences *preferences = NNPPreferences.sharedPreferences;
+    BOOL activeAOD = atomic_load_explicit(&gNNPPhase7Lifecycle, memory_order_acquire) == NNPDisplayLifecycleStateActive &&
+        atomic_load_explicit(&gNNPPhase7ModeSubstitutionObserved, memory_order_acquire);
+    return NNPChargingSuppressesPowerWake(unlockSource,
+        atomic_load_explicit(&gNNPPhase7Armed, memory_order_acquire),
+        atomic_load_explicit(&gNNPPhase7DeviceLocked, memory_order_acquire), activeAOD,
+        preferences.enabled, preferences.chargingAnimationEnabled);
+}
+
+static BOOL NNPPhase7InstallChargingHook(Class cls, SEL selector, IMP replacement,
+                                       IMP *originalOut, BOOL booleanArgument) {
+    Method method = cls ? class_getInstanceMethod(cls, selector) : NULL;
+    if (!method || method_getNumberOfArguments(method) != 3) return NO;
+    char returnType[16] = {0}, argumentType[16] = {0};
+    method_getReturnType(method, returnType, sizeof(returnType));
+    method_getArgumentType(method, 2, argumentType, sizeof(argumentType));
+    BOOL matches = returnType[0] == 'v' &&
+        (booleanArgument ? (argumentType[0] == 'B' || argumentType[0] == 'c')
+                         : argumentType[0] == 'q');
+    NNPDiagnosticLog([NSString stringWithFormat:@"CHARGING hook selector=%@ return=%s argument=%s compatible=%@",
+        NSStringFromSelector(selector), returnType, argumentType, matches ? @"YES" : @"NO"]);
+    if (!matches) return NO;
+    IMP original = method_getImplementation(method);
+    if (!original || original == replacement) return NO;
+    if (!class_addMethod(cls, selector, replacement, method_getTypeEncoding(method))) {
+        original = method_setImplementation(method, replacement);
+    }
+    *originalOut = original;
+    return YES;
+}
+
+static void NNPPhase7PowerWakeReplacement(id self, SEL _cmd, NSInteger unlockSource) {
+    if (NNPPhase7ChargingReplacementEligible(unlockSource)) {
+        // Suppress only the wake step; battery updates and charging remain native.
+        NNPDiagnosticSetInteger(@"ChargingAODWakeSuppressedCount", ++gNNPChargingWakeSuppressedCount);
+        NNPDiagnosticLogTransition([NSString stringWithFormat:
+            @"CHARGING kept AOD active; suppressed AC-power wake unlockSource=%ld", (long)unlockSource]);
+        return;
+    }
+    if (gNNPOriginalPowerWake) gNNPOriginalPowerWake(self, _cmd, unlockSource);
+}
+
+static void NNPPhase7ChargingPresentationReplacement(id self, SEL _cmd, BOOL animated) {
+    if (NNPPhase7ChargingReplacementEligible(21)) {
+        NNPDiagnosticSetInteger(@"ChargingAODPresentationSuppressedCount", ++gNNPChargingPresentationSuppressedCount);
+        NNPDiagnosticLogTransition(@"CHARGING suppressed native battery presentation while AOD is active");
+        return;
+    }
+    if (gNNPOriginalChargingPresentation) gNNPOriginalChargingPresentation(self, _cmd, animated);
+}
 
 BOOL NNPPhase7EnsureBacklightFactorHook(void) {
     static dispatch_once_t onceToken;
@@ -148,6 +211,20 @@ BOOL NNPPhase7EnsureBacklightFactorHook(void) {
         }
         NNPDiagnosticSetBool(@"Phase7FactorHookInstalled", installed);
         NNPDiagnosticLog([NSString stringWithFormat:@"PHASE7 deferred HID/provider/BKS-blank hooks %@ after runtime lookup", installed ? @"installed" : @"failed"]);
+        if (installed) {
+            IMP powerWake = NULL, presentation = NULL;
+            BOOL powerWakeInstalled = NNPPhase7InstallChargingHook(NSClassFromString(@"SBUIController"),
+                NSSelectorFromString(@"possiblyWakeForPowerStatusChangeWithUnlockSource:"),
+                (IMP)NNPPhase7PowerWakeReplacement, &powerWake, NO);
+            gNNPOriginalPowerWake = (NNPPowerWakeIMP)powerWake;
+            BOOL presentationInstalled = NNPPhase7InstallChargingHook(
+                NSClassFromString(@"SBLockScreenBatteryChargingViewController"),
+                NSSelectorFromString(@"presentWithAnimation:"),
+                (IMP)NNPPhase7ChargingPresentationReplacement, &presentation, YES);
+            gNNPOriginalChargingPresentation = (NNPChargingPresentationIMP)presentation;
+            NNPDiagnosticSetBool(@"ChargingAODPowerWakeHookInstalled", powerWakeInstalled);
+            NNPDiagnosticSetBool(@"ChargingAODPresentationHookInstalled", presentationInstalled);
+        }
     });
     return installed;
 }

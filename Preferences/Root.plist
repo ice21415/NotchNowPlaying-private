@@ -12,7 +12,7 @@
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowArtwork; label = "顯示專輯封面"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowArtist; label = "顯示歌手名稱"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowProgress; label = "顯示播放進度"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
-        { cell = PSGroupCell; label = "充電流光"; footerText = "充電時，流光從螢幕底部中央分成左右兩路，沿圓角邊緣向上流動至瀏海旁，每約 3 秒重播。電量達 100%、停止充電或關閉插件時停止；熄屏時暫停，亮屏後恢復。不需播放音樂。減少動態效果開啟時改用靜態邊緣提示。"; },
+        { cell = PSGroupCell; label = "充電流光"; footerText = "充電時，流光從底部中央沿左右邊緣向上到瀏海旁，每約 3 秒重播，充滿或停止充電時結束。AOD 顯示中會維持流光，並取消系統充電喚醒與充電畫面；側鍵與點按喚醒仍可使用。一般熄屏時暫停。不需播放音樂。減少動態效果開啟時改用靜態邊緣提示。"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ChargingAnimationEnabled; label = "啟用充電流光"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
         { cell = PSGroupCell; label = "Spotify 歌詞"; footerText = "Spotify 的歌詞頁開啟時，播放器會自動讀取目前顯示的歌詞；離開歌詞頁會停止讀取。歌詞需由 Spotify 提供。"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowLyrics; label = "顯示目前歌詞"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },

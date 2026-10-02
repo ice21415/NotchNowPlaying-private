@@ -1,5 +1,7 @@
 #import "NNPChargingController.h"
 #import "NNPPreferences.h"
+#import "NNPChargingPolicy.h"
+#import "NNPDiagnostics.h"
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import <notify.h>
@@ -119,6 +121,9 @@
 @property(nonatomic) BOOL started;
 @property(nonatomic) int displayToken;
 @property(nonatomic) BOOL screenOn;
+@property(nonatomic) BOOL didRecordPresentation;
+@property(nonatomic) BOOL recordedVisible;
+@property(nonatomic) BOOL recordedAOD;
 - (void)refresh;
 - (void)readDisplayState;
 @end
@@ -159,6 +164,11 @@
     self.screenOn = self.displayToken >= 0 &&
         notify_get_state(self.displayToken, &state) == NOTIFY_STATUS_OK && state != 0;
 }
+- (void)setAodPresentationActive:(BOOL)active {
+    if (_aodPresentationActive == active) return;
+    _aodPresentationActive = active;
+    [self refresh];
+}
 - (void)statusChanged:(__unused NSNotification *)notification {
     if (!NSThread.isMainThread) {
         dispatch_async(dispatch_get_main_queue(), ^{ [self refresh]; });
@@ -171,8 +181,21 @@
     UIDevice *device = UIDevice.currentDevice;
     NNPPreferences *preferences = NNPPreferences.sharedPreferences;
     float level = device.batteryLevel;
-    BOOL visible = preferences.enabled && preferences.chargingAnimationEnabled && self.screenOn &&
-        device.batteryState == UIDeviceBatteryStateCharging && isfinite(level) && level >= 0 && level < 1;
+    BOOL visible = NNPChargingPresentsFlow(preferences.enabled, preferences.chargingAnimationEnabled,
+        self.screenOn, self.aodPresentationActive,
+        device.batteryState == UIDeviceBatteryStateCharging, level);
+    if (!self.didRecordPresentation || self.recordedVisible != visible ||
+        self.recordedAOD != self.aodPresentationActive) {
+        self.didRecordPresentation = YES;
+        self.recordedVisible = visible;
+        self.recordedAOD = self.aodPresentationActive;
+        NNPDiagnosticSetBool(@"ChargingFlowVisible", visible);
+        NNPDiagnosticSetBool(@"ChargingFlowAODActive", self.aodPresentationActive);
+        NNPDiagnosticLogTransition([NSString stringWithFormat:
+            @"CHARGING flow visible=%@ aod=%@ screenOn=%@ batteryState=%ld level=%.3f",
+            visible ? @"YES" : @"NO", self.aodPresentationActive ? @"YES" : @"NO",
+            self.screenOn ? @"YES" : @"NO", (long)device.batteryState, level]);
+    }
     if (!visible) {
         [self.view setRunning:NO reducedMotion:NO];
         self.window.hidden = YES;

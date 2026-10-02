@@ -328,6 +328,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         NNPController *controller = weakSelf;
         if (!controller) return;
         void (^update)(void) = ^{
+            controller.charging.aodPresentationActive = controller.locked &&
+                controller.display.aodPresentationActive &&
+                controller.display.lifecycleState == NNPDisplayLifecycleStateActive;
             if (!controller.display.aodPresentationActive) {
                 [controller.view clearNotificationIndicators];
                 [controller.statusBarPlayerView clearNotificationIndicators];
@@ -942,6 +945,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         }
 #endif
         BOOL show = [self shouldShow];
+        self.charging.aodPresentationActive = self.locked && self.display.aodPresentationActive &&
+            self.display.lifecycleState == NNPDisplayLifecycleStateActive;
         NSInteger lifecycle = self.display.lifecycleState;
         BOOL reconcileStateChanged = !self.didRecordReconcileState ||
             self.recordedReconcileLocked != self.locked ||

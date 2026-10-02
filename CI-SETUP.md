@@ -1,13 +1,13 @@
 # NotchNowPlaying CI setup
 
-## Charging flow builds (0.1.99)
+## Charging flow builds (0.1.100)
 
 The source repository is `ice21415/NotchNowPlaying-private` (public despite its
 historical name). The charging flow branch is `codex/charging-flow-20261002`.
 Its `build-charging.yml` workflow uses the standard `macos-26` runner with
 Apple Clang and builds both `normal` and `aod` packages. The `aod` variant
 preserves the previous Phase 7 experimental build flags. Download the package
-artifact matching the desired variant; both use version 0.1.99.
+artifact matching the desired variant; both use the version recorded in `control`.
 
 The workflow checks Apple compiler identity, arm64e architecture, package
 version, charging settings, injection filters, and incompatible ABI warnings.

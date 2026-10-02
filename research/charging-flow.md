@@ -1,4 +1,4 @@
-# 充電流光（0.1.99）
+# 充電流光（0.1.100）
 
 充電且電量未滿時，青綠色流光從螢幕底部中央分成左右兩路，沿底部圓角、側邊和頂部圓角向上，到瀏海左右兩側結束。每 3.2 秒同步循環，持續至 100% 或停止充電。不是將流光高度映射至電量百分比。
 
@@ -6,7 +6,15 @@
 
 電池狀態由 UIDevice 的通知更新：[Apple 電池狀態通知](https://developer.apple.com/documentation/uikit/uidevice/batterystatedidchangenotification)。流光使用可動畫的 [CAShapeLayer strokeStart](https://developer.apple.com/documentation/quartzcore/cashapelayer/strokestart) 與 strokeEnd。
 
-熄屏偵測只讀取 Darwin `com.apple.iokit.hid.displayStatus` 通知狀態，參考 [PassBy 的原始實作](https://github.com/giorgioiavicoli/PassBy/blob/master/Tweak.xm)。這是私有通知，仍需在目標 iOS 實機確認；讀取失敗時隱藏。本功能不主動點亮螢幕，也不延長系統亮屏時間。實驗性 AOD 將面板維持可見但系統仍回報 display off 時，充電流光仍會暫停。
+熄屏偵測讀取 Darwin `com.apple.iokit.hid.displayStatus` 通知狀態，參考 [PassBy 的原始實作](https://github.com/giorgioiavicoli/PassBy/blob/master/Tweak.xm)。這是私有通知；讀取失敗且沒有活動 AOD 時隱藏。本功能不主動點亮螢幕，也不延長系統亮屏時間。0.1.100 由 NNPController 傳入已鎖定且處於 Active 的 AOD 顯示狀態，即使 iOS 回報 display off，也會保持充電流光。
+
+## AOD 充電喚醒修正
+
+iOS 17.1.2 本機 SpringBoard 反組譯顯示：`SBUIController ACPowerChanged` 呼叫 `possiblyWakeForPowerStatusChangeWithUnlockSource:`，傳入 unlock source 21；此方法再呼叫鎖屏管理器 `unlockUIFromSource:withOptions:`。裝置日誌顯示充電事件的後續背光喚醒會退出 AOD。不要將 unlock source 21 與背光 source 混用，也不要憑充電狀態攔截所有喚醒。
+
+0.1.100 僅在 armed、locked、Active AOD、已觀察到顯示替代、插件與充電流光均啟用時，略過 source 21 的上述充電喚醒。同時在相同範圍略過 `SBLockScreenBatteryChargingViewController presentWithAnimation:`，避免系統充電畫面蓋過流光。原始電池狀態更新與實際充電流程不變。hook 安裝前檢查實際方法參數與回傳型別；型別不符時不安裝。其他 unlock source、側鍵、點按與 AOD 外的充電仍交給原方法。
+
+共享 C policy 的測試遍歷喚醒來源與開關／鎖定／AOD 狀態，並檢查 screen off + AOD 可見、100%、停止充電、未知電量與減少功能啟用等顯示邊界。GitHub Actions 的一般版與 AOD 版都執行測試。
 
 ## 編譯驗證
 

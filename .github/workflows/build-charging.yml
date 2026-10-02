@@ -58,6 +58,13 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-version | tee iphoneos-sdk-version.txt
           find "$THEOS/sdks" -maxdepth 1 -type d -name '*.sdk' -print | sort | tee theos-sdks.txt
 
+      - name: Check charging wake exclusions
+        run: |
+          set -euo pipefail
+          xcrun clang -std=c11 -Wall -Wextra -Werror \
+            research/tools/charging_policy_test.c -o charging-policy-test
+          ./charging-policy-test
+
       - name: Build charging flow package
         run: |
           set -euo pipefail
