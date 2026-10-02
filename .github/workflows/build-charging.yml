@@ -1,0 +1,141 @@
+name: Build charging flow with Apple Clang
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/charging-flow-20261002]
+    paths:
+      - '*.m'
+      - '*.h'
+      - '*.xm'
+      - '*.plist'
+      - 'Makefile'
+      - 'control'
+      - 'layout/**'
+      - 'Preferences/**'
+      - '.github/workflows/build-charging.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: charging-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Apple arm64e (${{ matrix.variant }})
+    runs-on: macos-26
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [normal, aod]
+    env:
+      THEOS: ${{ github.workspace }}/.build-tools/theos
+      BUILD_VARIANT: ${{ matrix.variant }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install RootHide build tools
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          brew install ldid dpkg
+          git clone --recursive https://github.com/roothide/theos.git "$THEOS"
+          "$THEOS/bin/install-sdk" latest
+          git -C "$THEOS" rev-parse HEAD | tee theos-commit.txt
+
+      - name: Record Apple compiler and SDK
+        run: |
+          set -euo pipefail
+          xcodebuild -version | tee xcode-version.txt
+          xcrun --find clang | tee clang-path.txt
+          xcrun clang --version | tee clang-version.txt
+          grep -q 'Apple clang' clang-version.txt
+          xcrun --sdk iphoneos --show-sdk-version | tee iphoneos-sdk-version.txt
+          find "$THEOS/sdks" -maxdepth 1 -type d -name '*.sdk' -print | sort | tee theos-sdks.txt
+
+      - name: Build charging flow package
+        run: |
+          set -euo pipefail
+          aod=0
+          if [ "$BUILD_VARIANT" = aod ]; then aod=1; fi
+          make clean package \
+            THEOS_PACKAGE_SCHEME=roothide FINALPACKAGE=1 DEBUG=0 STRIP=1 \
+            TARGET_CC="$(xcrun --find clang)" \
+            TARGET_CXX="$(xcrun --find clang++)" \
+            TARGET_LD="$(xcrun --find clang++)" \
+            NNP_SAFE_BOOT_TEST=0 \
+            NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE="$aod" \
+            NNP_ENABLE_COVERSHEET_PRESENTATION="$aod" \
+            NNP_ENABLE_SSH_SCREENSHOT_PROBE="$aod" \
+            NNP_ENABLE_SSH_SCREENSHOT_EXPERIMENT="$aod" \
+            NNP_ENABLE_DISPLAY_ASSERTION_EXPERIMENT=0 \
+            NNP_PHASE2G_OBSERVER=0 NNP_PHASE2J_READONLY_RUNTIME=0 \
+            NNP_NOTIFICATION_SNAKE_GEOMETRY_DIAGNOSTICS=0 \
+            2>&1 | tee build.log
+          if grep -Eqi 'incompatible arm64e ABI|built with an incompatible.*ABI' build.log; then
+            echo 'Incompatible arm64e ABI found in build log' >&2
+            exit 1
+          fi
+
+      - name: Verify arm64e package and charging settings
+        run: |
+          set -euo pipefail
+          package=$(find build-packages -maxdepth 1 -name '*.deb' -print -quit)
+          test -n "$package"
+          expected_version=$(sed -n 's/^Version: //p' control | tr -d '\r')
+          test "$(dpkg-deb -f "$package" Architecture)" = iphoneos-arm64e
+          test "$(dpkg-deb -f "$package" Version)" = "$expected_version"
+          dpkg-deb -x "$package" package-check
+          for name in NotchNowPlaying NNPSpotifyProbe; do
+            dylib=$(find package-check -name "$name.dylib" -print -quit)
+            test -n "$dylib"
+            file "$dylib"
+            xcrun lipo "$dylib" -verify_arch arm64e
+            xcrun vtool -show-build "$dylib"
+          done
+          main_filter=$(find package-check -name NotchNowPlaying.plist -path '*/DynamicLibraries/*' -print -quit)
+          test -n "$main_filter"
+          plutil -lint "$main_filter"
+          grep -q 'com.apple.springboard' "$main_filter"
+          ! grep -q 'com.spotify.client' "$main_filter"
+          spotify_filter=$(find package-check -name NNPSpotifyProbe.plist -print -quit)
+          test -n "$spotify_filter"
+          plutil -lint "$spotify_filter"
+          grep -q 'com.spotify.client' "$spotify_filter"
+          preferences=$(find package-check -path '*/Library/PreferenceLoader/Preferences/NotchNowPlaying.plist' -print -quit)
+          test -n "$preferences"
+          plutil -lint "$preferences"
+          grep -q 'ChargingAnimationEnabled' "$preferences"
+          grep -q 'NotificationSnakeWakeEnabled' "$preferences"
+          shasum -a 256 "$package" | tee package-sha256.txt
+
+      - name: Upload compiler and build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: charging-${{ matrix.variant }}-diagnostics
+          retention-days: 7
+          path: |
+            build.log
+            theos-commit.txt
+            theos-sdks.txt
+            xcode-version.txt
+            clang-path.txt
+            clang-version.txt
+            iphoneos-sdk-version.txt
+            package-sha256.txt
+          if-no-files-found: ignore
+
+      - name: Upload Apple-built package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notchnowplaying-charging-${{ matrix.variant }}-${{ github.sha }}
+          retention-days: 7
+          path: build-packages/*.deb
+          if-no-files-found: error

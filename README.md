@@ -4,6 +4,21 @@ NotchNowPlaying is a standalone SpringBoard tweak for iPhone 12 mini / iOS
 17.1.2. It reads system Now Playing state through MediaRemote and displays a
 compact artwork, title, artist, and progress bar around the notch.
 
+## Charging flow (0.1.99)
+
+While charging below 100%, two synchronized teal streams run from the bottom
+center around the rounded screen edges to the sides of the notch, repeating
+every 3.2 seconds. The overlay works independently of music playback. It stops
+when charging stops or the battery is full, pauses while the display is off,
+and respects Reduce Motion with a static edge indicator. Enable or disable
+it with the "啟用充電流光" setting.
+
+Use the `Build charging flow with Apple Clang` GitHub Actions workflow for
+installable packages: `normal` builds the standard overlay, while `aod`
+preserves the experimental Phase 7 AOD build. Both use Apple's compiler on
+macOS 26 and verify package architecture, version and bundled preferences.
+See `research/charging-flow.md` for implementation and device checks.
+
 ## Current release
 
 - Spotify-only mode is enabled by default (`com.spotify.client`).

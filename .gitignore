@@ -1,3 +1,7 @@
 build-packages/
 .DS_Store
 *.log
+.theos/
+.build-tools/
+package-check/
+SOURCE-MANIFEST.csv

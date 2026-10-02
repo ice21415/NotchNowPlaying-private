@@ -1,4 +1,5 @@
 #import "NNPController.h"
+#import "NNPChargingController.h"
 #import "NNPMediaController.h"
 #import "NNPState.h"
 #import "NNPView.h"
@@ -179,6 +180,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 
 @interface NNPController ()
 @property(nonatomic, strong) NNPMediaController *media;
+@property(nonatomic, strong) NNPChargingController *charging;
 @property(nonatomic, strong) NNPLockStateController *lockState;
 @property(nonatomic, strong) NNPDisplayController *display;
 @property(nonatomic, strong) NNPPreferences *preferences;
@@ -342,6 +344,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 #if NNP_SAFE_BOOT_TEST
     NSLog(@"%@ safe boot build loaded; media and UI disabled", NNPLog); return;
 #else
+    self.charging = [NNPChargingController new];
+    [self.charging start];
     self.media = [NNPMediaController new]; self.media.stateHandler = ^(NNPState *state) { [weakSelf receive:state]; };
     [self.media start]; NNPDiagnosticSetBool(@"MediaRemoteConnected", YES);
     NSLog(@"%@ loaded, locked=%@", NNPLog, self.locked ? @"YES" : @"NO");
@@ -1068,6 +1072,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [self.statusBarPlayerView updateElapsed:elapsed duration:self.state.duration playing:self.state.playing];
 }
 - (void)dealloc {
+    [_charging stop];
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
     [_display stopLockedVisibleMode];
 #endif

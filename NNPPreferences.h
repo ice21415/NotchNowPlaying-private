@@ -4,6 +4,7 @@ FOUNDATION_EXPORT NSString * const NNPPreferencesDidChangeNotification;
 
 @interface NNPPreferences : NSObject
 @property(nonatomic, readonly) BOOL enabled;
+@property(nonatomic, readonly) BOOL chargingAnimationEnabled;
 @property(nonatomic, readonly) BOOL spotifyOnly;
 @property(nonatomic, readonly) BOOL showWhileUnlocked;
 @property(nonatomic, readonly) BOOL showOnLockScreen;

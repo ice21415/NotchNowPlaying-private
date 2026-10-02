@@ -45,6 +45,7 @@ static CGFloat NNPFloat(NSString *key, CGFloat fallback) {
 
 @interface NNPPreferences ()
 @property(nonatomic) BOOL enabled;
+@property(nonatomic) BOOL chargingAnimationEnabled;
 @property(nonatomic) BOOL spotifyOnly;
 @property(nonatomic) BOOL showWhileUnlocked;
 @property(nonatomic) BOOL showOnLockScreen;
@@ -82,6 +83,7 @@ static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observe
 - (void)reload {
     CFPreferencesAppSynchronize(NNPPreferencesDomain);
     self.enabled = NNPBool(@"Enabled", YES);
+    self.chargingAnimationEnabled = NNPBool(@"ChargingAnimationEnabled", YES);
     self.spotifyOnly = NNPBool(@"SpotifyOnly", YES);
     self.showWhileUnlocked = NNPBool(@"ShowWhileUnlocked", YES);
     self.showOnLockScreen = NNPBool(@"ShowOnLockScreen", YES);
