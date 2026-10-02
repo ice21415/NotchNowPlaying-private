@@ -1,6 +1,11 @@
 name: Build read-only AOD power probe
 on:
   workflow_dispatch:
+  push:
+    branches: [codex/charging-flow-20261002]
+    paths:
+      - 'research/tools/aod_power_probe.m'
+      - '.github/workflows/build-power-probe.yml'
 permissions:
   contents: read
 jobs:
