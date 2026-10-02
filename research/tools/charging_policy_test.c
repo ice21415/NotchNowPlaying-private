@@ -1,8 +1,21 @@
 #include "../../NNPChargingPolicy.h"
+#include "../../NNPAODPixelPolicy.h"
 #include <assert.h>
 #include <stdio.h>
 
 int main(void) {
+    bool visited[13][13] = {{false}};
+    for (size_t step = 0; step < 169; step++) {
+        NNPAODPixelOffset p = NNPAODOffsetForStep(step);
+        NNPAODPixelOffset next = NNPAODOffsetForStep(step + 1);
+        assert(p.x >= -6 && p.x <= 6 && p.y >= -6 && p.y <= 6);
+        assert(p.x != next.x && p.y != next.y);
+        assert(!visited[p.y + 6][p.x + 6]);
+        visited[p.y + 6][p.x + 6] = true;
+    }
+    NNPAODPixelOffset initial = NNPAODOffsetForStep(0);
+    NNPAODPixelOffset repeated = NNPAODOffsetForStep(169);
+    assert(initial.x == repeated.x && initial.y == repeated.y);
     // Only a phone AC-power event in the fully active, locked AOD session qualifies.
     for (long source = 0; source < 40; source++) {
         for (unsigned state = 0; state < 32; state++) {

@@ -2,6 +2,7 @@
 #import "NNPPreferences.h"
 #import "NNPChargingPolicy.h"
 #import "NNPDiagnostics.h"
+#import "NNPAODPresentation.h"
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import <notify.h>
@@ -12,6 +13,7 @@
 @property(nonatomic) BOOL running;
 @property(nonatomic) BOOL reducedMotion;
 @property(nonatomic) CGFloat batteryProgress;
+@property(nonatomic, strong) UILabel *percentageLabel;
 - (void)setRunning:(BOOL)running reducedMotion:(BOOL)reducedMotion;
 @end
 
@@ -73,6 +75,8 @@
         stroke.path = index < 4 ? left.CGPath : right.CGPath;
     }
     [CATransaction commit];
+    self.percentageLabel.frame = CGRectMake(CGRectGetMidX(self.bounds) - 70,
+        CGRectGetHeight(self.bounds) - 100, 140, 30);
 }
 - (void)setRunning:(BOOL)running reducedMotion:(BOOL)reducedMotion {
     if (_running == running && _reducedMotion == reducedMotion) return;
@@ -125,6 +129,7 @@
 @property(nonatomic) BOOL didRecordPresentation;
 @property(nonatomic) BOOL recordedVisible;
 @property(nonatomic) BOOL recordedAOD;
+@property(nonatomic, strong) NSTimer *percentageTimer;
 - (void)refresh;
 - (void)readDisplayState;
 - (void)releasePresentation;
@@ -182,6 +187,54 @@
     self.aodHost = host;
     [self refresh];
 }
+- (void)setPixelShiftPixels:(CGPoint)pixels {
+    _pixelShiftPixels = pixels;
+    NNPAODApplyPixelShift(self.view.layer, pixels);
+    if (self.view) NNPDiagnosticSetString(@"AODChargingLayerShift", NSStringFromCGAffineTransform(CATransform3DGetAffineTransform(self.view.layer.sublayerTransform)));
+}
+- (void)restPixels {
+    NNPAODRestPixels(self.view.layer);
+    __weak NNPChargingView *view = self.view;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.10 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        CALayer *layer = view.layer.presentationLayer;
+        NNPDiagnosticSetBool(@"AODChargingRestObserved", layer && layer.opacity < 0.01);
+    });
+}
+- (void)showPercentage:(CGFloat)progress {
+    [self.percentageTimer invalidate];
+    if (!self.view.percentageLabel) {
+        UILabel *label = [UILabel new];
+        label.font = [UIFont monospacedDigitSystemFontOfSize:22 weight:UIFontWeightMedium];
+        label.textColor = [UIColor colorWithWhite:0.8 alpha:1];
+        label.textAlignment = NSTextAlignmentCenter;
+        label.accessibilityLabel = @"充電電量";
+        self.view.percentageLabel = label;
+        [self.view addSubview:label];
+    }
+    [self.view.percentageLabel.layer removeAllAnimations];
+    self.view.percentageLabel.alpha = 1;
+    self.view.percentageLabel.text = [NSString stringWithFormat:@"%.0f%%", progress * 100];
+    NNPDiagnosticSetBool(@"ChargingPercentageAllocated", YES);
+    __weak typeof(self) weakSelf = self;
+    self.percentageTimer = [NSTimer timerWithTimeInterval:7.5 repeats:NO block:^(__unused NSTimer *timer) {
+        NNPChargingController *controller = weakSelf;
+        if (!controller) return;
+        controller.percentageTimer = nil;
+        __weak NNPChargingView *view = controller.view;
+        UILabel *label = view.percentageLabel;
+        [UIView animateWithDuration:0.5 animations:^{ label.alpha = 0; }
+            completion:^(__unused BOOL finished) {
+                // A newer battery event may have replaced this fade.
+                if (view.percentageLabel == label && !weakSelf.percentageTimer) {
+                    [label removeFromSuperview];
+                    view.percentageLabel = nil;
+                    NNPDiagnosticSetBool(@"ChargingPercentageAllocated", NO);
+                }
+            }];
+    }];
+    [[NSRunLoop mainRunLoop] addTimer:self.percentageTimer forMode:NSRunLoopCommonModes];
+    [self.view setNeedsLayout];
+}
 - (void)refresh {
     if (!self.started) return;
     UIDevice *device = UIDevice.currentDevice;
@@ -207,7 +260,8 @@
         return;
     }
     UIView *container = self.aodHost;
-    if (!self.view) self.view = [[NNPChargingView alloc] initWithFrame:container.bounds];
+    BOOL created = self.view == nil;
+    if (created) self.view = [[NNPChargingView alloc] initWithFrame:container.bounds];
     if (self.view.superview != container) {
         [self.view setRunning:NO reducedMotion:NO];
         [self.view removeFromSuperview];
@@ -220,10 +274,13 @@
     NNPDiagnosticSetString(@"ChargingFlowHostClass", NSStringFromClass(container.class));
     NNPDiagnosticSetString(@"ChargingFlowFrame", NSStringFromCGRect(self.view.frame));
     CGFloat progress = MAX(0.0, MIN(1.0, level));
-    if (fabs(self.view.batteryProgress - progress) > 0.0001) {
+    BOOL changed = fabs(self.view.batteryProgress - progress) > 0.0001;
+    if (changed) {
         [self.view setRunning:NO reducedMotion:NO];
         self.view.batteryProgress = progress;
     }
+    if (created || changed) [self showPercentage:progress];
+    NNPAODApplyPixelShift(self.view.layer, self.pixelShiftPixels);
     NNPDiagnosticSetValue(@"ChargingFlowBatteryProgress", @(progress));
     [self.view setNeedsLayout];
     [self.view layoutIfNeeded];
@@ -231,6 +288,10 @@
     NNPDiagnosticSetBool(@"ChargingFlowResourcesAllocated", YES);
 }
 - (void)releasePresentation {
+    [self.percentageTimer invalidate];
+    self.percentageTimer = nil;
+    NNPDiagnosticSetBool(@"ChargingPercentageAllocated", NO);
+    [self.view.layer removeAllAnimations];
     [self.view setRunning:NO reducedMotion:NO];
     [self.view removeFromSuperview];
     self.view = nil;

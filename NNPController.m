@@ -1,3 +1,5 @@
+#import "NNPAODPixelPolicy.h"
+#import "NNPAODPresentation.h"
 #import "NNPController.h"
 #import "NNPChargingController.h"
 #import "NNPMediaController.h"
@@ -189,6 +191,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic, strong) NNPState *state;
 @property(nonatomic, strong) NSTimer *progressTimer;
 @property(nonatomic, strong) NSTimer *pixelShiftTimer;
+@property(nonatomic) NSUInteger pixelShiftStep;
 @property(nonatomic) NSTimeInterval progressTimerInterval;
 @property(nonatomic) BOOL reconcilePending;
 @property(nonatomic) BOOL didRecordSpotifyLyricsTrackMatch;
@@ -994,8 +997,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)hide {
     [self.view cancelNotificationSnakeAnimation];
     [self.statusBarPlayerView cancelNotificationSnakeAnimation];
-    [self stopAODPixelShiftTimer];
     BOOL keepAmbient = [self shouldPresentInsideCoverSheet];
+    if (keepAmbient) [self startAODPixelShiftTimer];
+    else [self stopAODPixelShiftTimer];
     if (keepAmbient) {
         [UIView animateWithDuration:UIAccessibilityIsReduceMotionEnabled() ? 0.10 : 0.18
                               delay:0.0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState
@@ -1015,22 +1019,33 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [self.progressTimer invalidate]; self.progressTimer = nil;
 }
 - (void)applyRandomAODPixelShift {
-    if (!self.view) return;
-    NSInteger currentX = (NSInteger)llround(self.view.pixelShiftPixels.x);
-    NSInteger currentY = (NSInteger)llround(self.view.pixelShiftPixels.y);
-    NSInteger x = 0, y = 0;
-    do {
-        x = (NSInteger)arc4random_uniform(7) - 3;
-        y = (NSInteger)arc4random_uniform(7) - 3;
-    } while ((x == 0 && y == 0) || (x == currentX && y == currentY));
-    self.view.pixelShiftPixels = CGPointMake((CGFloat)x, (CGFloat)y);
-    self.statusBarPlayerView.pixelShiftPixels = self.view.pixelShiftPixels;
-    NNPDiagnosticSetInteger(@"AODPixelShiftX", x);
-    NNPDiagnosticSetInteger(@"AODPixelShiftY", y);
-    NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER AOD pixel shift x=%ld y=%ld", (long)x, (long)y]);
+    NNPAODPixelOffset offset = NNPAODOffsetForStep(self.pixelShiftStep++);
+    CGPoint pixels = CGPointMake(offset.x, offset.y);
+    NNPAODRestPixels(self.view.layer);
+    NNPAODRestPixels(self.statusBarPlayerView.layer);
+    [self.charging restPixels];
+    self.view.pixelShiftPixels = pixels;
+    self.statusBarPlayerView.pixelShiftPixels = pixels;
+    self.charging.pixelShiftPixels = pixels;
+    NNPDiagnosticSetString(@"AODPlayerLayerShift", NSStringFromCGAffineTransform(CATransform3DGetAffineTransform(self.view.layer.sublayerTransform)));
+    NNPDiagnosticSetString(@"AODMirrorLayerShift", NSStringFromCGAffineTransform(CATransform3DGetAffineTransform(self.statusBarPlayerView.layer.sublayerTransform)));
+    __weak typeof(self) weakController = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.10 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        NNPController *controller = weakController;
+        if (![controller shouldPresentInsideCoverSheet]) return;
+        CALayer *player = controller.view.layer.presentationLayer;
+        CALayer *mirror = controller.statusBarPlayerView.layer.presentationLayer;
+        NNPDiagnosticSetBool(@"AODPlayerRestObserved", player && player.opacity < 0.01);
+        NNPDiagnosticSetBool(@"AODMirrorRestObserved", mirror && mirror.opacity < 0.01);
+    });
+    NNPDiagnosticSetInteger(@"AODPixelShiftX", offset.x);
+    NNPDiagnosticSetInteger(@"AODPixelShiftY", offset.y);
+    NNPDiagnosticSetInteger(@"AODPixelShiftStep", self.pixelShiftStep);
+    NNPDiagnosticSetBool(@"AODPixelShiftTimerActive", self.pixelShiftTimer != nil);
+    NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER AOD all-surface physical pixel shift x=%d y=%d step=%lu rest=0.21s", offset.x, offset.y, (unsigned long)self.pixelShiftStep]);
 }
 - (void)startAODPixelShiftTimer {
-    if (!self.preferences.aodPixelShiftEnabled || !self.display.aodPresentationActive) {
+    if (![self shouldPresentInsideCoverSheet]) {
         [self stopAODPixelShiftTimer];
         return;
     }
@@ -1040,19 +1055,24 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     self.pixelShiftTimer = [NSTimer timerWithTimeInterval:30.0 repeats:YES block:^(__unused NSTimer *timer) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf) return;
-        if (!strongSelf.preferences.aodPixelShiftEnabled || !strongSelf.display.aodPresentationActive || ![strongSelf shouldShow]) {
+        if (![strongSelf shouldPresentInsideCoverSheet]) {
             [strongSelf stopAODPixelShiftTimer];
             return;
         }
         [strongSelf applyRandomAODPixelShift];
     }];
     [[NSRunLoop mainRunLoop] addTimer:self.pixelShiftTimer forMode:NSRunLoopCommonModes];
+    NNPDiagnosticSetBool(@"AODPixelShiftTimerActive", YES);
 }
 - (void)stopAODPixelShiftTimer {
     [self.pixelShiftTimer invalidate];
     self.pixelShiftTimer = nil;
     self.view.pixelShiftPixels = CGPointZero;
     self.statusBarPlayerView.pixelShiftPixels = CGPointZero;
+    self.charging.pixelShiftPixels = CGPointZero;
+    [self.view.layer removeAnimationForKey:@"aodPixelRest"];
+    [self.statusBarPlayerView.layer removeAnimationForKey:@"aodPixelRest"];
+    NNPDiagnosticSetBool(@"AODPixelShiftTimerActive", NO);
     NNPDiagnosticSetInteger(@"AODPixelShiftX", 0);
     NNPDiagnosticSetInteger(@"AODPixelShiftY", 0);
 }

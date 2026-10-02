@@ -1,3 +1,4 @@
+#import "NNPAODPresentation.h"
 #import "NNPView.h"
 #import "NNPState.h"
 #import "NNPDiagnostics.h"
@@ -225,18 +226,14 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 
 - (void)setPixelShiftPixels:(CGPoint)pixelShiftPixels {
     _pixelShiftPixels = pixelShiftPixels;
-    CGFloat scale = MAX(UIScreen.mainScreen.scale, 1.0);
-    // Move only player content; the full-screen black mask remains fixed.
-    self.layer.sublayerTransform = CATransform3DMakeTranslation(
-        pixelShiftPixels.x / scale, pixelShiftPixels.y / scale, 0.0);
+    // Shift every descendant: artwork, text, progress, cards and notification layers.
+    NNPAODApplyPixelShift(self.layer, pixelShiftPixels);
     [self updateNotificationSnakeCounterTransform];
 }
 
 - (void)updateNotificationSnakeCounterTransform {
     if (!self.notificationSnakeLayer) return;
-    CGFloat scale = MAX(UIScreen.mainScreen.scale, 1.0);
-    self.notificationSnakeLayer.transform = CATransform3DMakeTranslation(
-        -self.pixelShiftPixels.x / scale, -self.pixelShiftPixels.y / scale, 0.0);
+    self.notificationSnakeLayer.transform = CATransform3DIdentity;
 }
 
 - (void)setContentOpacity:(CGFloat)contentOpacity {

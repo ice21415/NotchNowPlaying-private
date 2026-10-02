@@ -41,8 +41,7 @@
         { cell = PSGroupCell; label = "AOD 通知提醒"; footerText = "只在鎖定且 AOD 顯示時生效。通知到達時，光點會從瀏海旁沿螢幕邊緣繞行兩圈，並短暫顯示 App 圖示和通知內容。收到的通知 App 圖示會列在專輯封面下方，最多顯示 3 個，更多以「+N」表示；解鎖或離開 AOD 後清除。通知仍保留在系統通知中心。減少動態效果開啟時改用靜態邊框提示。側鍵喚醒維持原行為。此功能預設關閉。"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = NotificationSnakeWakeEnabled; label = "蛇形動畫顯示通知"; default = 0; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
 
-        { cell = PSGroupCell; label = "播放器位置微移"; footerText = "每 30 秒隨機微移播放器內容，水平與垂直方向各不超過 3 個螢幕像素，以降低 OLED 長時間顯示固定圖樣造成烙印的風險；無法保證完全避免。"; },
-        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = AODPixelShiftEnabled; label = "微移播放器內容"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSGroupCell; label = "AOD 像素保護"; footerText = "AOD 期間每 30 秒移動播放器、通知與充電流光，水平及垂直各不超過 6 個面板像素；每次短暫淡至黑色，讓重疊區域也休息。保護自動啟用，離開 AOD 後停止。可降低烙印風險，無法保證完全避免。"; },
 
         { cell = PSGroupCell; label = "AOD 亮度"; footerText = "100% 保持原本亮度；提高後會在 AOD 期間調整面板亮度，400% 約為 120 nits。喚醒、解鎖或顯示時間結束時會還原。亮度越高耗電越多。"; },
         { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = AODBrightnessMultiplier; label = "亮度（%）"; default = 100; min = 100; max = 400; showValue = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
