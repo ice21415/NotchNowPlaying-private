@@ -43,7 +43,7 @@
 
         { cell = PSGroupCell; label = "AOD 像素保護"; footerText = "AOD 期間每 30 秒移動播放器、通知與充電流光，水平及垂直各不超過 6 個面板像素；每次短暫淡至黑色，讓重疊區域也休息。保護自動啟用，離開 AOD 後停止。可降低烙印風險，無法保證完全避免。"; },
 
-        { cell = PSGroupCell; label = "AOD 亮度"; footerText = "依環境光調整只在 AOD 生效，不更改系統自動亮度開關。暗處使用基準亮度，中等與明亮環境提高至 150% 或 200%；有緩衝範圍避免頻繁跳動。感測資料不可用時回到基準亮度。關閉後才使用下方手動設定。喚醒或解鎖時還原。"; },
+        { cell = PSGroupCell; label = "AOD 亮度"; footerText = "依環境光調整只在 AOD 生效，不更改系統自動亮度開關。亮度隨環境光平滑變化，室外明亮環境會進一步提高亮度。感測資料不可用時回到基準亮度。關閉後才使用下方手動設定。喚醒或解鎖時還原。"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = AODAutomaticBrightnessEnabled; label = "依環境光調整"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
         { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = AODBrightnessMultiplier; label = "手動亮度（%）"; default = 100; min = 100; max = 400; showValue = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
 
