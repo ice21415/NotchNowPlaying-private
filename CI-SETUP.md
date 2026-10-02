@@ -1,6 +1,6 @@
 # NotchNowPlaying CI setup
 
-## Charging flow builds (0.1.101)
+## Charging flow builds (0.1.102)
 
 The source repository is `ice21415/NotchNowPlaying-private` (public despite its
 historical name). The charging flow branch is `codex/charging-flow-20261002`.
