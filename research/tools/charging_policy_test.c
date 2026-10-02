@@ -14,14 +14,19 @@ int main(void) {
         float delta = NNPAODAmbientTargetNits(lux) - NNPAODAmbientTargetNits(lux - 1);
         assert(fabsf(delta - 0.28f) < 0.00002f);
     }
-    for (unsigned step = 0; step <= 6; step++) {
+    for (unsigned step = 0; step <= NNPAODBrightnessRampSteps; step++) {
         float up = NNPAODInterpolateNits(6, 90, step);
         float down = NNPAODInterpolateNits(90, 6, step);
         assert(up >= 6 && up <= 90 && down >= 6 && down <= 90);
-        assert(fabsf(up - (6 + 14 * step)) < 0.00001f);
+        assert(fabsf(up - (6 + 84.0f * step / NNPAODBrightnessRampSteps)) < 0.00001f);
+        if (step) {
+            assert(up > NNPAODInterpolateNits(6, 90, step - 1));
+            assert(down < NNPAODInterpolateNits(90, 6, step - 1));
+        }
     }
-    assert(NNPAODInterpolateNits(6, 90, 6) == 90);
-    assert(NNPAODInterpolateNits(90, 6, 6) == 6);
+    assert(NNPAODInterpolateNits(6, 90, NNPAODBrightnessRampSteps) == 90);
+    assert(NNPAODInterpolateNits(90, 6, NNPAODBrightnessRampSteps) == 6);
+    assert(NNPAODInterpolateNits(6, 90, NNPAODBrightnessRampSteps + 1) == 90);
     bool visited[13][13] = {{false}};
     for (size_t step = 0; step < 169; step++) {
         NNPAODPixelOffset p = NNPAODOffsetForStep(step);

@@ -128,10 +128,10 @@ static void NNPAODApplyTargetNits(NSString *sessionID, float targetNits, BOOL sm
         if (!features || ![features respondsToSelector:@selector(setDisableFeatures:)] ||
             ![features respondsToSelector:@selector(setFixedBrightnessNitsWhileDisabled:)]) return;
         float start = gNNPAODFeatureActive && gNNPAODCurrentNits > 0 ? gNNPAODCurrentNits : targetNits;
-        unsigned steps = smooth && fabsf(start - targetNits) > 0.5f ? 6 : 1;
+        unsigned steps = smooth && fabsf(start - targetNits) > 0.5f ? NNPAODBrightnessRampSteps : 1;
         for (unsigned step = 1; step <= steps; step++) {
             float nits = steps == 1 ? targetNits : NNPAODInterpolateNits(start, targetNits, step);
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((steps == 1 ? 0 : step * 0.15) * NSEC_PER_SEC)), NNPAODNitsQueue(), ^{
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((steps == 1 ? 0 : step * NNPAODBrightnessRampInterval) * NSEC_PER_SEC)), NNPAODNitsQueue(), ^{
                 if (generation != atomic_load_explicit(&gNNPAODNitsGeneration, memory_order_acquire)) return;
                 features.disableFeatures = YES;
                 features.fixedBrightnessNitsWhileDisabled = nits;

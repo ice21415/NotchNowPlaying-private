@@ -14,6 +14,8 @@ static inline float NNPAODAmbientTargetNits(double lux) {
     return (float)(6.0 + fmin(lux, 300.0) * 0.28);
 }
 
+enum { NNPAODBrightnessRampSteps = 24 };
+#define NNPAODBrightnessRampInterval 0.04
 static inline float NNPAODInterpolateNits(float start, float target, unsigned step) {
-    return start + (target - start) * (step > 6 ? 6 : step) / 6.0f;
+    return start + (target - start) * (step > NNPAODBrightnessRampSteps ? NNPAODBrightnessRampSteps : step) / (float)NNPAODBrightnessRampSteps;
 }
