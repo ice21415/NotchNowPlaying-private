@@ -27,6 +27,30 @@ static id JSONSafe(id value) {
 }
 int main(int argc, char **argv) {
     @autoreleasepool {
+        if (argc >= 2 && (!strcmp(argv[1], "--brightness") || !strcmp(argv[1], "--get-brightness"))) {
+            // Use the mobile user's preference service, not edits of cached plist files.
+            if (getuid() == 0 && (setgid(501) || setuid(501))) return 7;
+            if (getuid() != 501) return 7;
+            CFStringRef domain = CFSTR("com.user.notchnowplaying");
+            if (!strcmp(argv[1], "--brightness")) {
+                if (argc != 4) return 2;
+                CFPropertyListRef automatic = !strcmp(argv[2], "-") ? NULL : (!strcmp(argv[2], "1") ? kCFBooleanTrue : kCFBooleanFalse);
+                double percent = strtod(argv[3], NULL);
+                if (percent < 100 || percent > 400) return 2;
+                CFNumberRef multiplier = CFNumberCreate(kCFAllocatorDefault, kCFNumberDoubleType, &percent);
+                CFPreferencesSetValue(CFSTR("AODAutomaticBrightnessEnabled"), automatic, domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+                CFPreferencesSetValue(CFSTR("AODBrightnessMultiplier"), multiplier, domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+                CFRelease(multiplier);
+                if (!CFPreferencesSynchronize(domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)) return 8;
+                return notify_post("com.user.notchnowplaying.preferences.changed");
+            }
+            for (NSString *key in @[ @"AODAutomaticBrightnessEnabled", @"AODBrightnessMultiplier" ]) {
+                CFPropertyListRef value = CFPreferencesCopyValue((__bridge CFStringRef)key, domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+                printf("%s=%s\n", key.UTF8String, value ? [(__bridge id)value description].UTF8String : "absent");
+                if (value) CFRelease(value);
+            }
+            return 0;
+        }
         if (argc == 3 && !strcmp(argv[1], "--notify")) return notify_post(argv[2]);
         unsigned count = argc > 1 ? (unsigned)strtoul(argv[1], NULL, 10) : 1;
         unsigned interval = argc > 2 ? (unsigned)strtoul(argv[2], NULL, 10) : 30;
