@@ -8,6 +8,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("samples", type=Path)
 parser.add_argument("metadata", type=Path)
 parser.add_argument("--warmup", type=float, default=60)
+parser.add_argument("--phase-seconds", type=float, default=225)
 args = parser.parse_args()
 records = [json.loads(line) for line in args.samples.read_text(encoding="utf-8").splitlines() if line.strip()]
 phases = {}
@@ -30,7 +31,7 @@ for phase in ("A1", "B1", "B2", "A2"):
     begin, end = phases[phase], phases[phase + "_END"]
     usable, valid_samples, rejected, seen = [], [], 0, set()
     for record in records:
-        if not begin["time"] + args.warmup <= record["unix_time"] < end["time"]:
+        if not begin["time"] + args.warmup <= record["unix_time"] < min(end["time"], begin["time"] + args.phase_seconds):
             continue
         current_ma, voltage_mv = record.get("InstantAmperage"), record.get("Voltage")
         if record.get("IsCharging") or record.get("ExternalConnected") or current_ma is None or voltage_mv is None or current_ma >= 0 or voltage_mv <= 0:
