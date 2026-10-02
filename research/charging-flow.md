@@ -1,4 +1,4 @@
-# 充電流光（0.1.100）
+# 充電流光（0.1.101）
 
 充電且電量未滿時，青綠色流光從螢幕底部中央分成左右兩路，沿底部圓角、側邊和頂部圓角向上，到瀏海左右兩側結束。每 3.2 秒同步循環，持續至 100% 或停止充電。不是將流光高度映射至電量百分比。
 
@@ -13,6 +13,8 @@
 iOS 17.1.2 本機 SpringBoard 反組譯顯示：`SBUIController ACPowerChanged` 呼叫 `possiblyWakeForPowerStatusChangeWithUnlockSource:`，傳入 unlock source 21；此方法再呼叫鎖屏管理器 `unlockUIFromSource:withOptions:`。裝置日誌顯示充電事件的後續背光喚醒會退出 AOD。不要將 unlock source 21 與背光 source 混用，也不要憑充電狀態攔截所有喚醒。
 
 0.1.100 僅在 armed、locked、Active AOD、已觀察到顯示替代、插件與充電流光均啟用時，略過 source 21 的上述充電喚醒。同時在相同範圍略過 `SBLockScreenBatteryChargingViewController presentWithAnimation:`，避免系統充電畫面蓋過流光。原始電池狀態更新與實際充電流程不變。hook 安裝前檢查實際方法參數與回傳型別；型別不符時不安裝。其他 unlock source、側鍵、點按與 AOD 外的充電仍交給原方法。
+
+裝置測試發現喚醒方法的實際參數 encoding 是 `i`（32-bit int），0.1.100 錯誤要求 `q`，因此保護性檢查拒絕安裝喚醒 hook。0.1.101 將函式指標、replacement 與型別檢查統一為 int；電池畫面 hook 的 BOOL encoding 為 `B`，已確認能正常安裝。
 
 共享 C policy 的測試遍歷喚醒來源與開關／鎖定／AOD 狀態，並檢查 screen off + AOD 可見、100%、停止充電、未知電量與減少功能啟用等顯示邊界。GitHub Actions 的一般版與 AOD 版都執行測試。
 

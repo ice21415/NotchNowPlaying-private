@@ -61,7 +61,7 @@ static _Atomic(float) gNNPPhase7SubstitutedFactor = 0.0f;
 typedef void (*NNPProviderTransitionIMP)(id self, SEL _cmd, long long mode, double duration);
 typedef void (*NNPSetScreenBlankedFunction)(BOOL blanked);
 typedef void (*NNPBacklightStateIMP)(id self, SEL _cmd, NSInteger state, NSInteger source, BOOL animated, id completion);
-typedef void (*NNPPowerWakeIMP)(id self, SEL _cmd, NSInteger unlockSource);
+typedef void (*NNPPowerWakeIMP)(id self, SEL _cmd, int unlockSource);
 typedef void (*NNPChargingPresentationIMP)(id self, SEL _cmd, BOOL animated);
 static NNPProviderTransitionIMP gNNPOriginalProviderTransition;
 static NNPSetScreenBlankedFunction gNNPOriginalSetScreenBlanked;
@@ -74,7 +74,7 @@ static void NNPPhase7BacklightFactorReplacement(int displayID, float factor, flo
 static void NNPPhase7ProviderTransitionReplacement(id self, SEL _cmd, long long mode, double duration);
 static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked);
 static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger state, NSInteger source, BOOL animated, id completion);
-static void NNPPhase7PowerWakeReplacement(id self, SEL _cmd, NSInteger unlockSource);
+static void NNPPhase7PowerWakeReplacement(id self, SEL _cmd, int unlockSource);
 static void NNPPhase7ChargingPresentationReplacement(id self, SEL _cmd, BOOL animated);
 
 static BOOL NNPPhase7ChargingReplacementEligible(NSInteger unlockSource) {
@@ -98,7 +98,7 @@ static BOOL NNPPhase7InstallChargingHook(Class cls, SEL selector, IMP replacemen
     method_getArgumentType(method, 2, argumentType, sizeof(argumentType));
     BOOL matches = returnType[0] == 'v' &&
         (booleanArgument ? (argumentType[0] == 'B' || argumentType[0] == 'c')
-                         : argumentType[0] == 'q');
+                         : argumentType[0] == 'i');
     NNPDiagnosticLog([NSString stringWithFormat:@"CHARGING hook selector=%@ return=%s argument=%s compatible=%@",
         NSStringFromSelector(selector), returnType, argumentType, matches ? @"YES" : @"NO"]);
     if (!matches) return NO;
@@ -111,7 +111,7 @@ static BOOL NNPPhase7InstallChargingHook(Class cls, SEL selector, IMP replacemen
     return YES;
 }
 
-static void NNPPhase7PowerWakeReplacement(id self, SEL _cmd, NSInteger unlockSource) {
+static void NNPPhase7PowerWakeReplacement(id self, SEL _cmd, int unlockSource) {
     if (NNPPhase7ChargingReplacementEligible(unlockSource)) {
         // Suppress only the wake step; battery updates and charging remain native.
         NNPDiagnosticSetInteger(@"ChargingAODWakeSuppressedCount", ++gNNPChargingWakeSuppressedCount);
