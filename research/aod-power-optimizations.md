@@ -44,3 +44,15 @@ continues to show a static title. Short titles never create the cycle.
 These changes reduce redundant work by design; battery savings have not yet been
 quantified. Previous comparisons measured automatic versus manual brightness and
 cannot establish the savings from this revision.
+
+## Build and deployment verification
+
+GitHub Actions run 36973718703 passed both normal and AOD Apple arm64e builds,
+the shared C policy tests, and the Foundation batching test. Installed the AOD
+0.1.111 package (SHA-256 33215ac5af452d954d3d904de1b6e434f85db3ae262b47094a8c3a84b42451ee).
+SpringBoard PID 12363 reported two startup batches for 48 changed values and 15
+skipped duplicates, with verbose diagnostics disabled. At the post-install check
+the AOD pixel-shift timer was inactive and the new sample-interval/marquee keys had
+not yet been created; old ambient-active/lux keys were retained historical data.
+Do not treat those as proof of a new sensor session. User visual and active-AOD
+adaptive-interval checks are pending.
