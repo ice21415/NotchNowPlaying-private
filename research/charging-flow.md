@@ -1,8 +1,8 @@
-# 充電流光（0.1.103）
+# 充電流光（0.1.104）
 
 充電且電量未滿時，青綠色流光從螢幕底部中央分成左右兩路，沿底部圓角、側邊和頂部圓角向上，到瀏海左右兩側結束。兩側可行進的路徑長度隨電量百分比變化：50% 行進到各自路徑的一半，電量上升時逐步延伸至瀏海兩側。每 3.2 秒在當前電量範圍內同步循環，持續至 100% 或停止充電。低電量時尾巴同步縮短，減少動態效果時靜態線段也使用相同電量範圍。0.1.103 由電池電量通知更新範圍。
 
-`NNPChargingController` 在一般畫面使用透明、不接收觸控的 window，不取得 key window。AOD 時改將同一個流光 view 掛到 CoverSheet，並在黑色遮罩排列完成後移到最上層；離開 AOD 時移回獨立 window。插件總開關與「啟用充電流光」控制顯示。電量未知、未充電、已滿或沒有活動 AOD 的熄屏狀態會隱藏並移除動畫。開啟減少動態效果時改成靜態的左右邊緣提示。動畫由 Core Animation 執行，沒有額外輪詢或逐幀 timer。
+`NNPChargingController` 只在活動 AOD 中建立流光 view，掛到 CoverSheet 黑色遮罩上方，不建立獨立 window。離開 AOD 時移除並釋放流光 view、圖層與動畫。插件總開關與「啟用充電流光」控制顯示。電量未知、未充電或已滿時同樣釋放流光資源。開啟減少動態效果時改成靜態的左右邊緣提示。動畫由 Core Animation 執行，沒有額外輪詢或逐幀 timer。
 
 電池狀態由 UIDevice 的通知更新：[Apple 電池狀態通知](https://developer.apple.com/documentation/uikit/uidevice/batterystatedidchangenotification)。流光使用可動畫的 [CAShapeLayer strokeStart](https://developer.apple.com/documentation/quartzcore/cashapelayer/strokestart) 與 strokeEnd。
 
@@ -45,6 +45,6 @@ make package THEOS=/home/ice21/roothide-theos \
 
 未安裝至手機，尚未確認實機視覺效果與耗電。`SOURCE-MANIFEST.csv` 保留最初整理時的來源快照，新增與修改檔案不再與該快照全部一致。
 
-## 0.1.104 AOD ???????
+## 0.1.104 AOD 限定與資源釋放
 
-??????Active AOD?CoverSheet host ??????????????????????? UIWindow??? AOD???????????????? CA ???? view ? host ????? view ??? shape layers????????`ChargingFlowResourcesAllocated` ????????????????????????????? timer???????????????????
+只在已鎖定、Active AOD、CoverSheet host 已連接且正在充電未滿時建立流光。已移除獨立充電 UIWindow。離開 AOD、停止充電、滿電或關閉功能時移除 CA 動畫，將 view 從 host 移除並釋放 view 與八個 shape layers；不隱藏保留。`ChargingFlowResourcesAllocated` 記錄是否保留流光資源。電池與顯示狀態使用通知，沒有新增輪詢 timer。本節取代先前一般畫面視窗的行為描述。
