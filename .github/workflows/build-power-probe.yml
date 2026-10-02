@@ -1,0 +1,26 @@
+name: Build read-only AOD power probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and sign standalone sampler
+        run: |
+          set -euo pipefail
+          brew install ldid
+          xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=15.0 \
+            -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
+            research/tools/aod_power_probe.m -o aod-power-probe
+          ldid -S aod-power-probe
+          shasum -a 256 aod-power-probe > power-probe-sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aod-power-probe
+          path: |
+            aod-power-probe
+            power-probe-sha256.txt
