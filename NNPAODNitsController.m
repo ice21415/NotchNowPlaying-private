@@ -4,6 +4,7 @@
 #import <math.h>
 #import <stdatomic.h>
 #import <stdint.h>
+#import <unistd.h>
 
 @protocol NNPAODBacklightFeatures <NSObject>
 @property(nonatomic) BOOL disableFeatures;
@@ -98,9 +99,13 @@ void NNPAODNitsBeginSession(NSString *sessionID, float multiplier) {
     NSString *session = [sessionID copy] ?: @"none";
     float safeMultiplier = isfinite(multiplier) ? fminf(4.0f, fmaxf(1.0f, multiplier)) : 1.0f;
     NNPDiagnosticSetDouble(@"Phase7FixedBrightnessMultiplier", safeMultiplier);
+    NNPDiagnosticSetInteger(@"Phase7FixedBrightnessPID", getpid());
+    NNPDiagnosticSetDouble(@"Phase7FixedBrightnessImmediateNits", -1);
+    NNPDiagnosticSetDouble(@"Phase7FixedBrightnessDelayedNits", -1);
     dispatch_async(NNPAODNitsQueue(), ^{
         if (generation != atomic_load_explicit(&gNNPAODNitsGeneration, memory_order_acquire)) return;
         NNPAODClearBacklightFeatures();
+        NNPDiagnosticSetBool(@"Phase7FixedBrightnessActive", NO);
         if (safeMultiplier <= 1.001f) {
             NNPDiagnosticSetDouble(@"Phase7FixedBrightnessTargetNits", 0);
             return;
