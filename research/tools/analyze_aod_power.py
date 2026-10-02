@@ -9,11 +9,16 @@ parser.add_argument("samples", type=Path)
 parser.add_argument("metadata", type=Path)
 parser.add_argument("--warmup", type=float, default=60)
 parser.add_argument("--phase-seconds", type=float, default=225)
+parser.add_argument("--checks", type=Path)
 args = parser.parse_args()
 records = [json.loads(line) for line in args.samples.read_text(encoding="utf-8").splitlines() if line.strip()]
+checks = [json.loads(line) for line in args.checks.read_text(encoding="utf-8").splitlines() if line.strip()] if args.checks else []
 phases = {}
 current = None
+matched_target = None
 for line in args.metadata.read_text(encoding="utf-8").splitlines():
+    if line.startswith("MANUAL_PERCENT="):
+        matched_target = float(line.split("=", 1)[1]) * 0.3
     pieces = line.split()
     if len(pieces) == 2 and pieces[0] in {"A1", "A1_END", "B1", "B1_END", "B2", "B2_END", "A2", "A2_END"}:
         current = pieces[0]
@@ -50,7 +55,10 @@ for phase in ("A1", "B1", "B2", "A2"):
     mode = "automatic" if phase.startswith("A") else "manual"
     expected = "1" if mode == "automatic" else "0"
     verified = end.get("AODAmbientSensorActive") == expected and end.get("AODAutomaticBrightnessEnabled") == expected and end.get("AODPixelShiftTimerActive") == "1" and end.get("LogicalLockState") == "1"
-    info = {"start": begin, "end": end, "end_state_verified": verified, "distinct_gauge_records": len(usable), "valid_poll_count": len(valid_samples), "invalid_samples": rejected}
+    phase_checks = [r for r in checks if begin["time"] + args.warmup <= r["unix_time"] <= end["time"]]
+    conditions_verified = all(r.get("AODAmbientSensorActive") == expected and r.get("AODAutomaticBrightnessEnabled") == expected and r.get("AODPixelShiftTimerActive") == "1" and r.get("LogicalLockState") == "1" and (matched_target is None or abs(float(r["Phase7FixedBrightnessAppliedNits"]) - matched_target) <= 2) for r in phase_checks)
+    verified = verified and conditions_verified
+    info = {"start": begin, "end": end, "end_state_verified": verified, "periodic_condition_check_count": len(phase_checks), "distinct_gauge_records": len(usable), "valid_poll_count": len(valid_samples), "invalid_samples": rejected}
     if power:
         info.update(mean_w=statistics.mean(power), median_w=statistics.median(power), distinct_update_stdev_w=statistics.stdev(distinct_power) if len(distinct_power) > 1 else None, min_w=min(power), max_w=max(power), mean_discharge_ma=statistics.mean(-r["InstantAmperage"] for r in valid_samples), temperature_raw_range=[min(r["Temperature"] for r in valid_samples), max(r["Temperature"] for r in valid_samples)])
         if verified and not rejected:
