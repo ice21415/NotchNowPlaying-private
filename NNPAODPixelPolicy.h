@@ -11,7 +11,12 @@ static inline NNPAODPixelOffset NNPAODOffsetForStep(size_t step) {
 
 static inline float NNPAODAmbientTargetNits(double lux) {
     if (!isfinite(lux) || lux < 0 || lux > 200000) return 0;
-    return (float)(6.0 + fmin(lux, 300.0) * 0.28);
+    if (lux <= 300) return (float)(6.0 + lux * 0.28);
+    return (float)(90.0 + fmin(lux - 300.0, 2700.0) / 30.0);
+}
+
+static inline float NNPAODClampAutomaticNits(float nits) {
+    return isfinite(nits) && nits > 0 ? fminf(180, fmaxf(6, nits)) : 0;
 }
 
 enum { NNPAODBrightnessRampSteps = 24 };

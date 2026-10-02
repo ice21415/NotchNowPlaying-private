@@ -7,12 +7,24 @@ int main(void) {
     assert(NNPAODAmbientTargetNits(0) == 6);
     assert(NNPAODAmbientTargetNits(150) == 48);
     assert(NNPAODAmbientTargetNits(300) == 90);
-    assert(NNPAODAmbientTargetNits(200000) == 90);
+    assert(NNPAODAmbientTargetNits(1200) == 120);
+    assert(NNPAODAmbientTargetNits(2100) == 150);
+    assert(NNPAODAmbientTargetNits(3000) == 180);
+    assert(NNPAODAmbientTargetNits(200000) == 180);
+    assert(NNPAODClampAutomaticNits(180) == 180);
+    assert(NNPAODClampAutomaticNits(500) == 180);
+    assert(NNPAODClampAutomaticNits(1) == 6);
+    assert(NNPAODClampAutomaticNits(NAN) == 0);
+    assert(NNPAODAmbientTargetNits(200001) == 0);
     assert(NNPAODAmbientTargetNits(NAN) == 0);
     assert(NNPAODAmbientTargetNits(-1) == 0);
     for (int lux = 1; lux <= 300; lux++) {
         float delta = NNPAODAmbientTargetNits(lux) - NNPAODAmbientTargetNits(lux - 1);
         assert(fabsf(delta - 0.28f) < 0.00002f);
+    }
+    for (int lux = 301; lux <= 3000; lux++) {
+        float delta = NNPAODAmbientTargetNits(lux) - NNPAODAmbientTargetNits(lux - 1);
+        assert(fabsf(delta - 1.0f / 30.0f) < 0.00002f);
     }
     for (unsigned step = 0; step <= NNPAODBrightnessRampSteps; step++) {
         float up = NNPAODInterpolateNits(6, 90, step);
@@ -27,6 +39,7 @@ int main(void) {
     assert(NNPAODInterpolateNits(6, 90, NNPAODBrightnessRampSteps) == 90);
     assert(NNPAODInterpolateNits(90, 6, NNPAODBrightnessRampSteps) == 6);
     assert(NNPAODInterpolateNits(6, 90, NNPAODBrightnessRampSteps + 1) == 90);
+    assert(NNPAODInterpolateNits(90, 180, NNPAODBrightnessRampSteps) == 180);
     bool visited[13][13] = {{false}};
     for (size_t step = 0; step < 169; step++) {
         NNPAODPixelOffset p = NNPAODOffsetForStep(step);

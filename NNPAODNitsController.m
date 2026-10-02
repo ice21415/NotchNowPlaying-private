@@ -163,7 +163,7 @@ void NNPAODNitsBeginSession(NSString *sessionID, float multiplier) {
 }
 
 void NNPAODNitsSetTargetNits(NSString *sessionID, float nits) {
-    float safe = isfinite(nits) && nits > 0 ? fminf(90, fmaxf(6, nits)) : 0;
+    float safe = NNPAODClampAutomaticNits(nits);
     NNPAODApplyTargetNits(sessionID, safe, YES);
 }
 

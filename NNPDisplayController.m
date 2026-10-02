@@ -1,4 +1,5 @@
 #import "NNPDisplayController.h"
+#import "NNPAODPixelPolicy.h"
 #import "NNPDiagnostics.h"
 #import "NNPNotificationDiagnostics.h"
 #import <math.h>
@@ -116,7 +117,7 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
 }
 
 - (void)setAutomaticBrightnessNits:(float)nits {
-    float safe = isfinite(nits) && nits > 0 ? fminf(90, fmaxf(6, nits)) : 0;
+    float safe = NNPAODClampAutomaticNits(nits);
     if (fabsf(_automaticBrightnessNits - safe) < 0.5f) return;
     _automaticBrightnessNits = safe;
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE && NNP_PHASE7_DRY_RUN == 0
