@@ -118,6 +118,7 @@
 @interface NNPChargingController ()
 @property(nonatomic, strong) UIWindow *window;
 @property(nonatomic, strong) NNPChargingView *view;
+@property(nonatomic, weak) UIView *aodHost;
 @property(nonatomic) BOOL started;
 @property(nonatomic) int displayToken;
 @property(nonatomic) BOOL screenOn;
@@ -176,6 +177,10 @@
     }
     [self refresh];
 }
+- (void)setAODPresentationHost:(UIView *)host {
+    self.aodHost = host;
+    [self refresh];
+}
 - (void)refresh {
     if (!self.started) return;
     UIDevice *device = UIDevice.currentDevice;
@@ -198,6 +203,7 @@
     }
     if (!visible) {
         [self.view setRunning:NO reducedMotion:NO];
+        self.view.hidden = YES;
         self.window.hidden = YES;
         return;
     }
@@ -226,10 +232,29 @@
         self.window.userInteractionEnabled = NO;
         UIViewController *root = [UIViewController new];
         self.view = [[NNPChargingView alloc] initWithFrame:self.window.bounds];
-        root.view = self.view;
+        root.view = [[UIView alloc] initWithFrame:self.window.bounds];
+        root.view.backgroundColor = UIColor.clearColor;
+        root.view.opaque = NO;
+        [root.view addSubview:self.view];
         self.window.rootViewController = root;
     }
-    self.window.hidden = NO; // Never make this decorative window the key window.
+    // CoverSheet owns the visible AOD surface; a separate UIWindow is occluded
+    // by its opaque blackout. Attach above that blackout in the same hierarchy.
+    UIView *host = self.aodPresentationActive ? self.aodHost : nil;
+    UIView *container = host ?: self.window.rootViewController.view;
+    if (self.view.superview != container) {
+        [self.view setRunning:NO reducedMotion:NO];
+        [self.view removeFromSuperview];
+        [container addSubview:self.view];
+    }
+    self.view.frame = container.bounds;
+    self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.view.hidden = NO;
+    [container bringSubviewToFront:self.view];
+    self.window.hidden = host != nil; // Never make this decorative window key.
+    NNPDiagnosticSetBool(@"ChargingFlowHostedInCoverSheet", host != nil);
+    NNPDiagnosticSetString(@"ChargingFlowHostClass", NSStringFromClass(container.class));
+    NNPDiagnosticSetString(@"ChargingFlowFrame", NSStringFromCGRect(self.view.frame));
     [self.view setNeedsLayout];
     [self.view layoutIfNeeded];
     [self.view setRunning:YES reducedMotion:UIAccessibilityIsReduceMotionEnabled()];
@@ -240,6 +265,7 @@
     if (self.displayToken >= 0) notify_cancel(self.displayToken);
     self.displayToken = -1;
     [self.view setRunning:NO reducedMotion:NO];
+    [self.view removeFromSuperview];
     self.window.hidden = YES;
     self.window = nil;
     self.view = nil;

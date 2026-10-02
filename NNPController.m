@@ -732,12 +732,14 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     }
     if (target && target == self.coverSheetHostView && self.view.superview == target) {
         [self installCoverSheetBlackoutForHost:target];
+        [self.charging setAODPresentationHost:target];
         return;
     }
 
     // The AOD experiment is armed while the normal UI remains hidden. In that
     // state a window may not exist yet, so there is nothing to detach.
     if (!self.window || !self.view) {
+        [self.charging setAODPresentationHost:nil];
         [self removeCoverSheetBlackout];
         self.coverSheetHostView = nil;
         NNPDiagnosticSetBool(@"CoverSheetPresentationActive", NO);
@@ -768,6 +770,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         [target addSubview:self.view];
         self.coverSheetHostView = target;
         [self installCoverSheetBlackoutForHost:target];
+        [self.charging setAODPresentationHost:target];
         [self.view setNeedsLayout];
         [self.view layoutIfNeeded];
         NNPDiagnosticSetBool(@"CoverSheetPresentationActive", YES);
@@ -775,6 +778,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     } else if (previousHost || self.coverSheetBlackoutView || self.statusBarBlackoutView) {
         [self removeCoverSheetBlackout];
     }
+    if (!target) [self.charging setAODPresentationHost:nil];
 #endif
 }
 - (void)clearLockedPresentationBackgroundForUnlock {
