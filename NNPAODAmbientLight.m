@@ -1,5 +1,6 @@
 #import "NNPAODAmbientLight.h"
 #import "NNPDiagnostics.h"
+#import "NNPAODPowerPolicy.h"
 #import <CoreFoundation/CoreFoundation.h>
 #import <dlfcn.h>
 #import <mach/mach_time.h>
@@ -27,6 +28,8 @@ typedef uint64_t (*NNPHIDTimestamp)(CFTypeRef);
     NNPHIDFloat _floatValue;
     NNPHIDTimestamp _timestamp;
     BOOL _loaded;
+    NNPAODAmbientSamplingPolicy _samplingPolicy;
+    NSUInteger _sampleCount;
 }
 - (instancetype)init {
     if ((self = [super init])) _queue = dispatch_queue_create("com.user.notchnowplaying.ambient", DISPATCH_QUEUE_SERIAL);
@@ -88,22 +91,43 @@ typedef uint64_t (*NNPHIDTimestamp)(CFTypeRef);
         }
         dispatch_async(dispatch_get_main_queue(), ^{
             self->_pending = NO;
-            if (!self->_active || generation != self->_generation) return;
+            if (!self->_active) return;
+            if (generation != self->_generation) {
+                [self sample];
+                return;
+            }
             NNPDiagnosticSetBool(@"AODAmbientSampleValid", valid);
             NNPDiagnosticSetDouble(@"AODAmbientLux", lux);
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
+            NNPDiagnosticSetInteger(@"AODAmbientSampleCount", ++self->_sampleCount);
             NNPDiagnosticSetDouble(@"AODAmbientSampleAge", age);
+#endif
             if (self.sampleHandler) self.sampleHandler(lux, valid);
+            if (self->_active && generation == self->_generation) {
+                [self scheduleNextSampleAfter:NNPAODAmbientNextSampleInterval(&self->_samplingPolicy, lux, valid)];
+            }
         });
     });
+}
+- (void)scheduleNextSampleAfter:(NSTimeInterval)interval {
+    if (!_active) return;
+    [_timer invalidate];
+    __weak typeof(self) weakSelf = self;
+    _timer = [NSTimer timerWithTimeInterval:interval repeats:NO block:^(__unused NSTimer *timer) { [weakSelf sample]; }];
+    _timer.tolerance = MIN(3.0, interval * 0.2);
+    [[NSRunLoop mainRunLoop] addTimer:_timer forMode:NSRunLoopCommonModes];
+    NNPDiagnosticSetDouble(@"AODAmbientSampleInterval", interval);
 }
 - (void)setActive:(BOOL)active {
     if (_active == active) return;
     _active = active;
     _generation++;
+    _samplingPolicy = (NNPAODAmbientSamplingPolicy){0};
     [_timer invalidate];
     _timer = nil;
     NNPDiagnosticSetBool(@"AODAmbientSensorActive", active);
     if (!active) {
+        NNPDiagnosticSetDouble(@"AODAmbientSampleInterval", 0);
         dispatch_async(_queue, ^{
             if (self->_service) CFRelease(self->_service);
             if (self->_client) CFRelease(self->_client);
@@ -112,10 +136,7 @@ typedef uint64_t (*NNPHIDTimestamp)(CFTypeRef);
         });
         return;
     }
-    __weak typeof(self) weakSelf = self;
-    _timer = [NSTimer timerWithTimeInterval:5 repeats:YES block:^(__unused NSTimer *timer) { [weakSelf sample]; }];
-    _timer.tolerance = 1;
-    [[NSRunLoop mainRunLoop] addTimer:_timer forMode:NSRunLoopCommonModes];
+    [self scheduleNextSampleAfter:5];
     [self sample];
 }
 - (void)dealloc {

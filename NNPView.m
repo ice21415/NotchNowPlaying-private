@@ -2,6 +2,7 @@
 #import "NNPView.h"
 #import "NNPState.h"
 #import "NNPDiagnostics.h"
+#import "NNPAODPowerPolicy.h"
 #import <QuartzCore/QuartzCore.h>
 #import <math.h>
 
@@ -189,6 +190,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 @property(nonatomic) CGFloat marqueeFontSize;
 @property(nonatomic) BOOL marqueeReducedMotion;
 @property(nonatomic) BOOL marqueeAnimating;
+@property(nonatomic, strong) NSTimer *marqueeIdleTimer;
+@property(nonatomic) NSUInteger marqueeGeneration;
 @property(nonatomic, strong) UIImage *accentArtwork;
 @property(nonatomic, strong) UIColor *accentColor;
 @property(nonatomic, strong) CAShapeLayer *notificationSnakeLayer;
@@ -211,6 +214,10 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 #endif
 @property(nonatomic) NSUInteger notificationSnakeGeneration;
 - (void)updateTitleMarquee;
+- (void)stopTitleMarqueeCycle;
+- (void)scheduleTitleMarqueeCycleAfter:(NSTimeInterval)delay;
+- (void)startTitleMarqueeCycle;
+- (void)titleMarqueeAnimationStopped:(BOOL)finished generation:(NSUInteger)generation;
 - (CGRect)notchRectUsingPrivateAPI:(BOOL *)usedPrivateAPI;
 - (UIBezierPath *)notificationSnakePath;
 - (void)updateNotificationSnakeCounterTransform;
@@ -220,6 +227,17 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 - (void)batteryStatusDidChange:(NSNotification *)notification;
 - (void)updateBatteryStatus;
 - (void)updateClock;
+@end
+
+@interface NNPTitleMarqueeDelegate : NSObject <CAAnimationDelegate>
+@property(nonatomic, weak) NNPView *view;
+@property(nonatomic) NSUInteger generation;
+@end
+
+@implementation NNPTitleMarqueeDelegate
+- (void)animationDidStop:(__unused CAAnimation *)animation finished:(BOOL)finished {
+    [self.view titleMarqueeAnimationStopped:finished generation:self.generation];
+}
 @end
 
 @implementation NNPView
@@ -249,11 +267,15 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     if (_playbackVisible == playbackVisible) return;
     _playbackVisible = playbackVisible;
     if (!playbackVisible) {
-        [self.titleViewport.layer removeAnimationForKey:NNPTitleMarqueeAnimationKey];
-        self.titleViewport.layer.sublayerTransform = CATransform3DIdentity;
+        [self stopTitleMarqueeCycle];
         self.marqueeAnimating = NO;
     }
     [self setNeedsLayout];
+}
+
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    [self updateTitleMarquee];
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -1130,8 +1152,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     self.marqueeFontSize = self.textSize;
     self.marqueeReducedMotion = reducedMotion;
     self.marqueeAnimating = animate;
-    [self.titleViewport.layer removeAnimationForKey:NNPTitleMarqueeAnimationKey];
-    self.titleViewport.layer.sublayerTransform = CATransform3DIdentity;
+    [self stopTitleMarqueeCycle];
     self.titleViewport.accessibilityLabel = text;
 
     if (reducedMotion) {
@@ -1150,20 +1171,61 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     self.titleDuplicate.text = text;
     self.titleDuplicate.frame = CGRectMake(repeatDistance, 0.0, naturalWidth,
                                            CGRectGetHeight(self.titleViewport.bounds));
-    NSTimeInterval pause = 1.4;
-    NSTimeInterval travel = repeatDistance / 30.0;
-    NSTimeInterval duration = pause + travel;
-    CAKeyframeAnimation *animation = [CAKeyframeAnimation animationWithKeyPath:@"sublayerTransform"];
-    animation.values = @[
-        [NSValue valueWithCATransform3D:CATransform3DIdentity],
-        [NSValue valueWithCATransform3D:CATransform3DIdentity],
-        [NSValue valueWithCATransform3D:CATransform3DMakeTranslation(-repeatDistance, 0.0, 0.0)]
-    ];
-    animation.keyTimes = @[ @0.0, @(pause / duration), @1.0 ];
-    animation.calculationMode = kCAAnimationLinear;
-    animation.duration = duration;
-    animation.repeatCount = HUGE_VALF;
+    [self scheduleTitleMarqueeCycleAfter:NNPTitleMarqueeInitialPause];
+    NNPDiagnosticSetBool(@"TitleMarqueeSinglePass", YES);
+    NNPDiagnosticSetDouble(@"TitleMarqueeIdleSeconds", NNPTitleMarqueeIdleSeconds);
+}
+
+- (void)stopTitleMarqueeCycle {
+    self.marqueeGeneration++;
+    [self.marqueeIdleTimer invalidate];
+    self.marqueeIdleTimer = nil;
+    [self.titleViewport.layer removeAnimationForKey:NNPTitleMarqueeAnimationKey];
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    self.titleViewport.layer.sublayerTransform = CATransform3DIdentity;
+    [CATransaction commit];
+}
+
+- (void)scheduleTitleMarqueeCycleAfter:(NSTimeInterval)delay {
+    [self.marqueeIdleTimer invalidate];
+    NSUInteger generation = self.marqueeGeneration;
+    __weak typeof(self) weakSelf = self;
+    self.marqueeIdleTimer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(__unused NSTimer *timer) {
+        NNPView *view = weakSelf;
+        if (!view || generation != view.marqueeGeneration) return;
+        view.marqueeIdleTimer = nil;
+        [view startTitleMarqueeCycle];
+    }];
+    self.marqueeIdleTimer.tolerance = MIN(2.0, delay * 0.1);
+    [[NSRunLoop mainRunLoop] addTimer:self.marqueeIdleTimer forMode:NSRunLoopCommonModes];
+}
+
+- (void)startTitleMarqueeCycle {
+    if (!self.marqueeAnimating || !self.playbackVisible || !self.window || UIAccessibilityIsReduceMotionEnabled()) {
+        [self updateTitleMarquee];
+        return;
+    }
+    CGFloat repeatDistance = CGRectGetMinX(self.titleDuplicate.frame);
+    if (repeatDistance <= 0) return;
+    NNPTitleMarqueeDelegate *delegate = [NNPTitleMarqueeDelegate new];
+    delegate.view = self;
+    delegate.generation = self.marqueeGeneration;
+    CABasicAnimation *animation = [CABasicAnimation animationWithKeyPath:@"sublayerTransform"];
+    animation.fromValue = [NSValue valueWithCATransform3D:CATransform3DIdentity];
+    animation.toValue = [NSValue valueWithCATransform3D:CATransform3DMakeTranslation(-repeatDistance, 0, 0)];
+    animation.duration = repeatDistance / 30.0;
+    animation.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
+    animation.repeatCount = 0;
+    animation.removedOnCompletion = YES;
+    animation.delegate = delegate;
     [self.titleViewport.layer addAnimation:animation forKey:NNPTitleMarqueeAnimationKey];
+}
+
+- (void)titleMarqueeAnimationStopped:(BOOL)finished generation:(NSUInteger)generation {
+    if (!finished || generation != self.marqueeGeneration || !self.marqueeAnimating || !self.playbackVisible || !self.window) return;
+    // No render animation exists during this one-shot idle timer.
+    [self scheduleTitleMarqueeCycleAfter:NNPTitleMarqueeIdleSeconds];
 }
 
 - (void)updateState:(NNPState *)state {
@@ -1295,6 +1357,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 }
 
 - (void)dealloc {
+    [self.marqueeIdleTimer invalidate];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 

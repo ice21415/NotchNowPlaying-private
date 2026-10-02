@@ -1,4 +1,7 @@
 #import <Foundation/Foundation.h>
+#ifndef NNP_ENABLE_VERBOSE_DIAGNOSTICS
+#define NNP_ENABLE_VERBOSE_DIAGNOSTICS 0
+#endif
 
 FOUNDATION_EXPORT NSString *NNPDiagnosticDirectoryPath(void);
 FOUNDATION_EXPORT NSString *NNPDiagnosticLogPath(void);

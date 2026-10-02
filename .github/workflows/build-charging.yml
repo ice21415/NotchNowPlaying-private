@@ -2,6 +2,11 @@ name: Build charging flow with Apple Clang
 
 on:
   workflow_dispatch:
+    inputs:
+      verbose_diagnostics:
+        description: Enable detailed logs for troubleshooting
+        type: boolean
+        default: false
   push:
     branches: [codex/charging-flow-20261002]
     paths:
@@ -34,6 +39,7 @@ jobs:
     env:
       THEOS: ${{ github.workspace }}/.build-tools/theos
       BUILD_VARIANT: ${{ matrix.variant }}
+      VERBOSE_DIAGNOSTICS: ${{ inputs.verbose_diagnostics && '1' || '0' }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -64,6 +70,9 @@ jobs:
           xcrun clang -std=c11 -Wall -Wextra -Werror \
             research/tools/charging_policy_test.c -o charging-policy-test
           ./charging-policy-test
+          xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
+            research/tools/diagnostics_batch_test.m -o diagnostics-batch-test
+          ./diagnostics-batch-test
 
       - name: Build charging flow package
         run: |
@@ -76,6 +85,7 @@ jobs:
             TARGET_CXX="$(xcrun --find clang++)" \
             TARGET_LD="$(xcrun --find clang++)" \
             NNP_SAFE_BOOT_TEST=0 \
+            NNP_ENABLE_VERBOSE_DIAGNOSTICS="$VERBOSE_DIAGNOSTICS" \
             NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE="$aod" \
             NNP_ENABLE_COVERSHEET_PRESENTATION="$aod" \
             NNP_ENABLE_SSH_SCREENSHOT_PROBE=0 \

@@ -8,13 +8,22 @@ static NSString * const NNPDiagDirectory = @"/var/mobile/Library/NotchNowPlaying
 static NSString * const NNPDiagLog = @"/var/mobile/Library/NotchNowPlaying/load-path-diagnostic.log";
 static NSString * const NNPDiagFallbackLog = @"/var/mobile/Library/Logs/NotchNowPlaying-load-path-diagnostic.log";
 static NSString * const NNPDiagArm = @"/var/mobile/Library/NotchNowPlaying/display-assertion-arm";
-static CFStringRef const NNPDiagDomain = CFSTR("com.user.notchnowplaying.diagnostics");
+#ifndef NNP_DIAGNOSTICS_DOMAIN
+#define NNP_DIAGNOSTICS_DOMAIN "com.user.notchnowplaying.diagnostics"
+#endif
+static CFStringRef const NNPDiagDomain = CFSTR(NNP_DIAGNOSTICS_DOMAIN);
 static NSUInteger NNPDiagnosticTransitionSequence = 0;
 static NSString *NNPDiagnosticCurrentTransition;
 static dispatch_queue_t NNPDiagnosticWriteQueue;
 static NSObject *NNPDiagnosticWriteLock;
 static NSMutableArray *NNPDiagnosticPendingLogEntries;
 static BOOL NNPDiagnosticFlushScheduled;
+static NSMutableDictionary *NNPDiagnosticPendingValues;
+static NSMutableDictionary *NNPDiagnosticLastValues;
+static BOOL NNPDiagnosticValueFlushScheduled;
+static NSUInteger NNPDiagnosticValueFlushCount;
+static NSUInteger NNPDiagnosticChangedValueCount;
+static NSUInteger NNPDiagnosticSkippedValueCount;
 
 static void NNPDiagnosticEnsureWriteQueue(void) {
     static dispatch_once_t once;
@@ -22,7 +31,26 @@ static void NNPDiagnosticEnsureWriteQueue(void) {
         NNPDiagnosticWriteQueue = dispatch_queue_create("com.user.notchnowplaying.diagnostics.write", DISPATCH_QUEUE_SERIAL);
         NNPDiagnosticWriteLock = [NSObject new];
         NNPDiagnosticPendingLogEntries = [NSMutableArray array];
+        NNPDiagnosticPendingValues = [NSMutableDictionary dictionary];
+        NNPDiagnosticLastValues = [NSMutableDictionary dictionary];
     });
+}
+
+// Queue-owned latest values; one preferences sync for the whole burst.
+static void NNPDiagnosticFlushValues(void) {
+    NNPDiagnosticValueFlushScheduled = NO;
+    if (!NNPDiagnosticPendingValues.count) return;
+    for (NSString *key in NNPDiagnosticPendingValues) {
+        CFPreferencesSetAppValue((__bridge CFStringRef)key, (__bridge CFPropertyListRef)NNPDiagnosticPendingValues[key], NNPDiagDomain);
+    }
+    NNPDiagnosticChangedValueCount += NNPDiagnosticPendingValues.count;
+    [NNPDiagnosticPendingValues removeAllObjects];
+    NNPDiagnosticValueFlushCount++;
+    CFPreferencesSetAppValue(CFSTR("DiagnosticFlushPID"), (__bridge CFNumberRef)@(getpid()), NNPDiagDomain);
+    CFPreferencesSetAppValue(CFSTR("DiagnosticFlushBatchCount"), (__bridge CFNumberRef)@(NNPDiagnosticValueFlushCount), NNPDiagDomain);
+    CFPreferencesSetAppValue(CFSTR("DiagnosticChangedValueCount"), (__bridge CFNumberRef)@(NNPDiagnosticChangedValueCount), NNPDiagDomain);
+    CFPreferencesSetAppValue(CFSTR("DiagnosticSkippedDuplicateCount"), (__bridge CFNumberRef)@(NNPDiagnosticSkippedValueCount), NNPDiagDomain);
+    CFPreferencesAppSynchronize(NNPDiagDomain);
 }
 
 static void NNPDiagnosticSetValueSynchronously(NSString *key, id value) {
@@ -98,6 +126,9 @@ NSString *NNPDiagnosticLogPath(void) { return NNPDiagLog; }
 NSString *NNPDiagnosticArmPath(void) { return NNPDiagArm; }
 
 void NNPDiagnosticLog(NSString *event) {
+#if !NNP_ENABLE_VERBOSE_DIAGNOSTICS
+    return;
+#endif
     if (!event.length) return;
     NNPDiagnosticEnsureWriteQueue();
     NSDictionary *entry = @{
@@ -133,12 +164,18 @@ NSString *NNPDiagnosticBeginTransition(NSString *reason) {
 }
 
 void NNPDiagnosticLogTransition(NSString *event) {
+#if !NNP_ENABLE_VERBOSE_DIAGNOSTICS
+    return;
+#endif
     @synchronized ([NSProcessInfo processInfo]) {
         NNPDiagnosticLog([NSString stringWithFormat:@"transition=%@ %@", NNPDiagnosticCurrentTransition ?: @"none", event ?: @"event"]);
     }
 }
 
 void NNPDiagnosticLogCallStack(NSString *event, NSUInteger maximumFrames) {
+#if !NNP_ENABLE_VERBOSE_DIAGNOSTICS
+    return;
+#endif
     NSArray<NSString *> *frames = NSThread.callStackSymbols;
     NSUInteger frameCount = MIN(MAX((NSUInteger)1, maximumFrames), frames.count);
     if (frameCount < frames.count) frames = [frames subarrayWithRange:NSMakeRange(0, frameCount)];
@@ -151,6 +188,7 @@ void NNPDiagnosticRecordStartup(NSString *detail) {
     NNPDiagnosticSetInteger(@"SpringBoardPID", getpid());
     NNPDiagnosticSetString(@"StartupTimestamp", [[NSDate date] description]);
     NNPDiagnosticSetString(@"TWEAK_LOADED", detail);
+    NNPDiagnosticSetBool(@"VerboseDiagnosticsEnabled", NNP_ENABLE_VERBOSE_DIAGNOSTICS);
 }
 
 void NNPDiagnosticSetValue(NSString *key, id value) {
@@ -159,7 +197,16 @@ void NNPDiagnosticSetValue(NSString *key, id value) {
     NSString *copiedKey = [key copy];
     id copiedValue = [value copy];
     dispatch_async(NNPDiagnosticWriteQueue, ^{
-        NNPDiagnosticSetValueSynchronously(copiedKey, copiedValue);
+        if ([NNPDiagnosticLastValues[copiedKey] isEqual:copiedValue]) {
+            NNPDiagnosticSkippedValueCount++;
+            return;
+        }
+        NNPDiagnosticLastValues[copiedKey] = copiedValue;
+        NNPDiagnosticPendingValues[copiedKey] = copiedValue;
+        if (!NNPDiagnosticValueFlushScheduled) {
+            NNPDiagnosticValueFlushScheduled = YES;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), NNPDiagnosticWriteQueue, ^{ NNPDiagnosticFlushValues(); });
+        }
     });
 }
 
@@ -184,6 +231,9 @@ void NNPDiagnosticSetString(NSString *key, NSString *value) {
 }
 
 void NNPDiagnosticAppendEvent(NSDictionary *event) {
+#if !NNP_ENABLE_VERBOSE_DIAGNOSTICS
+    return;
+#endif
     if (![event isKindOfClass:NSDictionary.class]) return;
     NNPDiagnosticEnsureWriteQueue();
     NSDictionary *copiedEvent = [event copy];

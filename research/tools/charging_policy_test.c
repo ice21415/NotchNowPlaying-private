@@ -1,9 +1,28 @@
 #include "../../NNPChargingPolicy.h"
 #include "../../NNPAODPixelPolicy.h"
+#include "../../NNPAODPowerPolicy.h"
 #include <assert.h>
 #include <stdio.h>
 
 int main(void) {
+    NNPAODAmbientSamplingPolicy sampling = {0};
+    assert(NNPAODAmbientNextSampleInterval(&sampling, 600, true) == 5);
+    assert(NNPAODAmbientNextSampleInterval(&sampling, 600, true) == 5);
+    assert(NNPAODAmbientNextSampleInterval(&sampling, 599, true) == 5);
+    assert(NNPAODAmbientNextSampleInterval(&sampling, 601, true) == 15);
+    assert(NNPAODAmbientNextSampleInterval(&sampling, 600, true) == 15);
+    assert(NNPAODAmbientNextSampleInterval(&sampling, 600, true) == 30);
+    assert(NNPAODAmbientNextSampleInterval(&sampling, 625, true) == 30);
+    // Cumulative drift relative to the anchor must exit slow sampling.
+    assert(NNPAODAmbientNextSampleInterval(&sampling, 650, true) == 5);
+    assert(sampling.stableSamples == 0);
+    assert(NNPAODAmbientNextSampleInterval(&sampling, 0, false) == 5);
+    assert(!sampling.hasAnchor);
+    assert(NNPAODAmbientNextSampleInterval(&sampling, NAN, true) == 5);
+    assert(NNPAODAmbientNextSampleInterval(&sampling, 0, true) == 5);
+    for (unsigned i = 0; i < 10; i++) NNPAODAmbientNextSampleInterval(&sampling, 0, true);
+    assert(NNPAODAmbientNextSampleInterval(&sampling, 0, true) == 30);
+    assert(NNPAODAmbientNextSampleInterval(&sampling, 3, true) == 5);
     assert(NNPAODAmbientTargetNits(0) == 6);
     assert(NNPAODAmbientTargetNits(150) == 48);
     assert(NNPAODAmbientTargetNits(300) == 90);
