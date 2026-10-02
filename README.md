@@ -4,7 +4,7 @@ NotchNowPlaying is a standalone SpringBoard tweak for iPhone 12 mini / iOS
 17.1.2. It reads system Now Playing state through MediaRemote and displays a
 compact artwork, title, artist, and progress bar around the notch.
 
-## Charging flow (0.1.104)
+## Charging flow (0.1.105)
 
 While active locked AOD is displayed and charging below 100%, two synchronized teal streams run from the bottom
 center along the rounded screen edges, repeating every 3.2 seconds. Battery
@@ -15,6 +15,14 @@ releases its shape layers and animations. It stops
 when charging stops or the battery is full, pauses while the panel is off,
 and respects Reduce Motion with a static edge indicator. Enable or disable
 it with the "啟用充電流光" setting.
+
+The current battery percentage appears near the bottom for eight seconds on
+charge presentation or battery-level changes, then its label is released.
+All plugin AOD surfaces move every 30 seconds across a 169-position grid using
+native panel pixel coordinates, including notifications and charging streams.
+A brief black interval also rests overlapping pixels inside solid artwork.
+The protection stops outside AOD and cannot guarantee prevention of OLED burn-in.
+See [the pixel coverage audit](research/aod-pixel-audit.md) for checks and limits.
 
 While locked AOD is actively displayed, charging keeps the custom overlay
 visible even when iOS reports the display as off. Phone AC-power wake requests
