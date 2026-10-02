@@ -11,6 +11,7 @@
 @property(nonatomic, strong) NSArray<CAShapeLayer *> *streams;
 @property(nonatomic) BOOL running;
 @property(nonatomic) BOOL reducedMotion;
+@property(nonatomic) CGFloat batteryProgress;
 - (void)setRunning:(BOOL)running reducedMotion:(BOOL)reducedMotion;
 @end
 
@@ -84,17 +85,17 @@
         CAShapeLayer *stroke = self.streams[index];
         [stroke removeAllAnimations];
         stroke.strokeStart = 0;
-        stroke.strokeEnd = running && reducedMotion ? 1.0 : 0;
+        stroke.strokeEnd = running && reducedMotion ? self.batteryProgress : 0;
         stroke.opacity = reducedMotion ? 0.45 : 1.0;
         if (!running || reducedMotion) continue;
         NSUInteger band = index % 4;
-        CGFloat tailLength = 0.16 - band * 0.045;
+        CGFloat tailLength = MIN(0.16, self.batteryProgress * 0.4) * (1.0 - band * 0.28125);
         NSMutableArray *starts = [NSMutableArray array], *ends = [NSMutableArray array];
         // The head travels beyond the endpoint so the tail drains naturally.
         for (NSUInteger sample = 0; sample <= 60; sample++) {
-            CGFloat head = (CGFloat)sample / 60.0 * 1.20;
-            [starts addObject:@(MAX(0.0, MIN(1.0, head - tailLength)))];
-            [ends addObject:@(MIN(1.0, head))];
+            CGFloat head = (CGFloat)sample / 60.0 * (self.batteryProgress + MIN(0.16, self.batteryProgress * 0.4));
+            [starts addObject:@(MAX(0.0, MIN(self.batteryProgress, head - tailLength)))];
+            [ends addObject:@(MIN(self.batteryProgress, head))];
         }
         CAKeyframeAnimation *start = [CAKeyframeAnimation animationWithKeyPath:@"strokeStart"];
         start.values = starts;
@@ -255,6 +256,12 @@
     NNPDiagnosticSetBool(@"ChargingFlowHostedInCoverSheet", host != nil);
     NNPDiagnosticSetString(@"ChargingFlowHostClass", NSStringFromClass(container.class));
     NNPDiagnosticSetString(@"ChargingFlowFrame", NSStringFromCGRect(self.view.frame));
+    CGFloat progress = MAX(0.0, MIN(1.0, level));
+    if (fabs(self.view.batteryProgress - progress) > 0.0001) {
+        [self.view setRunning:NO reducedMotion:NO];
+        self.view.batteryProgress = progress;
+    }
+    NNPDiagnosticSetValue(@"ChargingFlowBatteryProgress", @(progress));
     [self.view setNeedsLayout];
     [self.view layoutIfNeeded];
     [self.view setRunning:YES reducedMotion:UIAccessibilityIsReduceMotionEnabled()];
