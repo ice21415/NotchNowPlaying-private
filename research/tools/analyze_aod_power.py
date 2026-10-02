@@ -23,11 +23,12 @@ for line in args.metadata.read_text(encoding="utf-8").splitlines():
 
 summary = {"raw_sample_count": len(records), "warmup_seconds": args.warmup, "phases": {}, "comparison": {}}
 grouped = {"automatic": [], "manual": []}
+distinct_counts = {"automatic": 0, "manual": 0}
 for phase in ("A1", "B1", "B2", "A2"):
     if phase not in phases or phase + "_END" not in phases:
         continue
     begin, end = phases[phase], phases[phase + "_END"]
-    usable, rejected, seen = [], 0, set()
+    usable, valid_samples, rejected, seen = [], [], 0, set()
     for record in records:
         if not begin["time"] + args.warmup <= record["unix_time"] < end["time"]:
             continue
@@ -35,24 +36,29 @@ for phase in ("A1", "B1", "B2", "A2"):
         if record.get("IsCharging") or record.get("ExternalConnected") or current_ma is None or voltage_mv is None or current_ma >= 0 or voltage_mv <= 0:
             rejected += 1
             continue
+        valid_samples.append(record)
         signature = (record.get("UpdateTime"), current_ma, voltage_mv)
         if signature in seen:
             continue
         seen.add(signature)
         usable.append(record)
-    power = [-r["InstantAmperage"] * r["Voltage"] / 1e6 for r in usable]
+    # Regular polling preserves the duration represented by held gauge readings.
+    # Repeated values contribute to the mean, but not the distinct update count.
+    power = [-r["InstantAmperage"] * r["Voltage"] / 1e6 for r in valid_samples]
+    distinct_power = [-r["InstantAmperage"] * r["Voltage"] / 1e6 for r in usable]
     mode = "automatic" if phase.startswith("A") else "manual"
     expected = "1" if mode == "automatic" else "0"
     verified = end.get("AODAmbientSensorActive") == expected and end.get("AODAutomaticBrightnessEnabled") == expected and end.get("AODPixelShiftTimerActive") == "1" and end.get("LogicalLockState") == "1"
-    info = {"start": begin, "end": end, "end_state_verified": verified, "distinct_gauge_records": len(usable), "invalid_samples": rejected}
+    info = {"start": begin, "end": end, "end_state_verified": verified, "distinct_gauge_records": len(usable), "valid_poll_count": len(valid_samples), "invalid_samples": rejected}
     if power:
-        info.update(mean_w=statistics.mean(power), median_w=statistics.median(power), stdev_w=statistics.stdev(power) if len(power) > 1 else None, min_w=min(power), max_w=max(power), mean_discharge_ma=statistics.mean(-r["InstantAmperage"] for r in usable), temperature_raw_range=[min(r["Temperature"] for r in usable), max(r["Temperature"] for r in usable)])
+        info.update(mean_w=statistics.mean(power), median_w=statistics.median(power), distinct_update_stdev_w=statistics.stdev(distinct_power) if len(distinct_power) > 1 else None, min_w=min(power), max_w=max(power), mean_discharge_ma=statistics.mean(-r["InstantAmperage"] for r in valid_samples), temperature_raw_range=[min(r["Temperature"] for r in valid_samples), max(r["Temperature"] for r in valid_samples)])
         if verified and not rejected:
             grouped[mode].extend(power)
+            distinct_counts[mode] += len(usable)
     summary["phases"][phase] = info
 for mode, power in grouped.items():
     if power:
-        summary["comparison"][mode] = {"mean_w": statistics.mean(power), "median_w": statistics.median(power), "distinct_records": len(power), "stdev_w": statistics.stdev(power) if len(power) > 1 else None}
+        summary["comparison"][mode] = {"mean_w": statistics.mean(power), "median_w": statistics.median(power), "distinct_records": distinct_counts[mode], "valid_poll_count": len(power), "poll_dispersion_w": statistics.stdev(power) if len(power) > 1 else None}
 if all(grouped.values()):
     auto_mean, manual_mean = (statistics.mean(grouped[k]) for k in ("automatic", "manual"))
     summary["comparison"]["observed_automatic_minus_manual_w"] = auto_mean - manual_mean
