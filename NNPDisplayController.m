@@ -108,6 +108,10 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
     if (fabsf(_aodBrightnessMultiplier - clamped) < 0.001f) return;
     _aodBrightnessMultiplier = clamped;
     NNPDiagnosticSetDouble(@"Phase7AODBrightnessMultiplier", clamped);
+#if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE && NNP_PHASE7_DRY_RUN == 0
+    // The native atomic affects future callbacks; update the active panel too.
+    if (self.aodPresentationActive) NNPAODNitsBeginSession(self.sessionIdentifier, clamped);
+#endif
 }
 
 - (BOOL)isLockedVisibleSupported {

@@ -1,3 +1,4 @@
+#import "NNPAODAmbientLight.h"
 #import "NNPAODPixelPolicy.h"
 #import "NNPAODPresentation.h"
 #import "NNPController.h"
@@ -192,6 +193,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic, strong) NSTimer *progressTimer;
 @property(nonatomic, strong) NSTimer *pixelShiftTimer;
 @property(nonatomic) NSUInteger pixelShiftStep;
+@property(nonatomic, strong) NNPAODAmbientLight *ambientLight;
+@property(nonatomic) float ambientBrightnessMultiplier;
 @property(nonatomic) NSTimeInterval progressTimerInterval;
 @property(nonatomic) BOOL reconcilePending;
 @property(nonatomic) BOOL didRecordSpotifyLyricsTrackMatch;
@@ -233,6 +236,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)startAODPixelShiftTimer;
 - (void)stopAODPixelShiftTimer;
 - (void)applyRandomAODPixelShift;
+- (float)effectiveAODBrightnessMultiplier;
 - (void)updateUnlimitedMediaPauseWithEligibleMedia:(BOOL)mediaEligible activeSession:(BOOL)activeSession;
 - (void)updateNotchGestureWindow;
 - (void)removeNotchGestureWindow;
@@ -327,6 +331,20 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(preferencesChanged:) name:NNPPreferencesDidChangeNotification object:self.preferences];
     self.display = [NNPDisplayController new]; self.lockState = [NNPLockStateController new];
     __weak typeof(self) weakSelf = self;
+    self.ambientBrightnessMultiplier = 1;
+    self.ambientLight = [NNPAODAmbientLight new];
+    self.ambientLight.sampleHandler = ^(double lux, BOOL valid) {
+        NNPController *controller = weakSelf;
+        if (!controller || !controller.preferences.aodAutomaticBrightnessEnabled ||
+            ![controller shouldPresentInsideCoverSheet]) return;
+        float multiplier = valid ? NNPAODAmbientBrightnessMultiplier(lux, controller.ambientBrightnessMultiplier) : 1;
+        if (fabsf(controller.ambientBrightnessMultiplier - multiplier) >= 0.001f) {
+            NNPDiagnosticLogTransition([NSString stringWithFormat:@"AOD_AMBIENT lux=%.1f valid=%@ multiplier=%.2f", lux, valid ? @"YES" : @"NO", multiplier]);
+        }
+        controller.ambientBrightnessMultiplier = multiplier;
+        controller.display.aodBrightnessMultiplier = multiplier;
+        NNPDiagnosticSetDouble(@"AODAutomaticBrightnessEffectiveMultiplier", multiplier);
+    };
     self.display.stateChangedHandler = ^{
         NNPController *controller = weakSelf;
         if (!controller) return;
@@ -936,7 +954,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
             NNPDiagnosticSetBool(@"MediaSwitchAODSessionRetained", mediaSwitchAODState);
         }
         if (experimentEligible) {
-            float brightnessMultiplier = self.preferences.aodBrightnessMultiplier;
+            float brightnessMultiplier = [self effectiveAODBrightnessMultiplier];
             self.display.aodBrightnessMultiplier = brightnessMultiplier;
             // Preferences reloads on its Darwin notification; this setter republishes
             // the cached value to the native hook without synchronizing preferences.
@@ -951,6 +969,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
             [self.display stopLockedVisibleMode];
         }
 #endif
+        BOOL ambientActive = self.preferences.aodAutomaticBrightnessEnabled && [self shouldPresentInsideCoverSheet];
+        [self.ambientLight setActive:ambientActive];
+        if (!ambientActive) self.ambientBrightnessMultiplier = 1;
         BOOL show = [self shouldShow];
         self.charging.aodPresentationActive = self.locked && self.display.aodPresentationActive &&
             self.display.lifecycleState == NNPDisplayLifecycleStateActive;
@@ -1018,7 +1039,15 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     if (!self.window.hidden) { self.window.hidden = YES; NSLog(@"%@ overlay hidden", NNPLog); NNPDiagnosticLogTransition(@"CONTROLLER window visible=NO cleanup"); }
     [self.progressTimer invalidate]; self.progressTimer = nil;
 }
+- (float)effectiveAODBrightnessMultiplier {
+    BOOL automatic = self.preferences.aodAutomaticBrightnessEnabled;
+    float multiplier = automatic ? self.ambientBrightnessMultiplier : self.preferences.aodBrightnessMultiplier;
+    NNPDiagnosticSetBool(@"AODAutomaticBrightnessEnabled", automatic);
+    NNPDiagnosticSetDouble(@"AODAutomaticBrightnessEffectiveMultiplier", multiplier);
+    return multiplier;
+}
 - (void)applyRandomAODPixelShift {
+    self.display.aodBrightnessMultiplier = [self effectiveAODBrightnessMultiplier];
     NNPAODPixelOffset offset = NNPAODOffsetForStep(self.pixelShiftStep++);
     CGPoint pixels = CGPointMake(offset.x, offset.y);
     NNPAODRestPixels(self.view.layer);
@@ -1102,6 +1131,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 }
 - (void)dealloc {
     [_charging stop];
+    [_ambientLight setActive:NO];
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
     [_display stopLockedVisibleMode];
 #endif

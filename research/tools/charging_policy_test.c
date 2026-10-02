@@ -4,6 +4,17 @@
 #include <stdio.h>
 
 int main(void) {
+    assert(NNPAODAmbientBrightnessMultiplier(0, 1) == 1);
+    assert(NNPAODAmbientBrightnessMultiplier(14.99, 1) == 1);
+    assert(NNPAODAmbientBrightnessMultiplier(15, 1) == 1.5f);
+    assert(NNPAODAmbientBrightnessMultiplier(10, 1.5f) == 1.5f);
+    assert(NNPAODAmbientBrightnessMultiplier(8, 1.5f) == 1);
+    assert(NNPAODAmbientBrightnessMultiplier(150, 1.5f) == 2);
+    assert(NNPAODAmbientBrightnessMultiplier(100, 2) == 2);
+    assert(NNPAODAmbientBrightnessMultiplier(79.99, 2) == 1.5f);
+    assert(NNPAODAmbientBrightnessMultiplier(200000, 2) == 2);
+    assert(NNPAODAmbientBrightnessMultiplier(NAN, 2) == 1);
+    assert(NNPAODAmbientBrightnessMultiplier(-1, 2) == 1);
     bool visited[13][13] = {{false}};
     for (size_t step = 0; step < 169; step++) {
         NNPAODPixelOffset p = NNPAODOffsetForStep(step);

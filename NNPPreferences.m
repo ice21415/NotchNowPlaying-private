@@ -62,6 +62,7 @@ static CGFloat NNPFloat(NSString *key, CGFloat fallback) {
 @property(nonatomic) BOOL hideWhenPaused;
 @property(nonatomic) BOOL aodPixelShiftEnabled;
 @property(nonatomic) float aodBrightnessMultiplier;
+@property(nonatomic) BOOL aodAutomaticBrightnessEnabled;
 @property(nonatomic) BOOL experimentalLockedVisible;
 @property(nonatomic) BOOL experimentalUnlimitedDuration;
 @property(nonatomic) NSTimeInterval experimentalMaxDuration;
@@ -95,6 +96,7 @@ static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observe
     [self reloadSpotifyLyricsSnapshot];
     self.hideWhenPaused = NNPBool(@"HideWhenPaused", YES);
     self.aodPixelShiftEnabled = NNPBool(@"AODPixelShiftEnabled", YES);
+    self.aodAutomaticBrightnessEnabled = NNPBool(@"AODAutomaticBrightnessEnabled", YES);
     self.aodBrightnessMultiplier = (float)MAX(1.0, MIN(4.0, NNPFloat(@"AODBrightnessMultiplier", 100.0) / 100.0));
     self.experimentalLockedVisible = NNPBool(@"ExperimentalLockedVisible", NO);
     self.experimentalUnlimitedDuration = NNPBool(@"ExperimentalUnlimitedDuration", NO);
