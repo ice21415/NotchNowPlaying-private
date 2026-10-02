@@ -27,6 +27,7 @@ static NNPBacklightFactorFunction gNNPOriginalBacklightFactorFunction;
 static _Atomic(bool) gNNPPhase7Armed = false;
 static _Atomic(int) gNNPPhase7Lifecycle = NNPDisplayLifecycleStateDisabled;
 static _Atomic(bool) gNNPPhase7DeviceLocked = false;
+static _Atomic(bool) gNNPPhase7AODPresentationActive = false;
 static _Atomic(bool) gNNPPhase7ModeSubstitutionObserved = false;
 static _Atomic(bool) gNNPPhase7TimerActive = false;
 static _Atomic(float) gNNPPhase7AODBrightnessMultiplier = 1.0f;
@@ -79,7 +80,8 @@ static void NNPPhase7ChargingPresentationReplacement(id self, SEL _cmd, BOOL ani
 static BOOL NNPPhase7ChargingReplacementEligible(NSInteger unlockSource) {
     if (![NSThread isMainThread]) return NO;
     NNPPreferences *preferences = NNPPreferences.sharedPreferences;
-    BOOL activeAOD = atomic_load_explicit(&gNNPPhase7Lifecycle, memory_order_acquire) == NNPDisplayLifecycleStateActive &&
+    BOOL activeAOD = atomic_load_explicit(&gNNPPhase7AODPresentationActive, memory_order_acquire) &&
+        atomic_load_explicit(&gNNPPhase7Lifecycle, memory_order_acquire) == NNPDisplayLifecycleStateActive &&
         atomic_load_explicit(&gNNPPhase7ModeSubstitutionObserved, memory_order_acquire);
     return NNPChargingSuppressesPowerWake(unlockSource,
         atomic_load_explicit(&gNNPPhase7Armed, memory_order_acquire),
@@ -264,6 +266,10 @@ void NNPPhase7UpdateForensicsState(NSInteger lifecycleState, BOOL deviceLocked, 
         atomic_store_explicit(&gNNPPhase7NotificationWakeSuppressionDeadlineTicks, 0, memory_order_release);
         atomic_store_explicit(&gNNPPhase7NotificationUnblankSuppressionDeadlineTicks, 0, memory_order_release);
     }
+}
+
+void NNPPhase7SetAODPresentationActive(BOOL active) {
+    atomic_store_explicit(&gNNPPhase7AODPresentationActive, active, memory_order_release);
 }
 
 void NNPPhase7StartIncidentDiagnostics(void) {

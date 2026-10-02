@@ -19,6 +19,7 @@
 
 #if !NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE || NNP_PHASE7_DRY_RUN == 1
 void NNPPhase7SetExperimentArmed(__unused BOOL armed) {}
+void NNPPhase7SetAODPresentationActive(__unused BOOL active) {}
 void NNPPhase7SetSessionID(__unused NSString *sessionID) {}
 void NNPPhase7SetAODBrightnessMultiplier(__unused float multiplier) {}
 void NNPPhase7NotifyBacklightFactorSubstitution(__unused float originalFactor, __unused float dimmedFactor) {}
@@ -92,6 +93,7 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
     NNPPhase7SetAODBrightnessMultiplier(_aodBrightnessMultiplier);
     NNPDiagnosticSetInteger(@"LockedVisibleLifecycle", _lifecycleState);
     NNPDiagnosticSetBool(@"Phase7AODPresentationActive", NO);
+    NNPPhase7SetAODPresentationActive(NO);
     NNPDiagnosticSetBool(@"Phase7BacklightFactorSubstitution", NO);
     NNPPhase7UpdateForensicsState(_lifecycleState, self.deviceLocked, self.modeSubstitutionObserved, NO);
     return self;
@@ -129,6 +131,7 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
 - (void)setAODPresentationActive:(BOOL)active {
     if (_aodPresentationActive == active) return;
     _aodPresentationActive = active;
+    NNPPhase7SetAODPresentationActive(active);
     NNPNotificationDiagnosticsSetDisplayState(self.deviceLocked, _aodPresentationActive);
     NNPDiagnosticSetBool(@"Phase7AODPresentationActive", active);
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY AOD presentation active=%@", active ? @"YES" : @"NO"]);

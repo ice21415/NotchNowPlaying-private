@@ -26,6 +26,7 @@ typedef NS_ENUM(NSInteger, NNPDisplayLifecycleState) {
 // Implemented only by the Phase 7 experimental build. They are no-ops in
 // the production implementation.
 FOUNDATION_EXPORT void NNPPhase7SetExperimentArmed(BOOL armed);
+FOUNDATION_EXPORT void NNPPhase7SetAODPresentationActive(BOOL active);
 FOUNDATION_EXPORT void NNPPhase7SetSessionID(NSString *sessionID);
 FOUNDATION_EXPORT void NNPPhase7SetAODBrightnessMultiplier(float multiplier);
 FOUNDATION_EXPORT void NNPPhase7NotifyBacklightFactorSubstitution(float originalFactor, float dimmedFactor);
