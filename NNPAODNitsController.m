@@ -1,3 +1,4 @@
+#import "NNPAODPixelPolicy.h"
 #import "NNPAODNitsController.h"
 #import "NNPDiagnostics.h"
 #import <dlfcn.h>
@@ -24,6 +25,7 @@ static NNPAODSetBacklightFeaturesFunction gNNPAODSetBacklightFeatures;
 static Class gNNPAODBacklightFeaturesClass;
 static id<NNPAODBrightnessClient> gNNPAODBrightnessClient;
 static BOOL gNNPAODFeatureActive;
+static float gNNPAODCurrentNits;
 
 static dispatch_queue_t NNPAODNitsQueue(void) {
     dispatch_once(&gNNPAODNitsQueueOnce, ^{
@@ -73,9 +75,19 @@ static void NNPAODRecordReadback(NSString *session, NSString *stage, NSString *d
         NNPDiagnosticLog([NSString stringWithFormat:@"AOD_FIXED_NITS session=%@ %@ readback exception=%@",
                           session, stage, exception.name]);
     }
-    NSNumber *nits = [brightness isKindOfClass:NSDictionary.class]
+    id nits = [brightness isKindOfClass:NSDictionary.class]
         ? ((NSDictionary *)brightness)[@"Nits"] : nil;
     if ([nits isKindOfClass:NSNumber.class]) NNPDiagnosticSetDouble(diagnosticKey, nits.doubleValue);
+    else if ([nits isKindOfClass:NSString.class]) {
+        double value = 0;
+        NSScanner *scanner = [NSScanner scannerWithString:nits];
+        if ([scanner scanDouble:&value] && scanner.isAtEnd && isfinite(value) && value >= 0)
+            NNPDiagnosticSetDouble(diagnosticKey, value);
+    }
+    id override = [features isKindOfClass:NSDictionary.class]
+        ? ((NSDictionary *)features)[@"OverrideBrightnessWithFixedNits"] : nil;
+    if ([override respondsToSelector:@selector(doubleValue)])
+        NNPDiagnosticSetDouble(@"Phase7FixedBrightnessAppliedNits", [override doubleValue]);
     NNPDiagnosticLog([NSString stringWithFormat:@"AOD_FIXED_NITS session=%@ %@ DisplayBrightness=%@ features=%@",
                       session, stage, brightness ?: @"nil", features ?: @"nil"]);
 }
@@ -90,61 +102,69 @@ static void NNPAODClearBacklightFeatures(void) {
     id<NNPAODBacklightFeatures> defaults = [[gNNPAODBacklightFeaturesClass alloc] init];
     gNNPAODSetBacklightFeatures(defaults);
     gNNPAODFeatureActive = NO;
+    gNNPAODCurrentNits = 0;
     NNPDiagnosticSetBool(@"Phase7FixedBrightnessActive", NO);
     NNPDiagnosticLog(@"AOD_FIXED_NITS cleared per-PID backlight features");
 }
 
-void NNPAODNitsBeginSession(NSString *sessionID, float multiplier) {
+static void NNPAODApplyTargetNits(NSString *sessionID, float targetNits, BOOL smooth) {
     uint64_t generation = atomic_fetch_add_explicit(&gNNPAODNitsGeneration, 1, memory_order_acq_rel) + 1;
     NSString *session = [sessionID copy] ?: @"none";
-    float safeMultiplier = isfinite(multiplier) ? fminf(4.0f, fmaxf(1.0f, multiplier)) : 1.0f;
-    NNPDiagnosticSetDouble(@"Phase7FixedBrightnessMultiplier", safeMultiplier);
     NNPDiagnosticSetInteger(@"Phase7FixedBrightnessPID", getpid());
     NNPDiagnosticSetDouble(@"Phase7FixedBrightnessImmediateNits", -1);
     NNPDiagnosticSetDouble(@"Phase7FixedBrightnessDelayedNits", -1);
+    NNPDiagnosticSetDouble(@"Phase7FixedBrightnessTargetNits", targetNits);
     dispatch_async(NNPAODNitsQueue(), ^{
         if (generation != atomic_load_explicit(&gNNPAODNitsGeneration, memory_order_acquire)) return;
-        NNPAODClearBacklightFeatures();
-        NNPDiagnosticSetBool(@"Phase7FixedBrightnessActive", NO);
-        if (safeMultiplier <= 1.001f) {
-            NNPDiagnosticSetDouble(@"Phase7FixedBrightnessTargetNits", 0);
+        if (targetNits <= 0) {
+            NNPAODClearBacklightFeatures();
+            NNPDiagnosticSetBool(@"Phase7FixedBrightnessActive", NO);
             return;
         }
-        // The 0.1.35 device test confirmed the 80-nit override is visible.
-        // Raise the full-scale target by 50% while keeping it capped at 120 nits.
-        float targetNits = 30.0f * safeMultiplier;
-        NNPDiagnosticSetDouble(@"Phase7FixedBrightnessTargetNits", targetNits);
         BOOL available = NNPAODLoadBacklightFeatures();
         NNPDiagnosticSetBool(@"Phase7FixedBrightnessAPIAvailable", available);
-        if (!available) {
-            NNPDiagnosticLog([NSString stringWithFormat:@"AOD_FIXED_NITS session=%@ BackBoardServices API unavailable", session]);
-            return;
-        }
+        if (!available) return;
         id<NNPAODBacklightFeatures> features = [[gNNPAODBacklightFeaturesClass alloc] init];
         if (!features || ![features respondsToSelector:@selector(setDisableFeatures:)] ||
-            ![features respondsToSelector:@selector(setFixedBrightnessNitsWhileDisabled:)]) {
-            NNPDiagnosticLog([NSString stringWithFormat:@"AOD_FIXED_NITS session=%@ BKSBacklightFeatures unavailable", session]);
-            return;
+            ![features respondsToSelector:@selector(setFixedBrightnessNitsWhileDisabled:)]) return;
+        float start = gNNPAODFeatureActive && gNNPAODCurrentNits > 0 ? gNNPAODCurrentNits : targetNits;
+        unsigned steps = smooth && fabsf(start - targetNits) > 0.5f ? 6 : 1;
+        for (unsigned step = 1; step <= steps; step++) {
+            float nits = steps == 1 ? targetNits : NNPAODInterpolateNits(start, targetNits, step);
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((steps == 1 ? 0 : step * 0.15) * NSEC_PER_SEC)), NNPAODNitsQueue(), ^{
+                if (generation != atomic_load_explicit(&gNNPAODNitsGeneration, memory_order_acquire)) return;
+                features.disableFeatures = YES;
+                features.fixedBrightnessNitsWhileDisabled = nits;
+                @try {
+                    gNNPAODSetBacklightFeatures(features);
+                    gNNPAODFeatureActive = YES;
+                    gNNPAODCurrentNits = nits;
+                } @catch (NSException *exception) {
+                    NNPDiagnosticLog([NSString stringWithFormat:@"AOD_FIXED_NITS request exception=%@", exception.name]);
+                    return;
+                }
+                if (step != steps) return;
+                NNPDiagnosticSetBool(@"Phase7FixedBrightnessActive", YES);
+                NNPDiagnosticLog([NSString stringWithFormat:@"AOD_FIXED_NITS session=%@ requested=%.2f rampSteps=%u", session, targetNits, steps]);
+                NNPAODRecordReadback(session, @"immediate", @"Phase7FixedBrightnessImmediateNits");
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), NNPAODNitsQueue(), ^{
+                    if (generation != atomic_load_explicit(&gNNPAODNitsGeneration, memory_order_acquire)) return;
+                    NNPAODRecordReadback(session, @"after-0.5s", @"Phase7FixedBrightnessDelayedNits");
+                });
+            });
         }
-        features.disableFeatures = YES;
-        features.fixedBrightnessNitsWhileDisabled = targetNits;
-        @try {
-            gNNPAODSetBacklightFeatures(features);
-            gNNPAODFeatureActive = YES;
-            NNPDiagnosticSetBool(@"Phase7FixedBrightnessActive", YES);
-            NNPDiagnosticLog([NSString stringWithFormat:@"AOD_FIXED_NITS session=%@ requested=%.2f via BackBoardServices",
-                              session, targetNits]);
-        } @catch (NSException *exception) {
-            NNPDiagnosticLog([NSString stringWithFormat:@"AOD_FIXED_NITS session=%@ request exception=%@",
-                              session, exception.name]);
-        }
-        if (!gNNPAODFeatureActive) return;
-        NNPAODRecordReadback(session, @"immediate", @"Phase7FixedBrightnessImmediateNits");
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), NNPAODNitsQueue(), ^{
-            if (generation != atomic_load_explicit(&gNNPAODNitsGeneration, memory_order_acquire)) return;
-            NNPAODRecordReadback(session, @"after-0.5s", @"Phase7FixedBrightnessDelayedNits");
-        });
     });
+}
+
+void NNPAODNitsBeginSession(NSString *sessionID, float multiplier) {
+    float safe = isfinite(multiplier) ? fminf(4, fmaxf(1, multiplier)) : 1;
+    NNPDiagnosticSetDouble(@"Phase7FixedBrightnessMultiplier", safe);
+    NNPAODApplyTargetNits(sessionID, safe <= 1.001f ? 0 : 30 * safe, NO);
+}
+
+void NNPAODNitsSetTargetNits(NSString *sessionID, float nits) {
+    float safe = isfinite(nits) && nits > 0 ? fminf(90, fmaxf(6, nits)) : 0;
+    NNPAODApplyTargetNits(sessionID, safe, YES);
 }
 
 void NNPAODNitsEndSession(void) {

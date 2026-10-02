@@ -4,17 +4,24 @@
 #include <stdio.h>
 
 int main(void) {
-    assert(NNPAODAmbientBrightnessMultiplier(0, 1) == 1);
-    assert(NNPAODAmbientBrightnessMultiplier(14.99, 1) == 1);
-    assert(NNPAODAmbientBrightnessMultiplier(15, 1) == 1.5f);
-    assert(NNPAODAmbientBrightnessMultiplier(10, 1.5f) == 1.5f);
-    assert(NNPAODAmbientBrightnessMultiplier(8, 1.5f) == 1);
-    assert(NNPAODAmbientBrightnessMultiplier(150, 1.5f) == 2);
-    assert(NNPAODAmbientBrightnessMultiplier(100, 2) == 2);
-    assert(NNPAODAmbientBrightnessMultiplier(79.99, 2) == 1.5f);
-    assert(NNPAODAmbientBrightnessMultiplier(200000, 2) == 2);
-    assert(NNPAODAmbientBrightnessMultiplier(NAN, 2) == 1);
-    assert(NNPAODAmbientBrightnessMultiplier(-1, 2) == 1);
+    assert(NNPAODAmbientTargetNits(0) == 6);
+    assert(NNPAODAmbientTargetNits(150) == 48);
+    assert(NNPAODAmbientTargetNits(300) == 90);
+    assert(NNPAODAmbientTargetNits(200000) == 90);
+    assert(NNPAODAmbientTargetNits(NAN) == 0);
+    assert(NNPAODAmbientTargetNits(-1) == 0);
+    for (int lux = 1; lux <= 300; lux++) {
+        float delta = NNPAODAmbientTargetNits(lux) - NNPAODAmbientTargetNits(lux - 1);
+        assert(fabsf(delta - 0.28f) < 0.00002f);
+    }
+    for (unsigned step = 0; step <= 6; step++) {
+        float up = NNPAODInterpolateNits(6, 90, step);
+        float down = NNPAODInterpolateNits(90, 6, step);
+        assert(up >= 6 && up <= 90 && down >= 6 && down <= 90);
+        assert(fabsf(up - (6 + 14 * step)) < 0.00001f);
+    }
+    assert(NNPAODInterpolateNits(6, 90, 6) == 90);
+    assert(NNPAODInterpolateNits(90, 6, 6) == 6);
     bool visited[13][13] = {{false}};
     for (size_t step = 0; step < 169; step++) {
         NNPAODPixelOffset p = NNPAODOffsetForStep(step);

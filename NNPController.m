@@ -194,7 +194,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic, strong) NSTimer *pixelShiftTimer;
 @property(nonatomic) NSUInteger pixelShiftStep;
 @property(nonatomic, strong) NNPAODAmbientLight *ambientLight;
-@property(nonatomic) float ambientBrightnessMultiplier;
+@property(nonatomic) float ambientBrightnessTargetNits;
 @property(nonatomic) NSTimeInterval progressTimerInterval;
 @property(nonatomic) BOOL reconcilePending;
 @property(nonatomic) BOOL didRecordSpotifyLyricsTrackMatch;
@@ -331,19 +331,19 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(preferencesChanged:) name:NNPPreferencesDidChangeNotification object:self.preferences];
     self.display = [NNPDisplayController new]; self.lockState = [NNPLockStateController new];
     __weak typeof(self) weakSelf = self;
-    self.ambientBrightnessMultiplier = 1;
+    self.ambientBrightnessTargetNits = 0;
     self.ambientLight = [NNPAODAmbientLight new];
     self.ambientLight.sampleHandler = ^(double lux, BOOL valid) {
         NNPController *controller = weakSelf;
         if (!controller || !controller.preferences.aodAutomaticBrightnessEnabled ||
             ![controller shouldPresentInsideCoverSheet]) return;
-        float multiplier = valid ? NNPAODAmbientBrightnessMultiplier(lux, controller.ambientBrightnessMultiplier) : 1;
-        if (fabsf(controller.ambientBrightnessMultiplier - multiplier) >= 0.001f) {
-            NNPDiagnosticLogTransition([NSString stringWithFormat:@"AOD_AMBIENT lux=%.1f valid=%@ multiplier=%.2f", lux, valid ? @"YES" : @"NO", multiplier]);
+        float target = valid ? NNPAODAmbientTargetNits(lux) : 0;
+        if (fabsf(controller.ambientBrightnessTargetNits - target) >= 0.5f) {
+            NNPDiagnosticLogTransition([NSString stringWithFormat:@"AOD_AMBIENT lux=%.1f valid=%@ targetNits=%.2f", lux, valid ? @"YES" : @"NO", target]);
         }
-        controller.ambientBrightnessMultiplier = multiplier;
-        controller.display.aodBrightnessMultiplier = multiplier;
-        NNPDiagnosticSetDouble(@"AODAutomaticBrightnessEffectiveMultiplier", multiplier);
+        controller.ambientBrightnessTargetNits = target;
+        controller.display.automaticBrightnessNits = target;
+        NNPDiagnosticSetDouble(@"AODAutomaticBrightnessTargetNits", target);
     };
     self.display.stateChangedHandler = ^{
         NNPController *controller = weakSelf;
@@ -971,7 +971,10 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 #endif
         BOOL ambientActive = self.preferences.aodAutomaticBrightnessEnabled && [self shouldPresentInsideCoverSheet];
         [self.ambientLight setActive:ambientActive];
-        if (!ambientActive) self.ambientBrightnessMultiplier = 1;
+        if (!ambientActive) {
+            self.ambientBrightnessTargetNits = 0;
+            self.display.automaticBrightnessNits = 0;
+        }
         BOOL show = [self shouldShow];
         self.charging.aodPresentationActive = self.locked && self.display.aodPresentationActive &&
             self.display.lifecycleState == NNPDisplayLifecycleStateActive;
@@ -1041,7 +1044,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 }
 - (float)effectiveAODBrightnessMultiplier {
     BOOL automatic = self.preferences.aodAutomaticBrightnessEnabled;
-    float multiplier = automatic ? self.ambientBrightnessMultiplier : self.preferences.aodBrightnessMultiplier;
+    float multiplier = automatic ? 1 : self.preferences.aodBrightnessMultiplier;
     NNPDiagnosticSetBool(@"AODAutomaticBrightnessEnabled", automatic);
     NNPDiagnosticSetDouble(@"AODAutomaticBrightnessEffectiveMultiplier", multiplier);
     return multiplier;

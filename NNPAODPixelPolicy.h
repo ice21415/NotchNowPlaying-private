@@ -9,9 +9,11 @@ static inline NNPAODPixelOffset NNPAODOffsetForStep(size_t step) {
     return (NNPAODPixelOffset){ (int)(index % 13) - 6, (int)(index / 13) - 6 };
 }
 
-static inline float NNPAODAmbientBrightnessMultiplier(double lux, float current) {
-    if (!isfinite(lux) || lux < 0 || lux > 200000) return 1.0f;
-    if (current <= 1.25f) return lux < 15 ? 1.0f : (lux < 150 ? 1.5f : 2.0f);
-    if (current < 1.75f) return lux <= 8 ? 1.0f : (lux >= 150 ? 2.0f : 1.5f);
-    return lux <= 8 ? 1.0f : (lux < 80 ? 1.5f : 2.0f);
+static inline float NNPAODAmbientTargetNits(double lux) {
+    if (!isfinite(lux) || lux < 0 || lux > 200000) return 0;
+    return (float)(6.0 + fmin(lux, 300.0) * 0.28);
+}
+
+static inline float NNPAODInterpolateNits(float start, float target, unsigned step) {
+    return start + (target - start) * (step > 6 ? 6 : step) / 6.0f;
 }

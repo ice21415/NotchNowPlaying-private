@@ -55,6 +55,7 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) { return NO; }
 @synthesize maximumDuration = _maximumDuration;
 @synthesize unlimitedDuration = _unlimitedDuration;
 @synthesize aodBrightnessMultiplier = _aodBrightnessMultiplier;
+@synthesize automaticBrightnessNits = _automaticBrightnessNits;
 
 static __weak NNPDisplayController *NNPCurrentDisplayController;
 static NSUInteger NNPNextSessionGeneration;
@@ -110,7 +111,19 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
     NNPDiagnosticSetDouble(@"Phase7AODBrightnessMultiplier", clamped);
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE && NNP_PHASE7_DRY_RUN == 0
     // The native atomic affects future callbacks; update the active panel too.
-    if (self.aodPresentationActive) NNPAODNitsBeginSession(self.sessionIdentifier, clamped);
+    if (self.aodPresentationActive && self.automaticBrightnessNits <= 0) NNPAODNitsBeginSession(self.sessionIdentifier, clamped);
+#endif
+}
+
+- (void)setAutomaticBrightnessNits:(float)nits {
+    float safe = isfinite(nits) && nits > 0 ? fminf(90, fmaxf(6, nits)) : 0;
+    if (fabsf(_automaticBrightnessNits - safe) < 0.5f) return;
+    _automaticBrightnessNits = safe;
+#if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE && NNP_PHASE7_DRY_RUN == 0
+    if (self.aodPresentationActive) {
+        if (safe > 0) NNPAODNitsSetTargetNits(self.sessionIdentifier, safe);
+        else NNPAODNitsBeginSession(self.sessionIdentifier, self.aodBrightnessMultiplier);
+    }
 #endif
 }
 
@@ -140,7 +153,8 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
     NNPDiagnosticSetBool(@"Phase7AODPresentationActive", active);
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY AOD presentation active=%@", active ? @"YES" : @"NO"]);
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE && NNP_PHASE7_DRY_RUN == 0
-    if (active) NNPAODNitsBeginSession(self.sessionIdentifier, self.aodBrightnessMultiplier);
+    if (active && self.automaticBrightnessNits > 0) NNPAODNitsSetTargetNits(self.sessionIdentifier, self.automaticBrightnessNits);
+    else if (active) NNPAODNitsBeginSession(self.sessionIdentifier, self.aodBrightnessMultiplier);
     else NNPAODNitsEndSession();
 #endif
     if (self.stateChangedHandler) self.stateChangedHandler();
