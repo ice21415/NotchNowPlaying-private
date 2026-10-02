@@ -4,7 +4,7 @@ NotchNowPlaying is a standalone SpringBoard tweak for iPhone 12 mini / iOS
 17.1.2. It reads system Now Playing state through MediaRemote and displays a
 compact artwork, title, artist, and progress bar around the notch.
 
-## Charging flow (0.1.108)
+## Charging flow (0.1.109)
 
 While active locked AOD is displayed and charging below 100%, two synchronized teal streams run from the bottom
 center along the rounded screen edges, repeating every 3.2 seconds. Battery
