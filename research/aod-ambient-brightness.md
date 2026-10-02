@@ -1,4 +1,4 @@
-# AOD 環境光亮度（0.1.106）
+# AOD 環境光亮度（0.1.107）
 
 系統自動亮度可以維持關閉。插件不寫入系統自動亮度設定，也不以 UIScreen.brightness 假裝成環境光。
 
@@ -21,3 +21,5 @@ iOS 17.1.2 本機 CoreBrightness `-[CBALSNode copyEvent]` 的靜態證據確認 
 100% 釋放固定 nits override，使用既有 AOD 基準。150% / 200% 使用現有 BackBoardServices 路徑要求 45 / 60 nits；實際讀回可能依硬體狀態不同。只在分段變化時更新面板，避免每次採樣重設。喚醒／解鎖沿用現有 nits cleanup。關閉此功能時仍可使用原有手動亮度滑桿。
 
 共享 C 測試覆蓋上下段邊界、遲滯、無效數值與亮度上限。裝置診斷：`AODAmbientSensorActive`、`AODAmbientSampleValid`、`AODAmbientLux`、`AODAmbientSampleAge`、`AODAutomaticBrightnessEffectiveMultiplier`，以及既有 nits target / readback。實機測試需在系統自動亮度關閉時，以遮住／照亮瀏海感測區核對讀值與分段是否變化；不能只看預期 multiplier。
+
+0.1.106 實機確認系統自動亮度關閉時仍能讀到新事件，例如 454 / 651 lux、事件年齡小於 1 ms。亦發現 `aodBrightnessMultiplier` 的預設 setter 為 `setAodBrightnessMultiplier:`，先前手動實作誤用 `setAODBrightnessMultiplier:`，導致 property assignment 僅寫入 synthesized ivar，未呼叫原生 atomic 與面板更新。0.1.107 更正命名；亮度驗證必須同时核對有效 multiplier、native atomic、nits target 及面板 nits readback，不能以計算結果宣告成功。
