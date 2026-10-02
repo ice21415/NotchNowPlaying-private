@@ -77,7 +77,7 @@ static void NNPAODRecordReadback(NSString *session, NSString *stage, NSString *d
     }
     id nits = [brightness isKindOfClass:NSDictionary.class]
         ? ((NSDictionary *)brightness)[@"Nits"] : nil;
-    if ([nits isKindOfClass:NSNumber.class]) NNPDiagnosticSetDouble(diagnosticKey, nits.doubleValue);
+    if ([nits isKindOfClass:NSNumber.class]) NNPDiagnosticSetDouble(diagnosticKey, [(NSNumber *)nits doubleValue]);
     else if ([nits isKindOfClass:NSString.class]) {
         double value = 0;
         NSScanner *scanner = [NSScanner scannerWithString:nits];
