@@ -7,8 +7,10 @@ compact artwork, title, artist, and progress bar around the notch.
 ## Charging flow (0.1.103)
 
 While charging below 100%, two synchronized teal streams run from the bottom
-center around the rounded screen edges to the sides of the notch, repeating
-every 3.2 seconds. The overlay works independently of music playback. It stops
+center along the rounded screen edges, repeating every 3.2 seconds. Battery
+level limits how far each stream travels along its path: 50% reaches halfway,
+and the range extends toward the notch as the battery charges. Short tails
+scale down at low charge levels. The overlay works independently of music playback. It stops
 when charging stops or the battery is full, pauses while the panel is off,
 and respects Reduce Motion with a static edge indicator. Enable or disable
 it with the "啟用充電流光" setting.
