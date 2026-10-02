@@ -13,6 +13,7 @@ static inline bool NNPChargingSuppressesPowerWake(long source, bool armed,
 static inline bool NNPChargingPresentsFlow(bool enabled, bool chargingEnabled,
                                          bool screenOn, bool activeAOD,
                                          bool charging, float level) {
-    return enabled && chargingEnabled && (screenOn || activeAOD) && charging &&
+    (void)screenOn; // Panel illumination does not authorize presentation outside AOD.
+    return enabled && chargingEnabled && activeAOD && charging &&
         isfinite(level) && level >= 0 && level < 1;
 }

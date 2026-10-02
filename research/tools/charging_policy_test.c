@@ -16,7 +16,8 @@ int main(void) {
     assert(NNPChargingSuppressesPowerWake(21, true, true, true, true, true));
     // An illuminated pseudo-AOD panel can legitimately report screenOn=false.
     assert(NNPChargingPresentsFlow(true, true, false, true, true, 0.45f));
-    assert(NNPChargingPresentsFlow(true, true, true, false, true, 0.45f));
+    assert(!NNPChargingPresentsFlow(true, true, true, false, true, 0.45f));
+    assert(NNPChargingPresentsFlow(true, true, true, true, true, 0.45f));
     assert(!NNPChargingPresentsFlow(true, true, false, false, true, 0.45f));
     assert(!NNPChargingPresentsFlow(true, true, false, true, false, 0.45f));
     assert(!NNPChargingPresentsFlow(false, true, false, true, true, 0.45f));

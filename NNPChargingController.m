@@ -117,7 +117,6 @@
 @end
 
 @interface NNPChargingController ()
-@property(nonatomic, strong) UIWindow *window;
 @property(nonatomic, strong) NNPChargingView *view;
 @property(nonatomic, weak) UIView *aodHost;
 @property(nonatomic) BOOL started;
@@ -128,6 +127,7 @@
 @property(nonatomic) BOOL recordedAOD;
 - (void)refresh;
 - (void)readDisplayState;
+- (void)releasePresentation;
 @end
 
 @implementation NNPChargingController
@@ -189,7 +189,7 @@
     float level = device.batteryLevel;
     BOOL visible = NNPChargingPresentsFlow(preferences.enabled, preferences.chargingAnimationEnabled,
         self.screenOn, self.aodPresentationActive,
-        device.batteryState == UIDeviceBatteryStateCharging, level);
+        device.batteryState == UIDeviceBatteryStateCharging, level) && self.aodHost.window != nil;
     if (!self.didRecordPresentation || self.recordedVisible != visible ||
         self.recordedAOD != self.aodPresentationActive) {
         self.didRecordPresentation = YES;
@@ -203,46 +203,11 @@
             self.screenOn ? @"YES" : @"NO", (long)device.batteryState, level]);
     }
     if (!visible) {
-        [self.view setRunning:NO reducedMotion:NO];
-        self.view.hidden = YES;
-        self.window.hidden = YES;
+        [self releasePresentation];
         return;
     }
-    // A disconnected scene must not retain an orphaned overlay.
-    if (self.window.windowScene && self.window.windowScene.activationState == UISceneActivationStateUnattached) {
-        [self.view setRunning:NO reducedMotion:NO];
-        self.window.hidden = YES;
-        self.window = nil;
-        self.view = nil;
-    }
-    if (!self.window) {
-        UIWindowScene *scene = nil;
-        for (UIScene *candidate in UIApplication.sharedApplication.connectedScenes) {
-            if ([candidate isKindOfClass:UIWindowScene.class] &&
-                candidate.activationState != UISceneActivationStateUnattached) {
-                scene = (UIWindowScene *)candidate;
-                break;
-            }
-        }
-        self.window = scene ? [[UIWindow alloc] initWithWindowScene:scene]
-                            : [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
-        self.window.frame = UIScreen.mainScreen.bounds;
-        self.window.windowLevel = UIWindowLevelAlert - 1;
-        self.window.backgroundColor = UIColor.clearColor;
-        self.window.opaque = NO;
-        self.window.userInteractionEnabled = NO;
-        UIViewController *root = [UIViewController new];
-        self.view = [[NNPChargingView alloc] initWithFrame:self.window.bounds];
-        root.view = [[UIView alloc] initWithFrame:self.window.bounds];
-        root.view.backgroundColor = UIColor.clearColor;
-        root.view.opaque = NO;
-        [root.view addSubview:self.view];
-        self.window.rootViewController = root;
-    }
-    // CoverSheet owns the visible AOD surface; a separate UIWindow is occluded
-    // by its opaque blackout. Attach above that blackout in the same hierarchy.
-    UIView *host = self.aodPresentationActive ? self.aodHost : nil;
-    UIView *container = host ?: self.window.rootViewController.view;
+    UIView *container = self.aodHost;
+    if (!self.view) self.view = [[NNPChargingView alloc] initWithFrame:container.bounds];
     if (self.view.superview != container) {
         [self.view setRunning:NO reducedMotion:NO];
         [self.view removeFromSuperview];
@@ -250,10 +215,8 @@
     }
     self.view.frame = container.bounds;
     self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    self.view.hidden = NO;
     [container bringSubviewToFront:self.view];
-    self.window.hidden = host != nil; // Never make this decorative window key.
-    NNPDiagnosticSetBool(@"ChargingFlowHostedInCoverSheet", host != nil);
+    NNPDiagnosticSetBool(@"ChargingFlowHostedInCoverSheet", YES);
     NNPDiagnosticSetString(@"ChargingFlowHostClass", NSStringFromClass(container.class));
     NNPDiagnosticSetString(@"ChargingFlowFrame", NSStringFromCGRect(self.view.frame));
     CGFloat progress = MAX(0.0, MIN(1.0, level));
@@ -265,17 +228,22 @@
     [self.view setNeedsLayout];
     [self.view layoutIfNeeded];
     [self.view setRunning:YES reducedMotion:UIAccessibilityIsReduceMotionEnabled()];
+    NNPDiagnosticSetBool(@"ChargingFlowResourcesAllocated", YES);
+}
+- (void)releasePresentation {
+    [self.view setRunning:NO reducedMotion:NO];
+    [self.view removeFromSuperview];
+    self.view = nil;
+    NNPDiagnosticSetBool(@"ChargingFlowResourcesAllocated", NO);
+    NNPDiagnosticSetBool(@"ChargingFlowHostedInCoverSheet", NO);
 }
 - (void)stop {
     self.started = NO;
     [NSNotificationCenter.defaultCenter removeObserver:self];
     if (self.displayToken >= 0) notify_cancel(self.displayToken);
     self.displayToken = -1;
-    [self.view setRunning:NO reducedMotion:NO];
-    [self.view removeFromSuperview];
-    self.window.hidden = YES;
-    self.window = nil;
-    self.view = nil;
+    [self releasePresentation];
+    self.aodHost = nil;
     // Battery monitoring is shared with NNPView; leave it enabled for that owner.
 }
 - (void)dealloc { [self stop]; }
