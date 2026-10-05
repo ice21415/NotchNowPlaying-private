@@ -765,7 +765,7 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
             NSMutableArray<NSString *> *textAttributes = [NSMutableArray array];
             [label.attributedText enumerateAttributesInRange:NSMakeRange(0, label.attributedText.length)
                                                      options:0
-                                                  usingBlock:^(NSDictionary<NSAttributedStringKey, id> *attributes, NSRange range, BOOL *stop) {
+                                                  usingBlock:^(NSDictionary<NSAttributedStringKey, id> *attributes, NSRange range, __unused BOOL *stop) {
                 id foreground = attributes[NSForegroundColorAttributeName];
                 id font = attributes[NSFontAttributeName];
                 [textAttributes addObject:[NSString stringWithFormat:@"%lu:color=%@,font=%@", (unsigned long)range.length,

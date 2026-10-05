@@ -127,6 +127,11 @@ jobs:
             xcrun vtool -show-build "$dylib"
           done
           main_filter=$(find package-check -name NotchNowPlaying.plist -path '*/DynamicLibraries/*' -print -quit)
+          if [ "$VERBOSE_DIAGNOSTICS" = 0 ]; then
+            spotify_dylib=$(find package-check -name NNPSpotifyProbe.dylib -print -quit)
+            strings "$spotify_dylib" > spotify-binary-strings.txt
+            ! grep -E 'MODEL-SNAPSHOT|RUNTIME summary classes=|nnp-spotify-lyrics-runtime.log|NNPSpotifyLyricsProbeStartedAt' spotify-binary-strings.txt
+          fi
           test -n "$main_filter"
           plutil -lint "$main_filter"
           grep -q 'com.apple.springboard' "$main_filter"
