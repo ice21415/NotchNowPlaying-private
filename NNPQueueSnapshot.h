@@ -1,4 +1,12 @@
 #import <Foundation/Foundation.h>
+#include <math.h>
+static inline BOOL NNPQueuePreviewDue(double duration, double elapsed, double timestamp, double rate, double now) {
+    if (!isfinite(duration) || duration <= 0 || !isfinite(elapsed) || elapsed < 0 || !isfinite(now)) return NO;
+    if (isfinite(timestamp) && timestamp > 0 && isfinite(rate) && rate > 0)
+        elapsed += MAX(0.0, now - timestamp) * rate;
+    double remaining = duration - elapsed;
+    return remaining > 0 && remaining <= 60.0;
+}
 static inline NSString *NNPQueueText(id value) {
     return [value isKindOfClass:NSString.class] ? value : @"";
 }

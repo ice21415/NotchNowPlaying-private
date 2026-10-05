@@ -20,6 +20,16 @@ int main(void) {
         assert(!NNPCoverURLString(@"https://other.example/image/x").length);
         assert(!NNPCoverURLString(@"file:///tmp/image.jpg").length);
         assert(!NNPCoverURLString(@42).length);
+        assert(!NNPQueuePreviewDue(240, 179, 0, 1, 1000));
+        assert(NNPQueuePreviewDue(240, 180, 0, 1, 1000));
+        assert(NNPQueuePreviewDue(240, 170, 990, 1, 1000));
+        assert(!NNPQueuePreviewDue(240, 170, 990, 0, 1000));
+        assert(!NNPQueuePreviewDue(240, 240, 0, 1, 1000));
+        assert(!NNPQueuePreviewDue(240, 241, 0, 1, 1000));
+        assert(!NNPQueuePreviewDue(0, 0, 0, 1, 1000));
+        assert(!NNPQueuePreviewDue(NAN, 180, 0, 1, 1000));
+        assert(!NNPQueuePreviewDue(240, NAN, 0, 1, 1000));
+        assert(NNPQueuePreviewDue(45, 0, 0, 1, 1000));
         puts("Queue association and stale snapshot checks passed");
     }
 }

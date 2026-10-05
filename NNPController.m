@@ -847,10 +847,12 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 }
 - (void)applyLyricsPreferences {
     NSDictionary *queue = self.preferences.spotifyQueueSnapshot;
+    BOOL previewDue = NNPQueuePreviewDue(self.state.duration, self.state.elapsed, self.state.timestamp,
+        self.state.playbackRate, NSDate.date.timeIntervalSince1970);
     BOOL validQueue = [self.state.bundleIdentifier isEqualToString:NNPSpotify] &&
         NNPQueueSnapshotMatches(queue, self.state.trackURI, self.state.title, self.state.artist, NSDate.date.timeIntervalSince1970);
-    NSString *nextTitle = validQueue ? NNPQueueText(queue[@"nextTitle"]) : @"";
-    NSString *nextArtist = validQueue ? NNPQueueText(queue[@"nextArtist"]) : @"";
+    NSString *nextTitle = validQueue && previewDue ? NNPQueueText(queue[@"nextTitle"]) : @"";
+    NSString *nextArtist = validQueue && previewDue ? NNPQueueText(queue[@"nextArtist"]) : @"";
     if (!self.nextArtwork) self.nextArtwork = [NNPNextArtwork new];
     __weak typeof(self) weakSelf = self;
     [self.nextArtwork setURL:validQueue ? NNPQueueText(queue[@"nextArtworkURL"]) : @""
@@ -858,7 +860,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [self.view updateNextTrackTitle:nextTitle artist:nextArtist artwork:self.nextArtwork.image];
     [self.statusBarPlayerView updateNextTrackTitle:nextTitle artist:nextArtist artwork:self.nextArtwork.image];
     NNPDiagnosticSetBool(@"SpotifyNextArtworkAvailable", self.nextArtwork.image != nil);
-    NNPDiagnosticSetBool(@"SpotifyNextTrackAvailable", nextTitle.length > 0);
+    NNPDiagnosticSetBool(@"SpotifyNextTrackAvailable", validQueue && NNPQueueText(queue[@"nextTitle"]).length > 0);
+    NNPDiagnosticSetBool(@"SpotifyNextTrackPreviewDue", previewDue);
+    NNPDiagnosticSetBool(@"SpotifyNextTrackPreviewVisible", nextTitle.length > 0 && self.view.playbackVisible);
     BOOL spotifyTrack = [self.state.bundleIdentifier isEqualToString:NNPSpotify];
     NSString *mediaTitle = self.state.title ?: @"";
     NSString *snapshotTitle = self.preferences.spotifyLyricsTrackTitle ?: @"";

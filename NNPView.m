@@ -270,6 +270,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     [self.contentContainer.layer removeAllAnimations];
     [self.nextTrackPreview.layer removeAllAnimations];
     [self.nextTrackIcon.layer removeAllAnimations];
+    [self.nextTrackLabel.layer removeAllAnimations];
+    [self.nextTrackArtist.layer removeAllAnimations];
 }
 
 - (void)setPlaybackVisible:(BOOL)playbackVisible {
@@ -278,6 +280,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     if (!playbackVisible) {
         [self.nextTrackPreview.layer removeAllAnimations];
         [self.nextTrackIcon.layer removeAllAnimations];
+        [self.nextTrackLabel.layer removeAllAnimations];
+        [self.nextTrackArtist.layer removeAllAnimations];
         [self stopTitleMarqueeCycle];
         self.marqueeAnimating = NO;
     }
@@ -1302,6 +1306,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         artist.length ? [NSString stringWithFormat:@" — %@", artist] : @""] : @"";
     if ([self.nextTrackPreview.accessibilityLabel isEqualToString:text]) return;
     [self.nextTrackPreview.layer removeAllAnimations];
+    [self.nextTrackLabel.layer removeAllAnimations];
+    [self.nextTrackArtist.layer removeAllAnimations];
     self.nextTrackLabel.text = title;
     self.nextTrackArtist.text = artist;
     self.nextTrackPreview.accessibilityLabel = text;
@@ -1310,13 +1316,21 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     [self setNeedsLayout];
     if (!text.length || !self.playbackVisible || !self.window) return;
     CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
-    fade.fromValue = @0; fade.toValue = @1; fade.duration = 0.28;
+    fade.fromValue = @0; fade.toValue = @1; fade.duration = 0.4;
     [self.nextTrackPreview.layer addAnimation:fade forKey:@"nextTrackFade"];
     if (!UIAccessibilityIsReduceMotionEnabled()) {
         CABasicAnimation *slide = [CABasicAnimation animationWithKeyPath:@"transform.translation.y"];
-        slide.fromValue = @3; slide.toValue = @0; slide.duration = 0.28;
+        slide.fromValue = @8; slide.toValue = @0; slide.duration = 0.5;
         slide.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
         [self.nextTrackPreview.layer addAnimation:slide forKey:@"nextTrackSlide"];
+        for (CALayer *layer in @[self.nextTrackLabel.layer, self.nextTrackArtist.layer]) {
+            CABasicAnimation *reveal = [CABasicAnimation animationWithKeyPath:@"transform.translation.x"];
+            reveal.fromValue = @6; reveal.toValue = @0; reveal.duration = 0.4;
+            reveal.beginTime = [layer convertTime:CACurrentMediaTime() fromLayer:nil] + (layer == self.nextTrackLabel.layer ? 0.06 : 0.12);
+            reveal.fillMode = kCAFillModeBackwards;
+            reveal.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+            [layer addAnimation:reveal forKey:@"nextTextReveal"];
+        }
     }
 }
 - (void)updateState:(NNPState *)state {
