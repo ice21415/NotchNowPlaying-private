@@ -8,7 +8,7 @@ on:
         type: boolean
         default: false
   push:
-    branches: [codex/charging-flow-20261002]
+    branches: [main, codex/charging-flow-20261002]
     paths:
       - '*.m'
       - '*.h'

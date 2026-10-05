@@ -1,16 +1,7 @@
 name: Build RootHide package
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '*.m'
-      - '*.h'
-      - '*.xm'
-      - 'Makefile'
-      - 'control'
-      - 'NotchNowPlaying.plist'
-      - '.github/workflows/build-roothide.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -3,8 +3,8 @@
 ## Charging flow builds (0.1.112)
 
 The source repository is `ice21415/NotchNowPlaying-private` (public despite its
-historical name). The charging flow branch is `codex/charging-flow-20261002`.
-Its `build-charging.yml` workflow uses the standard `macos-26` runner with
+historical name). The completed charging flow is integrated into `main`; the development branch is `codex/charging-flow-20261002`.
+The `build-charging.yml` workflow runs on pushes to either branch and uses the standard `macos-26` runner with
 Apple Clang and builds both `normal` and `aod` packages. The `aod` variant
 preserves the previous Phase 7 experimental build flags. Download the package
 artifact matching the desired variant; both use the version recorded in `control`.
@@ -42,4 +42,4 @@ PUBLIC_REPO_TOKEN
 
 The token needs permission to push to `ice21415/NotchNowPlaying`.
 
-Normal pushes currently build the safe-boot test variant. Build logs and the `.deb` are retained as Actions artifacts. The formal MediaRemote build will be enabled only after the safe-boot CI path is confirmed.
+The legacy `build-roothide.yml` workflow is manual-only (`workflow_dispatch`), because it publishes to the public package repository. Ordinary pushes use the Apple Clang workflow above and retain normal and AOD packages as artifacts.

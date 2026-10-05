@@ -51,18 +51,12 @@ See `research/charging-flow.md` for implementation and device checks.
 - The UI is black/OLED-friendly and updates progress at approximately 1 Hz.
 - The overlay disappears normally when iOS blanks the physical display.
 
-Continuous locked-screen display retention is not enabled in the current
-release. This is not native AOD.
-
-`NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE` remains disabled by default. In the
-experimental build, a bounded trial substitutes a dim backlight factor and
-suppresses only BLS Host's black overlay request while the trial is armed.
-The BLS display mode remains `Off`, so a visible result is not yet established
-and this is not native AOD. If the trial ends while locked, it restores the
-black overlay. See
-`research/phase5-locked-visible-experiments.md` and
-`research/phase7-pseudo-aod.md` and
-`research/phase28-active-lock-ca-blanking.md`.
+The completed AOD functionality is included in the `aod` build variant. The
+`normal` variant keeps `NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE` disabled.
+The AOD implementation is a custom display path for the target device, not
+native hardware AOD. It includes Spotify lyrics, track-swipe controls,
+notification animations, charging flow, pixel protection and adaptive brightness.
+See the charging flow and AOD research documents for implementation history.
 
 Experimental builds also record a two-minute incident window after a display
 mode transition. Diagnostics include requested/forwarded modes, call stacks,
@@ -91,13 +85,13 @@ MediaRemote → NNPMediaController → NNPState → NNPController → NNPView
                               NNPLockStateController  NNPDisplayController
 ```
 
-The display controller is an intentionally disabled abstraction. It does not
-call BackBoardServices, IOKit display setters, powerd, or backboardd.
+The normal variant leaves experimental display control disabled. The AOD
+variant enables its custom presentation and brightness controllers.
 
-## Known limitation
+## Device scope
 
-iPhone13,1 has no native AOD path. Previous research found that ordinary
-`PreventUserIdleDisplaySleep` does not override explicit lock blanking. The
-BackBoardServices argument contract remains unsafe to call after an earlier
-getter probe destabilized SpringBoard. No BackBoard getter or setter is used by
-the production build.
+The completed feature set targets iPhone 12 mini (iPhone13,1), iOS 17.1.2 and
+RootHide. This device has no native AOD path; the custom implementation uses
+private iOS interfaces. Earlier research reports describe historical limitations
+and failures and should not be read as the current feature status. Support for
+other devices and iOS versions has not been established.
