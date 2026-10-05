@@ -4,4 +4,6 @@
 - (void)setHostView:(UIView *)host active:(BOOL)active;
 - (void)close;
 - (void)restPixelsAtOffset:(CGPoint)pixels;
+- (CGRect)interactiveRectInView:(UIView *)view;
+- (BOOL)handleTapAtPoint:(CGPoint)point inView:(UIView *)view;
 @end

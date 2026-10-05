@@ -178,11 +178,13 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 
 @interface NNPNotchGestureWindow : UIWindow
 @property(nonatomic) CGRect touchRegion;
+@property(nonatomic) CGRect ticketTouchRegion;
 @end
 
 @implementation NNPNotchGestureWindow
 - (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
-    return CGRectContainsPoint(self.touchRegion, point) && [super pointInside:point withEvent:event];
+    return (CGRectContainsPoint(self.touchRegion, point) || CGRectContainsPoint(self.ticketTouchRegion, point)) &&
+        [super pointInside:point withEvent:event];
 }
 @end
 
@@ -356,6 +358,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
             [controller.view stopContentAnimation];
             [controller.statusBarPlayerView stopContentAnimation];
             [controller.nextArtwork setURL:@"" active:NO onChange:nil];
+            [controller updateNotchGestureWindow];
         } else if ([controller shouldShow]) { [controller reconcile]; }
     };
     self.screenCoverObserver = [NNPScreenCoverObserver new];
@@ -703,7 +706,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleNotchTrackPan:)];
         pan.maximumNumberOfTouches = 1;
         [root.view addGestureRecognizer:pan];
-        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(toggleCoverSheetBlackout:)];
+        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleAODTap:)];
         [tap requireGestureRecognizerToFail:pan];
         [root.view addGestureRecognizer:tap];
         window.rootViewController = root;
@@ -714,11 +717,21 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     CGFloat height = CGRectGetHeight(scene.coordinateSpace.bounds);
     self.notchGestureWindow.frame = CGRectMake(0.0, 0.0, width, height);
     self.notchGestureWindow.touchRegion = CGRectMake(width * 0.5 - 110.0, 30.0, 220.0, 66.0);
+    self.notchGestureWindow.ticketTouchRegion = [self.mengo interactiveRectInView:self.notchGestureWindow.rootViewController.view];
+    NNPDiagnosticSetBool(@"MengoTouchRoutingActive", !CGRectIsNull(self.notchGestureWindow.ticketTouchRegion));
     self.notchGestureWindow.hidden = NO;
+}
+- (void)handleAODTap:(UITapGestureRecognizer *)gesture {
+    if (gesture.state != UIGestureRecognizerStateRecognized || ![self shouldPresentInsideCoverSheet] ||
+        self.coverSheetBlackoutRevealed || [self pocketSuspended]) return;
+    CGPoint point = [gesture locationInView:gesture.view];
+    if ([self.mengo handleTapAtPoint:point inView:gesture.view]) return;
+    if (CGRectContainsPoint(self.notchGestureWindow.touchRegion, point)) [self toggleCoverSheetBlackout:nil];
 }
 - (void)handleNotchTrackPan:(UIPanGestureRecognizer *)gesture {
     if (gesture.state == UIGestureRecognizerStateBegan) {
-        self.notchPanHandled = NO;
+        self.notchPanHandled = self.mengoOpen || !CGRectContainsPoint(self.notchGestureWindow.touchRegion,
+            [gesture locationInView:gesture.view]);
         NNPDiagnosticLogTransition(@"MEDIA notch pan began");
         return;
     }

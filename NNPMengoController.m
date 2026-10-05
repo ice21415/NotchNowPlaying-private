@@ -121,6 +121,27 @@ static NSDictionary *NNPMengoSession(void) {
     [NSRunLoop.mainRunLoop addTimer:self.closeTimer forMode:NSRunLoopCommonModes];
     [self fetch];
 }
+- (CGRect)interactiveRectInView:(UIView *)view {
+    if (!self.active || !self.overlay.superview || self.overlay.hidden) return CGRectNull;
+    UIView *target = self.overlay.ticketOpen ? self.panel : self.entry;
+    return [target convertRect:target.bounds toView:view];
+}
+- (BOOL)handleTapAtPoint:(CGPoint)point inView:(UIView *)view {
+    if (!self.active || !self.overlay.superview || self.overlay.hidden) return NO;
+    if (!self.overlay.ticketOpen) {
+        if (!CGRectContainsPoint([self.entry convertRect:self.entry.bounds toView:view], point)) return NO;
+        NNPDiagnosticSetString(@"MengoLastTouchAction", @"open");
+        [self open];
+        return YES;
+    }
+    UIView *back = [self.panel viewWithTag:1], *refresh = [self.panel viewWithTag:2];
+    if (CGRectContainsPoint([back convertRect:back.bounds toView:view], point)) {
+        NNPDiagnosticSetString(@"MengoLastTouchAction", @"close"); [self close];
+    } else if (CGRectContainsPoint([refresh convertRect:refresh.bounds toView:view], point)) {
+        NNPDiagnosticSetString(@"MengoLastTouchAction", @"refresh"); [self fetch];
+    }
+    return CGRectContainsPoint([self.overlay convertRect:self.overlay.bounds toView:view], point);
+}
 - (void)close {
     BOOL wasOpen = self.overlay.ticketOpen;
     self.generation++;
