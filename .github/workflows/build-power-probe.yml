@@ -6,6 +6,7 @@ on:
     paths:
       - 'research/tools/aod_power_probe.m'
       - 'research/tools/media_queue_probe.m'
+      - 'research/tools/cover_sensor_probe.m'
       - '.github/workflows/build-power-probe.yml'
 permissions:
   contents: read
@@ -28,6 +29,11 @@ jobs:
             -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
             research/tools/media_queue_probe.m -o media-queue-probe
           ldid -S media-queue-probe
+          xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=15.0 \
+            -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -fobjc-arc -Wall -Wextra -Werror -framework Foundation -framework CoreMotion \
+            research/tools/cover_sensor_probe.m -o cover-sensor-probe
+          ldid -S cover-sensor-probe
           shasum -a 256 aod-power-probe > power-probe-sha256.txt
       - uses: actions/upload-artifact@v4
         with:
@@ -35,4 +41,5 @@ jobs:
           path: |
             aod-power-probe
             media-queue-probe
+            cover-sensor-probe
             power-probe-sha256.txt
