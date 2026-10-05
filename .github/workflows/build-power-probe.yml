@@ -7,6 +7,7 @@ on:
       - 'research/tools/aod_power_probe.m'
       - 'research/tools/media_queue_probe.m'
       - 'research/tools/cover_sensor_probe.m'
+      - 'research/tools/cover_sensor_probe_info.plist'
       - '.github/workflows/build-power-probe.yml'
 permissions:
   contents: read
@@ -32,6 +33,7 @@ jobs:
           xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=15.0 \
             -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
             -fobjc-arc -Wall -Wextra -Werror -framework Foundation -framework CoreMotion \
+            -Wl,-sectcreate,__TEXT,__info_plist,research/tools/cover_sensor_probe_info.plist \
             research/tools/cover_sensor_probe.m -o cover-sensor-probe
           ldid -S cover-sensor-probe
           shasum -a 256 aod-power-probe > power-probe-sha256.txt
