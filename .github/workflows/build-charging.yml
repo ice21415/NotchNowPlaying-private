@@ -94,6 +94,10 @@ jobs:
           xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
             research/tools/cover_confirmation_test.m NNPCoverConfirmation.m -o cover-confirmation-test
           ./cover-confirmation-test
+          xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
+            research/tools/mengo_ticket_test.m NNPMengoTicket.m -o mengo-ticket-test
+          ./mengo-ticket-test
+          python3 research/tools/mengo_bridge_test.py
           for verbose in 0 1; do
             xcrun --sdk iphoneos clang -fsyntax-only -arch arm64e -miphoneos-version-min=15.0 \
               -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" -fobjc-arc \
@@ -134,7 +138,7 @@ jobs:
           test "$(dpkg-deb -f "$package" Architecture)" = iphoneos-arm64e
           test "$(dpkg-deb -f "$package" Version)" = "$expected_version"
           dpkg-deb -x "$package" package-check
-          for name in NotchNowPlaying NNPSpotifyProbe; do
+          for name in NotchNowPlaying NNPSpotifyProbe NNPMengoBridge; do
             dylib=$(find package-check -name "$name.dylib" -print -quit)
             test -n "$dylib"
             file "$dylib"

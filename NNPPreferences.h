@@ -18,6 +18,7 @@ FOUNDATION_EXPORT NSString * const NNPSpotifyDataDidChangeNotification;
 @property(nonatomic, readonly) BOOL showNextTrack;
 @property(nonatomic, readonly) BOOL aodLandscapeEnabled;
 @property(nonatomic, readonly) BOOL aodPocketModeEnabled;
+@property(nonatomic, readonly) BOOL mengoEnabled;
 @property(nonatomic, readonly) CGFloat lyricsSyncOffsetMilliseconds;
 @property(nonatomic, copy, readonly) NSString *spotifyLyricsText;
 @property(nonatomic, copy, readonly) NSString *spotifyLyricsNextLine;

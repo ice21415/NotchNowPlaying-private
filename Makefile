@@ -8,8 +8,11 @@ STRIP := 1
 
 include $(THEOS)/makefiles/common.mk
 
-TWEAK_NAME := NotchNowPlaying NNPSpotifyProbe
-NotchNowPlaying_FILES := Tweak.xm NNPState.m NNPView.m NNPController.m NNPNextArtwork.m NNPChargingController.m NNPAODAmbientLight.m NNPDiagnostics.m NNPNotificationDiagnostics.m NNPPreferences.m NNPSnapshotCache.m NNPLockStateController.m NNPPocketObserver.m NNPScreenCoverObserver.m NNPCoverConfirmation.m NNPDisplayController.m
+TWEAK_NAME := NotchNowPlaying NNPSpotifyProbe NNPMengoBridge
+NotchNowPlaying_FILES := Tweak.xm NNPState.m NNPView.m NNPController.m NNPNextArtwork.m NNPChargingController.m NNPAODAmbientLight.m NNPDiagnostics.m NNPNotificationDiagnostics.m NNPPreferences.m NNPSnapshotCache.m NNPLockStateController.m NNPPocketObserver.m NNPScreenCoverObserver.m NNPCoverConfirmation.m NNPDisplayController.m NNPMengoController.m NNPMengoTicket.m
+NNPMengoBridge_FILES := NNPMengoBridge.xm
+NNPMengoBridge_CFLAGS := -fobjc-arc -fvisibility=hidden -fno-ident
+NNPMengoBridge_FRAMEWORKS := Foundation UIKit WebKit
 NNPSpotifyProbe_FILES := NNPSpotifyProbe.xm NNPSpotifyLyricsProbe.m NNPSpotifyQueue.m NNPSpotifyLyricsCaptureLoop.m
 NNPSpotifyProbe_CFLAGS := -fobjc-arc -fvisibility=hidden -fno-ident
 NNPSpotifyProbe_FRAMEWORKS := Foundation UIKit MediaPlayer

@@ -7,6 +7,7 @@
 #import "NNPState.h"
 #import "NNPQueueSnapshot.h"
 #import "NNPNextArtwork.h"
+#import "NNPMengoController.h"
 #import "NNPView.h"
 #import "NNPPreferences.h"
 #import "NNPLockStateController.h"
@@ -196,6 +197,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic, strong) NNPState *state;
 @property(nonatomic, strong) NNPNextArtwork *nextArtwork;
 @property(nonatomic, strong) NNPPocketObserver *pocketObserver;
+@property(nonatomic, strong) NNPMengoController *mengo;
+@property(nonatomic) BOOL mengoOpen;
 @property(nonatomic, strong) NNPScreenCoverObserver *screenCoverObserver;
 @property(nonatomic) BOOL orientationMonitoring;
 @property(nonatomic) UIDeviceOrientation aodOrientation;
@@ -341,6 +344,19 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(spotifyDataChanged:) name:NNPSpotifyDataDidChangeNotification object:self.preferences];
     self.display = [NNPDisplayController new]; self.lockState = [NNPLockStateController new];
     __weak typeof(self) weakSelf = self;
+    self.mengo = [NNPMengoController new];
+    self.mengo.presentationChanged = ^(BOOL open) {
+        NNPController *controller = weakSelf;
+        if (!controller) return;
+        controller.mengoOpen = open;
+        controller.display.automaticBrightnessNits = open ? 180 : controller.ambientBrightnessTargetNits;
+        if (open) {
+            [controller.progressTimer invalidate]; controller.progressTimer = nil;
+            [controller.view stopContentAnimation];
+            [controller.statusBarPlayerView stopContentAnimation];
+            [controller.nextArtwork setURL:@"" active:NO onChange:nil];
+        } else if ([controller shouldShow]) { [controller reconcile]; }
+    };
     self.screenCoverObserver = [NNPScreenCoverObserver new];
     self.screenCoverObserver.stateChanged = ^(__unused BOOL covered) { [weakSelf reconcile]; };
     self.pocketObserver = [NNPPocketObserver new];
@@ -359,7 +375,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
             NNPDiagnosticLogTransition([NSString stringWithFormat:@"AOD_AMBIENT lux=%.1f valid=%@ targetNits=%.2f", lux, valid ? @"YES" : @"NO", target]);
         }
         controller.ambientBrightnessTargetNits = target;
-        controller.display.automaticBrightnessNits = target;
+        if (!controller.mengoOpen) controller.display.automaticBrightnessNits = target;
         NNPDiagnosticSetDouble(@"AODAutomaticBrightnessTargetNits", target);
     };
     self.display.stateChangedHandler = ^{
@@ -666,6 +682,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     NNPDiagnosticLogTransition(@"MEDIA notch gesture window removed");
 }
 - (void)updateNotchGestureWindow {
+    BOOL mengoEligible = self.preferences.mengoEnabled && [self shouldPresentInsideCoverSheet] &&
+        !self.coverSheetBlackoutRevealed && ![self pocketSuspended] && self.view.playbackVisible;
+    [self.mengo setHostWindow:self.coverSheetHostView.window active:mengoEligible];
     BOOL eligible = [self shouldPresentInsideCoverSheet] && !self.coverSheetBlackoutRevealed &&
         self.view.playbackVisible && self.state.hasTrack && [self isAllowedMedia:self.state];
     UIWindowScene *scene = self.coverSheetHostView.window.windowScene;
@@ -769,6 +788,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     return presented;
 }
 - (void)revealCoverSheetControlsWithReason:(NSString *)reason {
+    [self.mengo setHostWindow:nil active:NO];
     if (!self.coverSheetHostView || !self.coverSheetBlackoutView || self.coverSheetBlackoutRevealed) return;
     self.coverSheetBlackoutRevealed = YES;
     self.coverSheetBlackoutView.hidden = YES;
@@ -1102,6 +1122,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         [self startProgressTimer]; [self startAODPixelShiftTimer]; [self updateProgress]; });
 }
 - (void)hide {
+    [self.mengo setHostWindow:nil active:NO];
     [self.view cancelNotificationSnakeAnimation];
     [self.statusBarPlayerView cancelNotificationSnakeAnimation];
     BOOL keepAmbient = [self shouldPresentInsideCoverSheet] && ![self pocketSuspended];
@@ -1145,6 +1166,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     self.view.pixelShiftPixels = pixels;
     self.statusBarPlayerView.pixelShiftPixels = pixels;
     self.charging.pixelShiftPixels = pixels;
+    [self.mengo restPixelsAtOffset:pixels];
     NNPDiagnosticSetString(@"AODPlayerLayerShift", NSStringFromCGAffineTransform(CATransform3DGetAffineTransform(self.view.layer.sublayerTransform)));
     NNPDiagnosticSetString(@"AODMirrorLayerShift", NSStringFromCGAffineTransform(CATransform3DGetAffineTransform(self.statusBarPlayerView.layer.sublayerTransform)));
     __weak typeof(self) weakController = self;
@@ -1195,6 +1217,11 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     NNPDiagnosticSetInteger(@"AODPixelShiftY", 0);
 }
 - (void)startProgressTimer {
+    if (self.mengoOpen) {
+        [self.progressTimer invalidate]; self.progressTimer = nil;
+        [self.view stopContentAnimation]; [self.statusBarPlayerView stopContentAnimation];
+        return;
+    }
     NSTimeInterval interval = self.preferences.progressUpdateInterval;
     if (self.progressTimer && fabs(self.progressTimerInterval - interval) < 0.01) return;
     [self.progressTimer invalidate];
@@ -1208,7 +1235,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [[NSRunLoop mainRunLoop] addTimer:self.progressTimer forMode:NSRunLoopCommonModes];
 }
 - (void)updateProgress {
-    if (!self.state || !self.window || self.window.hidden) return;
+    if (!self.state || !self.window || self.window.hidden || self.mengoOpen) return;
     [self.preferences reloadSpotifyLyricsSnapshot];
     [self applyLyricsPreferences];
     NSTimeInterval elapsed = self.state.elapsed;
@@ -1219,6 +1246,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [self.statusBarPlayerView updateElapsed:elapsed duration:self.state.duration playing:self.state.playing];
 }
 - (void)dealloc {
+    [_mengo setHostWindow:nil active:NO];
     [self setAODOrientationMonitoring:NO];
     [self.screenCoverObserver setActive:NO];
     [self.pocketObserver setActive:NO];
