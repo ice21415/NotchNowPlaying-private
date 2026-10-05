@@ -142,7 +142,9 @@ static NSDictionary *NNPMengoSession(void) {
     NSDictionary *auth = NNPMengoSession();
     NSString *token = [auth[@"token"] isKindOfClass:NSString.class] ? auth[@"token"] : nil;
     NSString *endpoint = auth[@"endpoint"];
+    NSString *agent = [auth[@"agent"] isKindOfClass:NSString.class] ? auth[@"agent"] : nil;
     if (!token.length || token.length > 16384 ||
+        !agent.length || agent.length > 512 || [agent rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound ||
         (![endpoint isEqual:@"QRCode"] && ![endpoint isEqual:@"MQRCode"])) {
         self.status.text = @"請先開啟 MeN Go\n登入並顯示一次乘車碼";
         NNPDiagnosticSetBool(@"MengoSessionAvailable", NO);
@@ -160,6 +162,9 @@ static NSDictionary *NNPMengoSession(void) {
     request.HTTPMethod = @"POST"; request.HTTPBody = NNPMengoFormBody(token);
     [request setValue:@"application/x-www-form-urlencoded; charset=UTF-8" forHTTPHeaderField:@"Content-Type"];
     [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+    [request setValue:agent forHTTPHeaderField:@"User-Agent"];
+    [request setValue:@"null" forHTTPHeaderField:@"Origin"];
+    [request setValue:@"XMLHttpRequest" forHTTPHeaderField:@"X-Requested-With"];
     NSUInteger generation = ++self.generation;
     __weak typeof(self) weakSelf = self;
     self.task = [self.session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {

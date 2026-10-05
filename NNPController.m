@@ -349,6 +349,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         NNPController *controller = weakSelf;
         if (!controller) return;
         controller.mengoOpen = open;
+        controller.charging.aodPresentationActive = !open && [controller shouldPresentInsideCoverSheet] && ![controller pocketSuspended];
         controller.display.automaticBrightnessNits = open ? 180 : controller.ambientBrightnessTargetNits;
         if (open) {
             [controller.progressTimer invalidate]; controller.progressTimer = nil;
@@ -429,7 +430,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [self reconcile];
 }
 - (void)spotifyDataChanged:(__unused NSNotification *)note {
-    if (self.view.playbackVisible && self.window && !self.window.hidden) [self applyLyricsPreferences];
+    if (!self.mengoOpen && self.view.playbackVisible && self.window && !self.window.hidden) [self applyLyricsPreferences];
 }
 - (void)refreshDiagnosticUI { [self reconcile]; }
 - (void)setLocked:(BOOL)locked {
@@ -507,7 +508,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 }
 
 - (BOOL)shouldShow {
-    if ([self pocketSuspended]) return NO;
+    if (self.mengoOpen || [self pocketSuspended]) return NO;
     NNPState *state = self.state;
     if (!self.preferences.enabled || !state.hasTrack || ![self isAllowedMedia:state]) return NO;
     if (self.locked && !self.preferences.showOnLockScreen) return NO;
@@ -921,6 +922,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [self.view setNeedsLayout];
 }
 - (void)applyLyricsPreferences {
+    if (self.mengoOpen) { [self.nextArtwork setURL:@"" active:NO onChange:nil]; return; }
     NSDictionary *queue = self.preferences.spotifyQueueSnapshot;
     BOOL previewDue = self.preferences.showNextTrack && NNPQueuePreviewDue(self.state.duration, self.state.elapsed, self.state.timestamp,
         self.state.playbackRate, NSDate.date.timeIntervalSince1970);
@@ -1080,7 +1082,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         }
         BOOL show = [self shouldShow];
         self.charging.aodPresentationActive = self.locked && self.display.aodPresentationActive &&
-            self.display.lifecycleState == NNPDisplayLifecycleStateActive && ![self pocketSuspended];
+            self.display.lifecycleState == NNPDisplayLifecycleStateActive && ![self pocketSuspended] && !self.mengoOpen;
         NSInteger lifecycle = self.display.lifecycleState;
         BOOL reconcileStateChanged = !self.didRecordReconcileState ||
             self.recordedReconcileLocked != self.locked ||

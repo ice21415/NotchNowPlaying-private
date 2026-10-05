@@ -22,16 +22,18 @@
     NSDictionary *old = [NSDictionary dictionaryWithContentsOfFile:path];
     NSString *endpoint = [body[@"endpoint"] isEqual:@"MQRCode"] ? @"MQRCode" :
         ([body[@"endpoint"] isEqual:@"QRCode"] ? @"QRCode" : old[@"endpoint"]);
-    if ([old[@"token"] isEqual:token] && [old[@"endpoint"] isEqual:endpoint ?: @""]) return;
+    NSString *agent = [body[@"agent"] isKindOfClass:NSString.class] ? body[@"agent"] : nil;
+    if (!agent.length || agent.length > 512 || [agent rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound) return;
+    if ([old[@"token"] isEqual:token] && [old[@"endpoint"] isEqual:endpoint ?: @""] && [old[@"agent"] isEqual:agent]) return;
     NSData *data = [NSPropertyListSerialization dataWithPropertyList:
-        @{ @"token": token, @"endpoint": endpoint ?: @"", @"updated": @(NSDate.date.timeIntervalSince1970) }
+        @{ @"token": token, @"endpoint": endpoint ?: @"", @"agent": agent, @"updated": @(NSDate.date.timeIntervalSince1970) }
         format:NSPropertyListBinaryFormat_v1_0 options:0 error:nil];
     if ([data writeToFile:path options:NSDataWritingAtomic | NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication error:nil])
         chmod(path.fileSystemRepresentation, 0600);
 }
 @end
 
-static const char NNPMengoInstalledKey;
+static const char NNPMengoInstalledKey = 0;
 %hook WKWebView
 - (instancetype)initWithFrame:(CGRect)frame configuration:(WKWebViewConfiguration *)configuration {
     WKUserContentController *content = configuration.userContentController;
@@ -40,7 +42,7 @@ static const char NNPMengoInstalledKey;
         [content addScriptMessageHandler:bridge name:@"nnpMengoSession"];
         objc_setAssociatedObject(content, &NNPMengoInstalledKey, bridge, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         NSString *script = @"(function(){'use strict';if(window.__nnpMengoBridge)return;window.__nnpMengoBridge=true;"
-            "var endpoint='';function send(){try{window.webkit.messageHandlers.nnpMengoSession.postMessage({token:localStorage.getItem('ek_login_token')||'',endpoint:endpoint});}catch(e){}}"
+            "var endpoint='';function send(){try{window.webkit.messageHandlers.nnpMengoSession.postMessage({token:localStorage.getItem('ek_login_token')||'',endpoint:endpoint,agent:navigator.userAgent});}catch(e){}}"
             "var set=Storage.prototype.setItem,remove=Storage.prototype.removeItem,clear=Storage.prototype.clear;"
             "Storage.prototype.setItem=function(k,v){var r=set.apply(this,arguments);if(this===localStorage&&k==='ek_login_token')send();return r;};"
             "Storage.prototype.removeItem=function(k){var r=remove.apply(this,arguments);if(this===localStorage&&k==='ek_login_token')send();return r;};"
