@@ -52,6 +52,7 @@ static NSDictionary *NNPMengoSession(void) {
 - (void)setHostWindow:(UIWindow *)host active:(BOOL)active {
     active = active && host.windowScene != nil;
     self.active = active;
+    NNPDiagnosticSetBool(@"MengoEntryVisible", active);
     if (!active) {
         [self close];
         self.window.hidden = YES;
@@ -74,6 +75,7 @@ static NSDictionary *NNPMengoSession(void) {
         [self.entry addTarget:self action:@selector(open) forControlEvents:UIControlEventTouchUpInside];
         [root.view addSubview:self.entry];
         self.panel = [UIView new]; self.panel.backgroundColor = UIColor.blackColor;
+        self.panel.accessibilityViewIsModal = YES;
         self.panel.hidden = YES; [root.view addSubview:self.panel];
         self.codeView = [UIImageView new]; self.codeView.contentMode = UIViewContentModeScaleAspectFit;
         self.codeView.backgroundColor = UIColor.whiteColor;
@@ -113,7 +115,8 @@ static NSDictionary *NNPMengoSession(void) {
     if (self.presentationChanged) self.presentationChanged(YES);
     NNPDiagnosticSetBool(@"MengoTicketOpen", YES);
     __weak typeof(self) weakSelf = self;
-    self.closeTimer = [NSTimer scheduledTimerWithTimeInterval:90 repeats:NO block:^(NSTimer *timer) { [weakSelf close]; }];
+    self.closeTimer = [NSTimer timerWithTimeInterval:90 repeats:NO block:^(NSTimer *timer) { [weakSelf close]; }];
+    [NSRunLoop.mainRunLoop addTimer:self.closeTimer forMode:NSRunLoopCommonModes];
     [self fetch];
 }
 - (void)close {
@@ -128,6 +131,7 @@ static NSDictionary *NNPMengoSession(void) {
     if (wasOpen && self.presentationChanged) self.presentationChanged(NO);
     NNPDiagnosticSetBool(@"MengoTicketOpen", NO);
     NNPDiagnosticSetBool(@"MengoRequestActive", NO);
+    NNPDiagnosticSetBool(@"MengoTicketImageAvailable", NO);
 }
 - (void)restPixelsAtOffset:(CGPoint)pixels {
     if (!self.window || self.window.hidden) return;
@@ -191,7 +195,8 @@ static NSDictionary *NNPMengoSession(void) {
             owner.status.text = @"MeN Go 乘車碼\n請將 QR Code 對準讀碼機";
             // The app refreshes at 300 s; use a shorter display age, never reuse
             // an earlier image on reopen or keep it after a failed renewal.
-            owner.refreshTimer = [NSTimer scheduledTimerWithTimeInterval:60 repeats:NO block:^(NSTimer *timer) { [weakSelf fetch]; }];
+            owner.refreshTimer = [NSTimer timerWithTimeInterval:60 repeats:NO block:^(NSTimer *timer) { [weakSelf fetch]; }];
+            [NSRunLoop.mainRunLoop addTimer:owner.refreshTimer forMode:NSRunLoopCommonModes];
         });
     }];
     NNPDiagnosticSetBool(@"MengoRequestActive", YES);

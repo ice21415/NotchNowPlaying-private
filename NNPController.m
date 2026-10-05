@@ -385,7 +385,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         void (^update)(void) = ^{
             controller.charging.aodPresentationActive = controller.locked &&
                 controller.display.aodPresentationActive &&
-                controller.display.lifecycleState == NNPDisplayLifecycleStateActive;
+                controller.display.lifecycleState == NNPDisplayLifecycleStateActive &&
+                !controller.mengoOpen && ![controller pocketSuspended];
             if (!controller.display.aodPresentationActive) {
                 [controller.view clearNotificationIndicators];
                 [controller.statusBarPlayerView clearNotificationIndicators];
