@@ -29,6 +29,8 @@ static NSObject *NNPSpotifyTrackContextLock;
 static dispatch_once_t NNPSpotifyTrackContextOnce;
 static NSURLSession *NNPSpotifyLyricsRequestSession;
 static NSURLRequest *NNPSpotifyLyricsRequestTemplate;
+static NSDictionary *NNPSpotifyNativeTrackMetadata;
+static void NNPSpotifyLyricsProbeEnsureCurrentTrackLyrics(void);
 static NSString *NNPSpotifyVerifiedLyricsTrackTitle;
 static NSString *NNPSpotifyVerifiedLyricsTrackArtist;
 static NSString *NNPSpotifyVerifiedLyricsTrackIdentifierValue;
@@ -38,6 +40,30 @@ static void NNPSpotifyEnsureTrackContextStore(void) {
         NNPSpotifyTrackContextByRequestPath = [NSMutableDictionary dictionary];
         NNPSpotifyLyricsFetchAttempts = [NSMutableDictionary dictionary];
         NNPSpotifyTrackContextLock = [NSObject new];
+    });
+}
+
+// The player observer remains current while lock-screen metadata may lag in background.
+static NSDictionary *NNPSpotifyCurrentTrackMetadata(void) {
+    NNPSpotifyEnsureTrackContextStore();
+    @synchronized (NNPSpotifyTrackContextLock) {
+        if (NNPSpotifyNativeTrackMetadata) return NNPSpotifyNativeTrackMetadata;
+    }
+    return MPNowPlayingInfoCenter.defaultCenter.nowPlayingInfo ?: @{};
+}
+
+void NNPSpotifyLyricsProbeTrackChanged(NSString *uri, NSString *title, NSString *artist) {
+    if (!uri.length || !title.length) return;
+    NNPSpotifyEnsureTrackContextStore();
+    NSDictionary *metadata = @{MPNowPlayingInfoPropertyExternalContentIdentifier: uri,
+                               MPMediaItemPropertyTitle: title,
+                               MPMediaItemPropertyArtist: artist ?: @""};
+    @synchronized (NNPSpotifyTrackContextLock) {
+        if ([NNPSpotifyNativeTrackMetadata isEqual:metadata]) return;
+        NNPSpotifyNativeTrackMetadata = [metadata copy];
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NNPSpotifyLyricsProbeEnsureCurrentTrackLyrics();
     });
 }
 
@@ -134,7 +160,7 @@ static void NNPSpotifyInitializeLyricsTrackAssociation(void) {
 static void NNPSpotifyRememberTrackForLyricsRequest(NSURLRequest *request) {
     NSString *path = request.URL.path;
     if (!path.length || ![request.URL.absoluteString.lowercaseString containsString:@"lyrics"]) return;
-    NSDictionary *nowPlaying = MPNowPlayingInfoCenter.defaultCenter.nowPlayingInfo ?: @{};
+    NSDictionary *nowPlaying = NNPSpotifyCurrentTrackMetadata();
     NSString *title = [nowPlaying[MPMediaItemPropertyTitle] isKindOfClass:NSString.class]
         ? nowPlaying[MPMediaItemPropertyTitle] : @"";
     NSString *artist = [nowPlaying[MPMediaItemPropertyArtist] isKindOfClass:NSString.class]
@@ -327,7 +353,7 @@ static NSArray<NSDictionary *> *NNPSpotifyParseColorLyricsResponse(NSData *data,
 }
 
 static void NNPSpotifyPublishTimedLyrics(NSArray<NSDictionary *> *lines, NSString *syncType, NSURLRequest *request) {
-    NSDictionary *nowPlaying = MPNowPlayingInfoCenter.defaultCenter.nowPlayingInfo ?: @{};
+    NSDictionary *nowPlaying = NNPSpotifyCurrentTrackMetadata();
     NSDictionary *requestContext = NNPSpotifyTrackContextForLyricsRequest(request);
     NSString *currentTrackTitle = [nowPlaying[MPMediaItemPropertyTitle] isKindOfClass:NSString.class]
         ? nowPlaying[MPMediaItemPropertyTitle] : @"";
@@ -356,7 +382,7 @@ static void NNPSpotifyPublishTimedLyrics(NSArray<NSDictionary *> *lines, NSStrin
                                requestedTrackTitle, requestedTrackArtist, currentTrackTitle, currentTrackArtist]);
         return;
     }
-    id elapsedValue = nowPlaying[MPNowPlayingInfoPropertyElapsedPlaybackTime];
+    id elapsedValue = MPNowPlayingInfoCenter.defaultCenter.nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime];
     NSTimeInterval elapsed = [elapsedValue respondsToSelector:@selector(doubleValue)] ? [elapsedValue doubleValue] : 0.0;
     NSUInteger currentIndex = 0;
     for (NSUInteger index = 1; index < lines.count; index++) {
@@ -1060,7 +1086,7 @@ static void NNPSpotifyLyricsProbeCapture(void) {
 }
 
 static void NNPSpotifyLyricsProbeEnsureCurrentTrackLyrics(void) {
-    NSDictionary *nowPlaying = MPNowPlayingInfoCenter.defaultCenter.nowPlayingInfo ?: @{};
+    NSDictionary *nowPlaying = NNPSpotifyCurrentTrackMetadata();
     NSString *trackIdentifier = NNPSpotifyTrackIdentifierFromMetadata(nowPlaying);
     NSString *trackTitle = [nowPlaying[MPMediaItemPropertyTitle] isKindOfClass:NSString.class]
         ? nowPlaying[MPMediaItemPropertyTitle] : @"";

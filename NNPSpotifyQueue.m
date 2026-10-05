@@ -3,6 +3,7 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import "NNPCoverURL.h"
+#import "NNPSpotifyLyricsProbe.h"
 
 // Read only object-returning getters. Spotify's private model varies by version.
 static id NNPQueueGet(id object, NSString *name) {
@@ -30,6 +31,9 @@ void NNPSpotifyQueueReport(id state) {
     if (!state) return;
     dispatch_async(dispatch_get_main_queue(), ^{
         id track = NNPQueueGet(state, @"track");
+        NNPSpotifyLyricsProbeTrackChanged(NNPQueueString(NNPQueueGet(track, @"URI")),
+                                         NNPQueueString(NNPQueueGet(track, @"trackTitle")),
+                                         NNPQueueString(NNPQueueGet(track, @"artistName")));
         id future = NNPQueueGet(state, @"future");
         if (![future isKindOfClass:NSArray.class]) return;
         id next = [future count] ? [future firstObject] : nil;
