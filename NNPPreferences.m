@@ -1,8 +1,10 @@
 #import "NNPPreferences.h"
 #import "NNPDiagnostics.h"
+#import "NNPSnapshotCache.h"
 #import <CoreFoundation/CoreFoundation.h>
 
 NSString * const NNPPreferencesDidChangeNotification = @"com.user.notchnowplaying.preferences.changed";
+NSString * const NNPSpotifyDataDidChangeNotification = @"com.user.notchnowplaying.spotify-data.changed";
 static CFStringRef const NNPPreferencesDomain = CFSTR("com.user.notchnowplaying");
 
 static id NNPPreferenceValue(NSString *key) {
@@ -45,6 +47,13 @@ static CGFloat NNPFloat(NSString *key, CGFloat fallback) {
 }
 
 @interface NNPPreferences ()
+@property(nonatomic, strong) NNPSnapshotCache *snapshotCache;
+@property(nonatomic, strong) NSDictionary *appliedSpotifySnapshot;
+@property(nonatomic) BOOL observing;
+@property(nonatomic) BOOL changeScheduled;
+@property(nonatomic) BOOL settingsChanged;
+@property(nonatomic) BOOL spotifyChanged;
+- (void)queueChangeForSettings:(BOOL)settings;
 @property(nonatomic) BOOL enabled;
 @property(nonatomic) BOOL chargingAnimationEnabled;
 @property(nonatomic) BOOL spotifyOnly;
@@ -77,8 +86,8 @@ static CGFloat NNPFloat(NSString *key, CGFloat fallback) {
 
 static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo) {
     NNPPreferences *preferences = (__bridge NNPPreferences *)observer;
-    [preferences reload];
-    [[NSNotificationCenter defaultCenter] postNotificationName:NNPPreferencesDidChangeNotification object:preferences];
+    BOOL settings = CFEqual(name, (__bridge CFStringRef)NNPPreferencesDidChangeNotification);
+    dispatch_async(dispatch_get_main_queue(), ^{ [preferences queueChangeForSettings:settings]; });
 }
 
 @implementation NNPPreferences
@@ -110,7 +119,16 @@ static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observe
     self.progressHeight = MAX(2.0, MIN(6.0, NNPFloat(@"ProgressHeight", 3.0)));
 }
 - (void)reloadSpotifyLyricsSnapshot {
-    NSDictionary *lyrics = NNPSpotifyLyricsSnapshot();
+    if (!self.snapshotCache) {
+        self.snapshotCache = [[NNPSnapshotCache alloc] initWithLoader:^{
+            static NSUInteger reads;
+            NNPDiagnosticSetInteger(@"SpotifySnapshotReadCount", ++reads);
+            return NNPSpotifyLyricsSnapshot();
+        } recoveryInterval:30.0];
+    }
+    NSDictionary *lyrics = [self.snapshotCache snapshotAtTime:NSProcessInfo.processInfo.systemUptime];
+    if (lyrics == self.appliedSpotifySnapshot) return;
+    self.appliedSpotifySnapshot = lyrics;
     self.spotifyQueueSnapshot = [lyrics[@"SpotifyQueueSnapshot"] isKindOfClass:NSDictionary.class] ? lyrics[@"SpotifyQueueSnapshot"] : @{};
     self.spotifyLyricsText = [lyrics[@"SpotifyLyricsText"] isKindOfClass:NSString.class] ? lyrics[@"SpotifyLyricsText"] : @"";
     self.spotifyLyricsNextLine = [lyrics[@"SpotifyLyricsNextLine"] isKindOfClass:NSString.class] ? lyrics[@"SpotifyLyricsNextLine"] : @"";
@@ -124,7 +142,28 @@ static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observe
     NNPDiagnosticSetDouble(@"PreferenceAODBrightnessMultiplier", self.aodBrightnessMultiplier);
 }
 - (void)startObserving {
+    if (self.observing) return;
+    self.observing = YES;
     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), (__bridge const void *)(self), NNPPreferencesCallback, (__bridge CFStringRef)NNPPreferencesDidChangeNotification, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), (__bridge const void *)(self), NNPPreferencesCallback, (__bridge CFStringRef)NNPSpotifyDataDidChangeNotification, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+}
+- (void)queueChangeForSettings:(BOOL)settings {
+    self.settingsChanged |= settings;
+    self.spotifyChanged |= !settings;
+    if (self.changeScheduled) return;
+    self.changeScheduled = YES;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        BOOL settingsChanged = self.settingsChanged;
+        BOOL spotifyChanged = self.spotifyChanged;
+        self.settingsChanged = self.spotifyChanged = self.changeScheduled = NO;
+        [self.snapshotCache invalidate];
+        if (settingsChanged) [self reload];
+        else [self reloadSpotifyLyricsSnapshot];
+        if (settingsChanged)
+            [NSNotificationCenter.defaultCenter postNotificationName:NNPPreferencesDidChangeNotification object:self];
+        else if (spotifyChanged)
+            [NSNotificationCenter.defaultCenter postNotificationName:NNPSpotifyDataDidChangeNotification object:self];
+    });
 }
 - (void)dealloc {
     CFNotificationCenterRemoveObserver(CFNotificationCenterGetDarwinNotifyCenter(), (__bridge const void *)(self), NULL, NULL);

@@ -120,10 +120,12 @@ static void NNPSpotifyInstallDataDelegateHooks(void) {
         return;
     }
     classCount = objc_getClassList(classes, classCount);
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
     NSUInteger receiveCount = 0;
     NSUInteger completeCount = 0;
     NSMutableArray<NSString *> *hookedNames = [NSMutableArray array];
 
+#endif
     for (int index = 0; index < classCount; index++) {
         Class cls = classes[index];
         if (!NNPSpotifyClassBelongsToMainBundle(cls, bundlePath)) continue;
@@ -144,16 +146,20 @@ static void NNPSpotifyInstallDataDelegateHooks(void) {
             }
             IMP replacement = isReceive ? (IMP)NNPSpotifyURLSessionDidReceiveData : (IMP)NNPSpotifyURLSessionTaskDidComplete;
             method_setImplementation(method, replacement);
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
             if (isReceive) receiveCount++; else completeCount++;
             NSString *name = NSStringFromClass(cls) ?: @"?";
             if (hookedNames.count < 24 && ![hookedNames containsObject:name]) [hookedNames addObject:name];
+#endif
         }
         free(methods);
     }
     free(classes);
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
     NNPSpotifyLyricsProbeAppendDiagnostic([NSString stringWithFormat:@"NETWORK-HOOK receive=%lu complete=%lu classes=%@",
                                            (unsigned long)receiveCount, (unsigned long)completeCount,
                                            [hookedNames componentsJoinedByString:@","]]);
+#endif
 }
 
 %ctor {

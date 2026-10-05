@@ -55,7 +55,7 @@ void NNPSpotifyQueueReport(id state) {
         dated[@"timestamp"] = @(NSDate.date.timeIntervalSince1970);
         CFPreferencesSetAppValue(CFSTR("SpotifyQueueSnapshot"), (__bridge CFDictionaryRef)dated, CFSTR("com.user.notchnowplaying"));
         CFPreferencesAppSynchronize(CFSTR("com.user.notchnowplaying"));
-        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFSTR("com.user.notchnowplaying.preferences.changed"), NULL, NULL, YES);
+        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFSTR("com.user.notchnowplaying.spotify-data.changed"), NULL, NULL, YES);
     });
 }
 @interface NNPSpotifyQueueObserver : NSObject

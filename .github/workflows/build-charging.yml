@@ -76,6 +76,14 @@ jobs:
           xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
             research/tools/queue_snapshot_test.m -o queue-snapshot-test
           ./queue-snapshot-test
+          xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
+            research/tools/snapshot_cache_test.m NNPSnapshotCache.m -o snapshot-cache-test
+          ./snapshot-cache-test
+          for verbose in 0 1; do
+            xcrun --sdk iphoneos clang -fsyntax-only -arch arm64e -miphoneos-version-min=15.0 \
+              -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" -fobjc-arc \
+              -Wall -Wextra -Werror -DNNP_ENABLE_VERBOSE_DIAGNOSTICS="$verbose" NNPSpotifyLyricsProbe.m
+          done
 
       - name: Build charging flow package
         run: |

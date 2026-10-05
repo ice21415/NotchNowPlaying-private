@@ -1,6 +1,7 @@
 #import <Foundation/Foundation.h>
 
 FOUNDATION_EXPORT NSString * const NNPPreferencesDidChangeNotification;
+FOUNDATION_EXPORT NSString * const NNPSpotifyDataDidChangeNotification;
 
 @interface NNPPreferences : NSObject
 @property(nonatomic, readonly) BOOL enabled;

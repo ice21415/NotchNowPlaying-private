@@ -1,3 +1,6 @@
+#ifndef NNP_ENABLE_VERBOSE_DIAGNOSTICS
+#define NNP_ENABLE_VERBOSE_DIAGNOSTICS 0
+#endif
 #import "NNPSpotifyLyricsProbe.h"
 #import <UIKit/UIKit.h>
 #import <CoreFoundation/CoreFoundation.h>
@@ -11,9 +14,13 @@
 #import <unistd.h>
 
 static CFStringRef const NNPSpotifySharedPreferences = CFSTR("com.user.notchnowplaying");
-static CFStringRef const NNPSpotifyLyricsChangedNotification = CFSTR("com.user.notchnowplaying.preferences.changed");
+static CFStringRef const NNPSpotifyLyricsChangedNotification = CFSTR("com.user.notchnowplaying.spotify-data.changed");
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
 static BOOL NNPSpotifyStringContainsAny(NSString *value, NSArray<NSString *> *needles);
-static void NNPSpotifyProbeAppend(NSString *line);
+#endif
+static void NNPSpotifyProbeAppendDebug(NSString *line);
+// The constant condition prevents argument evaluation in a normal build.
+#define NNPSpotifyProbeAppend(...) do { if (NNP_ENABLE_VERBOSE_DIAGNOSTICS) NNPSpotifyProbeAppendDebug(__VA_ARGS__); } while (0)
 static char NNPSpotifyNetworkBodyAssociationKey;
 static char NNPSpotifyNetworkBodyTruncatedAssociationKey;
 static NSMutableDictionary<NSString *, NSDictionary *> *NNPSpotifyTrackContextByRequestPath;
@@ -160,16 +167,21 @@ static NSDictionary *NNPSpotifyTrackContextForLyricsRequest(NSURLRequest *reques
     }
 }
 
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
 static NSString *NNPSpotifyLyricsProbePath(void) {
     return [NSTemporaryDirectory() stringByAppendingPathComponent:@"nnp-spotify-lyrics-runtime.log"];
 }
 
+#endif
 void NNPSpotifyLyricsProbeResetLog(void) {
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
     int fd = open(NNPSpotifyLyricsProbePath().fileSystemRepresentation, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd >= 0) close(fd);
+#endif
 }
 
-static void NNPSpotifyProbeAppend(NSString *line) {
+static void NNPSpotifyProbeAppendDebug(NSString *line) {
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
     if (!line.length) return;
     NSString *entry = [line stringByAppendingString:@"\n"];
     NSData *data = [entry dataUsingEncoding:NSUTF8StringEncoding];
@@ -184,6 +196,9 @@ static void NNPSpotifyProbeAppend(NSString *line) {
         remaining -= written;
     }
     close(fd);
+#else
+    (void)line;
+#endif
 }
 
 void NNPSpotifyLyricsProbeAppendDiagnostic(NSString *line) {
@@ -405,6 +420,7 @@ void NNPSpotifyLyricsProbeCaptureNetworkTask(NSURLSession *session, NSURLRequest
             NNPSpotifyLyricsRequestTemplate = [request copy];
         }
     }
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
     NSURLComponents *components = [NSURLComponents componentsWithURL:request.URL resolvingAgainstBaseURL:NO];
     NSMutableArray<NSString *> *queryKeys = [NSMutableArray array];
     for (NSURLQueryItem *item in components.queryItems ?: @[]) {
@@ -413,6 +429,8 @@ void NNPSpotifyLyricsProbeCaptureNetworkTask(NSURLSession *session, NSURLRequest
     NNPSpotifyProbeAppend([NSString stringWithFormat:@"NETWORK-TASK method=%@ host=%@ path=%@ queryKeys=%@",
                            request.HTTPMethod ?: @"GET", components.host ?: @"", components.path ?: @"/",
                            [queryKeys componentsJoinedByString:@","]]);
+#endif
+
 }
 
 void NNPSpotifyLyricsProbeCaptureNetworkData(NSURLSessionTask *task, NSData *data) {
@@ -457,6 +475,7 @@ void NNPSpotifyLyricsProbeCompleteNetworkTask(NSURLSessionTask *task, NSError *e
     objc_setAssociatedObject(task, &NNPSpotifyNetworkBodyTruncatedAssociationKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
 static BOOL NNPSpotifyIsRelevantModelClass(Class cls) {
     NSString *name = NSStringFromClass(cls) ?: @"";
     return NNPSpotifyStringContainsAny(name, @[@"lyrics", @"line", @"progress", @"position", @"provider", @"model", @"event"]);
@@ -611,6 +630,7 @@ static void NNPSpotifyDumpLyricsResponderModels(UIView *view) {
     if (lastResponderChains.count > 256) [lastResponderChains removeAllObjects];
 }
 
+#endif
 static NSString *NNPSpotifyNormalizeLyricsText(NSString *text) {
     if (![text isKindOfClass:NSString.class]) return @"";
     NSMutableArray<NSString *> *parts = [NSMutableArray array];
@@ -620,6 +640,7 @@ static NSString *NNPSpotifyNormalizeLyricsText(NSString *text) {
     return [parts componentsJoinedByString:@" "];
 }
 
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
 static BOOL NNPSpotifyStringContainsAny(NSString *value, NSArray<NSString *> *needles) {
     NSString *lowercase = value.lowercaseString;
     for (NSString *needle in needles) if ([lowercase containsString:needle]) return YES;
@@ -679,6 +700,7 @@ static void NNPSpotifyDumpLyricsRuntime(void) {
     });
 }
 
+#endif
 static BOOL NNPSpotifyIsNonLyricLabel(NSString *text) {
     NSString *trimmed = [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     NSString *lowercase = trimmed.lowercaseString;
@@ -722,19 +744,24 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
         if (text.length >= 2 && !NNPSpotifyIsNonLyricLabel(text) &&
             frame.size.height >= 12.0 && frame.size.height <= 100.0 &&
             (CGRectIntersectsRect(frame, window.bounds) || belongsToVisibleLyricsCell)) {
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
             UILabel *label = (UILabel *)view;
+#endif
             NSMutableArray<NSString *> *ancestors = [NSMutableArray array];
             UIView *ancestor = view.superview;
             NSUInteger ancestorDepth = 0;
             while (ancestor && ancestorDepth++ < 24) {
                 NSString *ancestorName = NSStringFromClass(ancestor.class) ?: @"?";
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
                 if ([ancestor isKindOfClass:UIScrollView.class]) {
                     CGPoint offset = ((UIScrollView *)ancestor).contentOffset;
                     ancestorName = [NSString stringWithFormat:@"%@{offset=%.1f,%.1f}", ancestorName, offset.x, offset.y];
                 }
+#endif
                 [ancestors addObject:ancestorName];
                 ancestor = ancestor.superview;
             }
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
             NSMutableArray<NSString *> *textAttributes = [NSMutableArray array];
             [label.attributedText enumerateAttributesInRange:NSMakeRange(0, label.attributedText.length)
                                                      options:0
@@ -745,6 +772,7 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
                                            foreground ?: @"default", font ?: @"default"]];
             }];
             NSString *cellState = @"none";
+#endif
             NSInteger cellRow = -1;
             NSInteger centerRow = -1;
             CGFloat tableCenterY = CGRectGetMidY(window.bounds);
@@ -755,12 +783,16 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
             if ([ancestorPath containsString:@"Lyrics_CardElementImpl.CardView"]) lyricsSurface = @"now-playing-card";
             else if ([ancestorPath containsString:@"Lyrics_FullscreenElementPageImpl.FullscreenView"]) lyricsSurface = @"fullscreen";
             if (lyricsCell) {
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
                 NNPSpotifyDumpLyricsObjectGraph(lyricsCell);
                 NNPSpotifyDumpLyricsResponderModels(lyricsCell);
+#endif
                 NSIndexPath *indexPath = [lyricsTable indexPathForCell:lyricsCell];
                 cellRow = indexPath ? (NSInteger)indexPath.row : -1;
                 NSIndexPath *centerIndexPath = nil;
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
                 NSString *tableState = @"no-table";
+#endif
                 if (lyricsTable) {
                     CGPoint center = CGPointMake(CGRectGetMidX(lyricsTable.bounds), CGRectGetMidY(lyricsTable.bounds));
                     centerIndexPath = [lyricsTable indexPathForRowAtPoint:center];
@@ -769,19 +801,26 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
                     tableIdentity = [NSString stringWithFormat:@"%p", lyricsTable];
                     CGRect tableFrame = [lyricsTable convertRect:lyricsTable.bounds toView:window];
                     tableCenterY = CGRectGetMidY(tableFrame);
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
                     tableState = [NSString stringWithFormat:@"table=%p frame=%.1f,%.1f,%.1f,%.1f centerRow=%ld visible=%lu offset=%.1f",
                                   lyricsTable, tableFrame.origin.x, tableFrame.origin.y, tableFrame.size.width, tableFrame.size.height,
                                   centerIndexPath ? (long)centerIndexPath.row : -1L,
                                   (unsigned long)lyricsTable.indexPathsForVisibleRows.count,
                                   lyricsTable.contentOffset.y];
+#endif
+
                 }
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
                 cellState = [NSString stringWithFormat:@"%@ row=%ld section=%ld selected=%@ highlighted=%@ reuse=%@",
                              NSStringFromClass(lyricsCell.class), (long)indexPath.row, (long)indexPath.section,
                              lyricsCell.selected ? @"YES" : @"NO", lyricsCell.highlighted ? @"YES" : @"NO",
                              lyricsCell.reuseIdentifier ?: @""];
                 cellState = [cellState stringByAppendingFormat:@" %@", tableState];
+#endif
+
             }
             [rows addObject:@{@"text": text, @"midY": @(CGRectGetMidY(frame)),
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
                               @"class": className,
                               @"alpha": @(label.alpha),
                               @"font": label.font.fontName ?: @"",
@@ -790,14 +829,18 @@ static void NNPSpotifyCollectLyricLabels(UIView *view, UIWindow *window, BOOL in
                               @"identifier": label.accessibilityIdentifier ?: @"",
                               @"ancestors": [ancestors componentsJoinedByString:@"<"],
                               @"cellState": cellState,
+#endif
                               @"cellRow": @(cellRow),
                               @"tableCenterRow": @(centerRow),
                               @"tableCenterY": @(tableCenterY),
                               @"tableVisibleCount": @(visibleCellCount),
                               @"tableIdentity": tableIdentity,
-                              @"lyricsSurface": lyricsSurface,
-                              @"z": @(label.layer.zPosition),
-                              @"textAttributes": [textAttributes componentsJoinedByString:@"|"]}];
+                              @"lyricsSurface": lyricsSurface
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
+                              ,@"z": @(label.layer.zPosition),
+                              @"textAttributes": [textAttributes componentsJoinedByString:@"|"]
+#endif
+}];
         }
     }
     for (UIView *child in view.subviews)
@@ -847,16 +890,20 @@ static BOOL NNPSpotifyPublishLyrics(NSString *current, NSString *next, NSArray<N
     NNPSpotifyProbeAppend([NSString stringWithFormat:@"LYRICS publish lines=%lu sync=%@ track=%@ verifiedID=%@ current=%@", (unsigned long)visibleLines.count,
                            synchronized ? @"YES" : @"NO", trackTitle,
                            NNPSpotifyVerifiedLyricsTrackIdentifier(), current]);
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
     [NSUserDefaults.standardUserDefaults setBool:synchronized forKey:@"NNPSpotifyLyricsSharedWriteSucceeded"];
     [NSUserDefaults.standardUserDefaults synchronize];
+#endif
     return YES;
 }
 
 static void NNPSpotifyLyricsProbeCapture(void) {
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
     NSDictionary *playbackInfo = MPNowPlayingInfoCenter.defaultCenter.nowPlayingInfo ?: @{};
     id elapsedValue = playbackInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime];
     NSTimeInterval playbackTime = [elapsedValue respondsToSelector:@selector(doubleValue)]
         ? [elapsedValue doubleValue] : -1.0;
+#endif
 
     UIApplication *application = UIApplication.sharedApplication;
     NSMutableArray<NSDictionary *> *rows = [NSMutableArray array];
@@ -980,6 +1027,7 @@ static void NNPSpotifyLyricsProbeCapture(void) {
     // lyrics surface is backgrounded. A monotonic row filter then turns every
     // legitimate new viewport into a permanent stale update. Publish changes
     // from the active lyrics surface and let its own auto-follow state decide.
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
     static NSString *lastSelectionSignature;
     static NSTimeInterval lastDiagnosticsTime;
     NSString *selectionSignature = [NSString stringWithFormat:@"%@|%@|%@", synchronizedRow[@"cellRow"] ?: @"fallback", current, next];
@@ -1003,6 +1051,7 @@ static void NNPSpotifyLyricsProbeCapture(void) {
                                playbackTime,
                                current, next]);
     }
+#endif
     NNPSpotifyPublishLyrics(current, next, lines);
 }
 
@@ -1077,13 +1126,17 @@ static void NNPSpotifyLyricsProbeEnsureCurrentTrackLyrics(void) {
 }
 
 void NNPSpotifyLyricsProbeStart(void) {
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
     [NSUserDefaults.standardUserDefaults setObject:[NSDate date] forKey:@"NNPSpotifyLyricsProbeStartedAt"];
     [NSUserDefaults.standardUserDefaults setObject:@(getpid()) forKey:@"NNPSpotifyLyricsProbePID"];
     [NSUserDefaults.standardUserDefaults synchronize];
     NNPSpotifyProbeAppend([NSString stringWithFormat:@"START pid=%d process=%@ bundle=%@", getpid(),
                            NSProcessInfo.processInfo.processName ?: @"?", NSBundle.mainBundle.bundleIdentifier ?: @"?"]);
+#endif
     NNPSpotifyInitializeLyricsTrackAssociation();
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
     NNPSpotifyDumpLyricsRuntime();
+#endif
     dispatch_async(dispatch_get_main_queue(), ^{
         NNPSpotifyLyricsProbeCapture();
         [NSTimer scheduledTimerWithTimeInterval:0.2 repeats:YES block:^(__unused NSTimer *timer) {

@@ -332,6 +332,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         NNPDiagnosticSetBool(@"SensorModeRequestHookInstalled", NO);
     }
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(preferencesChanged:) name:NNPPreferencesDidChangeNotification object:self.preferences];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(spotifyDataChanged:) name:NNPSpotifyDataDidChangeNotification object:self.preferences];
     self.display = [NNPDisplayController new]; self.lockState = [NNPLockStateController new];
     __weak typeof(self) weakSelf = self;
     self.ambientBrightnessTargetNits = 0;
@@ -397,6 +398,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)preferencesChanged:(__unused NSNotification *)note {
     // NNPPreferences reloads its values before posting this local notification.
     [self reconcile];
+}
+- (void)spotifyDataChanged:(__unused NSNotification *)note {
+    if (self.view.playbackVisible && self.window && !self.window.hidden) [self applyLyricsPreferences];
 }
 - (void)refreshDiagnosticUI { [self reconcile]; }
 - (void)setLocked:(BOOL)locked {
