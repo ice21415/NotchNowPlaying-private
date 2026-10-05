@@ -120,6 +120,8 @@ static UIImage *NNPArtwork(NSDictionary *info) {
     state.artist = NNPString(info, kMRMediaRemoteNowPlayingInfoArtist);
     state.album = NNPString(info, kMRMediaRemoteNowPlayingInfoAlbum);
     state.uniqueIdentifier = NNPString(info, kMRMediaRemoteNowPlayingInfoUniqueIdentifier);
+    id trackURI = info[@"kMRMediaRemoteNowPlayingInfoExternalContentIdentifier"];
+    state.trackURI = [trackURI isKindOfClass:NSString.class] ? trackURI : @"";
     state.artwork = NNPArtwork(info);
     state.duration = NNPTime(info, kMRMediaRemoteNowPlayingInfoDuration);
     state.elapsed = NNPTime(info, kMRMediaRemoteNowPlayingInfoElapsedTime);

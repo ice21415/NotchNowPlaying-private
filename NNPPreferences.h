@@ -33,6 +33,7 @@ FOUNDATION_EXPORT NSString * const NNPPreferencesDidChangeNotification;
 + (instancetype)sharedPreferences;
 - (void)reload;
 - (void)reloadSpotifyLyricsSnapshot;
+- (NSDictionary *)spotifyQueueSnapshot;
 - (void)reloadAODBrightnessMultiplier;
 - (void)startObserving;
 @end

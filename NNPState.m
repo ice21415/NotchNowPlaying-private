@@ -9,6 +9,7 @@
     copy.timestamp = self.timestamp; copy.playbackRate = self.playbackRate;
     copy.playing = self.playing; copy.bundleIdentifier = self.bundleIdentifier;
     copy.uniqueIdentifier = self.uniqueIdentifier; copy.validDuration = self.validDuration;
+    copy.trackURI = self.trackURI;
     return copy;
 }
 @end

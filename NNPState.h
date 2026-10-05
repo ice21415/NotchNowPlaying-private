@@ -14,6 +14,7 @@
 @property(nonatomic) BOOL playing;
 @property(nonatomic, copy) NSString *bundleIdentifier;
 @property(nonatomic, copy) NSString *uniqueIdentifier;
+@property(nonatomic, copy) NSString *trackURI;
 @property(nonatomic) BOOL validDuration;
 - (BOOL)hasTrack;
 - (NNPState *)copyState;

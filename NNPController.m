@@ -5,6 +5,7 @@
 #import "NNPChargingController.h"
 #import "NNPMediaController.h"
 #import "NNPState.h"
+#import "NNPQueueSnapshot.h"
 #import "NNPView.h"
 #import "NNPPreferences.h"
 #import "NNPLockStateController.h"
@@ -843,6 +844,14 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [self.view setNeedsLayout];
 }
 - (void)applyLyricsPreferences {
+    NSDictionary *queue = self.preferences.spotifyQueueSnapshot;
+    BOOL validQueue = [self.state.bundleIdentifier isEqualToString:NNPSpotify] &&
+        NNPQueueSnapshotMatches(queue, self.state.trackURI, self.state.title, self.state.artist, NSDate.date.timeIntervalSince1970);
+    NSString *nextTitle = validQueue ? NNPQueueText(queue[@"nextTitle"]) : @"";
+    NSString *nextArtist = validQueue ? NNPQueueText(queue[@"nextArtist"]) : @"";
+    [self.view updateNextTrackTitle:nextTitle artist:nextArtist];
+    [self.statusBarPlayerView updateNextTrackTitle:nextTitle artist:nextArtist];
+    NNPDiagnosticSetBool(@"SpotifyNextTrackAvailable", nextTitle.length > 0);
     BOOL spotifyTrack = [self.state.bundleIdentifier isEqualToString:NNPSpotify];
     NSString *mediaTitle = self.state.title ?: @"";
     NSString *snapshotTitle = self.preferences.spotifyLyricsTrackTitle ?: @"";

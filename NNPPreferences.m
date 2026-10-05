@@ -26,7 +26,8 @@ static NSDictionary *NNPSpotifyLyricsSnapshot(void) {
         NSString *lyricsPreferences = [preferencesDirectory stringByAppendingPathComponent:@"com.user.notchnowplaying.plist"];
         if (![fileManager fileExistsAtPath:spotifyDefaults] || ![fileManager fileExistsAtPath:lyricsPreferences]) continue;
         NSDictionary *snapshot = [NSDictionary dictionaryWithContentsOfFile:lyricsPreferences];
-        if (![snapshot[@"SpotifyLyricsText"] isKindOfClass:NSString.class]) continue;
+        if (![snapshot[@"SpotifyLyricsText"] isKindOfClass:NSString.class] &&
+            ![snapshot[@"SpotifyQueueSnapshot"] isKindOfClass:NSDictionary.class]) continue;
         cachedPreferencesPath = lyricsPreferences;
         NNPDiagnosticSetBool(@"SpotifyLyricsContainerReadable", YES);
         return snapshot;
@@ -59,6 +60,7 @@ static CGFloat NNPFloat(NSString *key, CGFloat fallback) {
 @property(nonatomic, copy) NSString *spotifyLyricsTrackTitle;
 @property(nonatomic, copy) NSString *spotifyLyricsTrackArtist;
 @property(nonatomic, copy) NSArray<NSDictionary *> *spotifyLyricsTimedLines;
+@property(nonatomic, copy) NSDictionary *spotifyQueueSnapshot;
 @property(nonatomic) BOOL hideWhenPaused;
 @property(nonatomic) BOOL aodPixelShiftEnabled;
 @property(nonatomic) float aodBrightnessMultiplier;
@@ -109,6 +111,7 @@ static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observe
 }
 - (void)reloadSpotifyLyricsSnapshot {
     NSDictionary *lyrics = NNPSpotifyLyricsSnapshot();
+    self.spotifyQueueSnapshot = [lyrics[@"SpotifyQueueSnapshot"] isKindOfClass:NSDictionary.class] ? lyrics[@"SpotifyQueueSnapshot"] : @{};
     self.spotifyLyricsText = [lyrics[@"SpotifyLyricsText"] isKindOfClass:NSString.class] ? lyrics[@"SpotifyLyricsText"] : @"";
     self.spotifyLyricsNextLine = [lyrics[@"SpotifyLyricsNextLine"] isKindOfClass:NSString.class] ? lyrics[@"SpotifyLyricsNextLine"] : @"";
     self.spotifyLyricsTrackTitle = [lyrics[@"SpotifyLyricsTrackTitle"] isKindOfClass:NSString.class] ? lyrics[@"SpotifyLyricsTrackTitle"] : @"";

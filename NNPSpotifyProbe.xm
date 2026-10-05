@@ -1,6 +1,15 @@
 #import "NNPSpotifyLyricsProbe.h"
 #import <objc/runtime.h>
 #import <stdlib.h>
+extern void NNPSpotifyQueueObserve(id player);
+%group NNPSpotifyQueueHooks
+%hook SPTEsperantoPlayer
+- (void)addPlayerObserver:(id)observer {
+    %orig;
+    NNPSpotifyQueueObserve(self);
+}
+%end
+%end
 
 %group NNPSpotifyNetworkHooks
 
@@ -148,6 +157,7 @@ static void NNPSpotifyInstallDataDelegateHooks(void) {
 }
 
 %ctor {
+    if (NSClassFromString(@"SPTEsperantoPlayer")) { %init(NNPSpotifyQueueHooks); }
     %init(NNPSpotifyNetworkHooks);
     NNPSpotifyLyricsProbeResetLog();
     NNPSpotifyLyricsProbeStart();

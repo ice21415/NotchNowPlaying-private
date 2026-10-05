@@ -179,6 +179,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 @property(nonatomic, strong) CAShapeLayer *fill;
 @property(nonatomic, strong) UILabel *playbackTime;
 @property(nonatomic, strong) UILabel *lyricsLabel;
+@property(nonatomic, strong) UILabel *nextTrackLabel;
 @property(nonatomic, copy) NSString *lastPlaybackTimeDisplay;
 @property(nonatomic, copy) NSString *lastLyricsCurrentLine;
 @property(nonatomic, copy) NSString *lastLyricsNextLine;
@@ -261,12 +262,14 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 
 - (void)stopContentAnimation {
     [self.contentContainer.layer removeAllAnimations];
+    [self.nextTrackLabel.layer removeAllAnimations];
 }
 
 - (void)setPlaybackVisible:(BOOL)playbackVisible {
     if (_playbackVisible == playbackVisible) return;
     _playbackVisible = playbackVisible;
     if (!playbackVisible) {
+        [self.nextTrackLabel.layer removeAllAnimations];
         [self stopTitleMarqueeCycle];
         self.marqueeAnimating = NO;
     }
@@ -360,6 +363,12 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     _playbackTime.hidden = YES;
 
     _lyricsLabel = [UILabel new];
+    _nextTrackLabel = [UILabel new];
+    _nextTrackLabel.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightMedium];
+    _nextTrackLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.76];
+    _nextTrackLabel.textAlignment = NSTextAlignmentCenter;
+    _nextTrackLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    _nextTrackLabel.hidden = YES;
     _lyricsLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightSemibold];
     _lyricsLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.94];
     _lyricsLabel.textAlignment = NSTextAlignmentCenter;
@@ -405,6 +414,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     [_contentContainer addSubview:_batteryStatus];
     [_contentContainer addSubview:_playbackTime];
     [_contentContainer addSubview:_lyricsLabel];
+    [_contentContainer addSubview:_nextTrackLabel];
     [_contentContainer addSubview:_notificationIndicatorStrip];
     [_contentContainer.layer addSublayer:_track];
     [_contentContainer.layer addSublayer:_fill];
@@ -583,6 +593,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         lyricsTop = MAX(lyricsTop, CGRectGetMaxY(self.clockLabel.frame) + 4.0);
     if (!self.batteryStatus.hidden)
         lyricsTop = MAX(lyricsTop, CGRectGetMaxY(self.batteryStatus.frame) + 4.0);
+    self.nextTrackLabel.frame = CGRectMake(side, lyricsTop, MAX(1.0, width - side * 2.0), 18.0);
+    if (!self.nextTrackLabel.hidden) lyricsTop += 22.0;
     self.lyricsLabel.frame = CGRectMake(side, lyricsTop, MAX(1.0, width - side * 2.0), 34.0);
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
@@ -1228,6 +1240,26 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     [self scheduleTitleMarqueeCycleAfter:NNPTitleMarqueeIdleSeconds];
 }
 
+- (void)updateNextTrackTitle:(NSString *)title artist:(NSString *)artist {
+    NSString *text = title.length ? [NSString stringWithFormat:@"下一首 · %@%@", title,
+        artist.length ? [NSString stringWithFormat:@" — %@", artist] : @""] : @"";
+    if ([self.nextTrackLabel.text isEqualToString:text]) return;
+    [self.nextTrackLabel.layer removeAllAnimations];
+    self.nextTrackLabel.text = text;
+    self.nextTrackLabel.accessibilityLabel = text;
+    self.nextTrackLabel.hidden = !text.length;
+    [self setNeedsLayout];
+    if (!text.length || !self.playbackVisible || !self.window) return;
+    CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
+    fade.fromValue = @0; fade.toValue = @1; fade.duration = 0.28;
+    [self.nextTrackLabel.layer addAnimation:fade forKey:@"nextTrackFade"];
+    if (!UIAccessibilityIsReduceMotionEnabled()) {
+        CABasicAnimation *slide = [CABasicAnimation animationWithKeyPath:@"transform.translation.y"];
+        slide.fromValue = @3; slide.toValue = @0; slide.duration = 0.28;
+        slide.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+        [self.nextTrackLabel.layer addAnimation:slide forKey:@"nextTrackSlide"];
+    }
+}
 - (void)updateState:(NNPState *)state {
     NSString *title = state.title.length ? state.title : @"Not Playing";
 #if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG

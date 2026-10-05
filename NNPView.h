@@ -13,6 +13,7 @@
 @property(nonatomic) BOOL playbackVisible;
 @property(nonatomic) CGFloat contentOpacity;
 - (void)updateState:(NNPState *)state;
+- (void)updateNextTrackTitle:(NSString *)title artist:(NSString *)artist;
 - (void)updateElapsed:(NSTimeInterval)elapsed duration:(NSTimeInterval)duration playing:(BOOL)playing;
 - (void)updateLyricsText:(NSString *)currentLine nextLine:(NSString *)nextLine;
 - (void)stopContentAnimation;

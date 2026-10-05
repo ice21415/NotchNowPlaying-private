@@ -73,6 +73,9 @@ jobs:
           xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
             research/tools/diagnostics_batch_test.m -o diagnostics-batch-test
           ./diagnostics-batch-test
+          xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
+            research/tools/queue_snapshot_test.m -o queue-snapshot-test
+          ./queue-snapshot-test
 
       - name: Build charging flow package
         run: |
