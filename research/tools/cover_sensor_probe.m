@@ -1,6 +1,7 @@
 #import <Foundation/Foundation.h>
 #import <CoreMotion/CoreMotion.h>
 #import <dlfcn.h>
+#import <objc/message.h>
 #import <mach/mach_time.h>
 #include <stdio.h>
 int main(int argc, const char *argv[]) {
@@ -47,6 +48,25 @@ int main(int argc, const char *argv[]) {
         printf("nativeProximityAvailable=%d active=%d near=%d\n", near != NULL, active ? active() : -1, near ? near() : -1);
         for (int mode = 0; mode < 8; mode++) {
             if (valid && name && valid(mode)) printf("proximityMode=%d %s\n", mode, name(mode).UTF8String);
+        }
+        if (argc >= 2 && !strcmp(argv[1], "--proximity-test")) {
+            Class modeClass = NSClassFromString(@"BKSHIDUISensorMode");
+            SEL build = NSSelectorFromString(@"buildModeForReason:builder:");
+            if (![modeClass respondsToSelector:build]) return 6;
+            id mode = ((id (*)(id, SEL, id, id))objc_msgSend)(modeClass, build, @"NNP temporary proximity test", ^(id builder) {
+                ((void (*)(id, SEL, int))objc_msgSend)(builder, NSSelectorFromString(@"setProximityDetectionMode:"), 6);
+            });
+            printf("requestedMode=%s\n", [mode description].UTF8String);
+            id service = ((id (*)(id, SEL))objc_msgSend)(NSClassFromString(@"BKSHIDUISensorService"), NSSelectorFromString(@"sharedInstance"));
+            id assertion = ((id (*)(id, SEL, id))objc_msgSend)(service, NSSelectorFromString(@"requestUISensorMode:"), mode);
+            printf("assertion=%s\n", [assertion description].UTF8String);
+            for (int i = 0; i < 10; i++) {
+                [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.5]];
+                printf("proximity active=%d near=%d\n", active ? active() : -1, near ? near() : -1);
+            }
+            if ([assertion respondsToSelector:NSSelectorFromString(@"invalidate")])
+                ((void (*)(id, SEL))objc_msgSend)(assertion, NSSelectorFromString(@"invalidate"));
+            return 0;
         }
         if (argc < 2 || strcmp(argv[1], "--motion")) return 0;
         puts("starting CoreMotion");
