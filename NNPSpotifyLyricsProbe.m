@@ -1186,7 +1186,7 @@ void NNPSpotifyLyricsProbeStart(void) {
         dispatch_once(&captureOnce, ^{
             captureLoop = [[NNPSpotifyLyricsCaptureLoop alloc]
                 initWithCapture:^{ NNPSpotifyLyricsProbeCapture(); }
-                isActive:^{ return UIApplication.sharedApplication.applicationState == UIApplicationStateActive; }];
+                isActive:^BOOL{ return UIApplication.sharedApplication.applicationState == UIApplicationStateActive; }];
             NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
             [center addObserverForName:UIApplicationDidBecomeActiveNotification object:nil
                 queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) {
