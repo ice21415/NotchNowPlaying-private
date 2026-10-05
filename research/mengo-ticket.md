@@ -89,3 +89,11 @@ bounds. Detach/release it on AOD exit, blanking or manual wake. Apply the existi
 pixel shift/rest to the overlay layer. New diagnostics record host attachment and
 button frame, rather than relying only on eligibility. Physical visibility and
 tap testing remain pending until the new build is installed.
+
+Build `37311665848` passed normal and AOD jobs for source
+`6b72d29f9265871eeca0402cca69a0b6c38cd798`. Installed 0.1.126 via dpkg and reloaded
+SpringBoard successfully. Package SHA-256:
+`8f84a1396d51529616aa3acf3e28608a391b8d2861bb029f9d7477b04b29f616`.
+Before installation, the device already held a synced MeN Go session with
+`MQRCode` endpoint and mode 0600, owned by mobile. No re-login is needed solely
+for this UI correction. Awaiting physical button and ticket display validation.
