@@ -55,6 +55,7 @@ int main(int argc, const char *argv[]) {
             if (![modeClass respondsToSelector:build]) return 6;
             id mode = ((id (*)(id, SEL, id, id))objc_msgSend)(modeClass, build, @"NNP temporary proximity test", ^(id builder) {
                 ((void (*)(id, SEL, int))objc_msgSend)(builder, NSSelectorFromString(@"setProximityDetectionMode:"), 6);
+                ((void (*)(id, SEL, BOOL))objc_msgSend)(builder, NSSelectorFromString(@"setDigitizerEnabled:"), YES);
             });
             printf("requestedMode=%s\n", [mode description].UTF8String);
             id service = ((id (*)(id, SEL))objc_msgSend)(NSClassFromString(@"BKSHIDUISensorService"), NSSelectorFromString(@"sharedInstance"));
