@@ -82,6 +82,9 @@ jobs:
           xcrun clang -fobjc-arc -Wall -Wextra -Werror -Wno-unused-parameter -framework Foundation \
             research/tools/preferences_notification_test.m NNPSnapshotCache.m -o preferences-notification-test
           ./preferences-notification-test
+          xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
+            research/tools/lock_observer_test.m -o lock-observer-test
+          ./lock-observer-test
           for verbose in 0 1; do
             xcrun --sdk iphoneos clang -fsyntax-only -arch arm64e -miphoneos-version-min=15.0 \
               -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" -fobjc-arc \
