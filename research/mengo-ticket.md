@@ -73,3 +73,19 @@ The user explicitly confirmed the desired entry behavior: a button to choose
 whether to open the ticket. This implementation requests only after that press.
 MeN Go was terminated once after installation so its next launch loads the bridge.
 Initial login synchronization and AOD button/image testing await the user.
+
+## 0.1.126 entry visibility correction
+
+The user could not see the entry in 0.1.125. While the user kept the phone in AOD,
+diagnostics reported `MengoEntryVisible=1`, `UIVisible=1`, active CoverSheet/AOD,
+and no pocket suspension or revealed controls. Thus the eligibility flag did not
+establish actual visibility. The entry used a separate UIWindow, unlike the music
+content that already renders inside the CoverSheet host.
+
+Replace that window with a transparent UIView attached directly to the same
+visible host. Bring it above the blackout/player siblings when reconciling. The
+closed overlay accepts only the button rectangle; the open panel accepts its
+bounds. Detach/release it on AOD exit, blanking or manual wake. Apply the existing
+pixel shift/rest to the overlay layer. New diagnostics record host attachment and
+button frame, rather than relying only on eligibility. Physical visibility and
+tap testing remain pending until the new build is installed.
