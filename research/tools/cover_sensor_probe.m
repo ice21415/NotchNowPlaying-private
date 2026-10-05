@@ -3,7 +3,7 @@
 #import <dlfcn.h>
 #import <mach/mach_time.h>
 #include <stdio.h>
-int main(void) {
+int main(int argc, const char *argv[]) {
     setbuf(stdout, NULL);
     @autoreleasepool {
         void *handle = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_LAZY);
@@ -39,6 +39,16 @@ int main(void) {
         NSData *data = [NSJSONSerialization dataWithJSONObject:rows options:0 error:nil];
         puts([[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding].UTF8String);
         CFRelease(list); CFRelease(client);
+        void *backboard = dlopen("/System/Library/PrivateFrameworks/BackBoardServices.framework/BackBoardServices", RTLD_LAZY);
+        BOOL (*near)(void) = dlsym(backboard, "BKSHIDServicesGetObjectWithinProximity");
+        BOOL (*active)(void) = dlsym(backboard, "BKSHIDServicesProximityDetectionActive");
+        BOOL (*valid)(int) = dlsym(backboard, "BKSHIDServicesProximityDetectionModeIsValid");
+        NSString *(*name)(int) = dlsym(backboard, "NSStringFromBKSHIDServicesProximityDetectionMode");
+        printf("nativeProximityAvailable=%d active=%d near=%d\n", near != NULL, active ? active() : -1, near ? near() : -1);
+        for (int mode = 0; mode < 8; mode++) {
+            if (valid && name && valid(mode)) printf("proximityMode=%d %s\n", mode, name(mode).UTF8String);
+        }
+        if (argc < 2 || strcmp(argv[1], "--motion")) return 0;
         puts("starting CoreMotion");
         @try {
         CMMotionManager *motion = [CMMotionManager new];
