@@ -35,10 +35,14 @@ int main(void) {
         id request = Get(NSClassFromString(@"MRPlaybackQueueRequest"), @"defaultPlaybackQueueRequest");
         printf("DEFAULT_REQUEST %s\n", [[request description] UTF8String]);
         if ([request respondsToSelector:@selector(setLength:)]) ((void (*)(id, SEL, long long))objc_msgSend)(request, @selector(setLength:), 3);
+        if ([request respondsToSelector:@selector(setHasLength:)]) ((void (*)(id, SEL, BOOL))objc_msgSend)(request, @selector(setHasLength:), YES);
         if ([request respondsToSelector:@selector(setIncludeMetadata:)]) ((void (*)(id, SEL, BOOL))objc_msgSend)(request, @selector(setIncludeMetadata:), YES);
         if ([configuration respondsToSelector:@selector(setPlaybackQueueRequest:)]) ((void (*)(id, SEL, id))objc_msgSend)(configuration, @selector(setPlaybackQueueRequest:), request);
         if ([configuration respondsToSelector:@selector(setRequestPlaybackQueue:)]) ((void (*)(id, SEL, BOOL))objc_msgSend)(configuration, @selector(setRequestPlaybackQueue:), YES);
         if ([controller respondsToSelector:@selector(setConfiguration:)]) ((void (*)(id, SEL, id))objc_msgSend)(controller, @selector(setConfiguration:), configuration);
+        printf("CONFIGURED_REQUEST %s\n", [[Get(Get(controller, @"configuration"), @"playbackQueueRequest") description] UTF8String] ?: "none");
+        id freshController = ((id (*)(id, SEL, id))objc_msgSend)([controllerClass alloc], @selector(initWithConfiguration:), configuration);
+        if (freshController) controller = freshController;
         if ([controller respondsToSelector:@selector(beginLoadingUpdates)]) ((void (*)(id, SEL))objc_msgSend)(controller, @selector(beginLoadingUpdates));
         for (unsigned i = 0; i < 4; i++) {
             [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:3]];
