@@ -2,6 +2,7 @@
 #define NNP_ENABLE_VERBOSE_DIAGNOSTICS 0
 #endif
 #import "NNPSpotifyLyricsProbe.h"
+#import "NNPSpotifyLyricsCaptureLoop.h"
 #import <UIKit/UIKit.h>
 #import <CoreFoundation/CoreFoundation.h>
 #import <MediaPlayer/MediaPlayer.h>
@@ -928,6 +929,7 @@ static BOOL NNPSpotifyPublishLyrics(NSString *current, NSString *next, NSArray<N
 }
 
 static void NNPSpotifyLyricsProbeCapture(void) {
+    if (UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return;
 #if NNP_ENABLE_VERBOSE_DIAGNOSTICS
     NSDictionary *playbackInfo = MPNowPlayingInfoCenter.defaultCenter.nowPlayingInfo ?: @{};
     id elapsedValue = playbackInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime];
@@ -938,7 +940,7 @@ static void NNPSpotifyLyricsProbeCapture(void) {
     UIApplication *application = UIApplication.sharedApplication;
     NSMutableArray<NSDictionary *> *rows = [NSMutableArray array];
     for (UIScene *scene in application.connectedScenes) {
-        if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState == UISceneActivationStateUnattached) continue;
+        if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState != UISceneActivationStateForegroundActive) continue;
         for (UIWindow *window in ((UIWindowScene *)scene).windows) {
             if (window.hidden || window.alpha < 0.01) continue;
             NNPSpotifyCollectLyricLabels(window, window, NO, rows, 0);
@@ -1155,6 +1157,17 @@ static void NNPSpotifyLyricsProbeEnsureCurrentTrackLyrics(void) {
     [task resume];
 }
 
+// Write only at lifecycle boundaries, never once per capture.
+static void NNPSpotifyPublishCaptureLifecycle(NNPSpotifyLyricsCaptureLoop *loop) {
+    CFPreferencesSetAppValue(CFSTR("SpotifyLyricsCaptureTimerActive"),
+                            loop.running ? kCFBooleanTrue : kCFBooleanFalse, NNPSpotifySharedPreferences);
+    CFPreferencesSetAppValue(CFSTR("SpotifyLyricsCaptureCount"),
+                            (__bridge CFNumberRef)@(loop.captureCount), NNPSpotifySharedPreferences);
+    CFPreferencesSetAppValue(CFSTR("SpotifyLyricsCapturePID"),
+                            (__bridge CFNumberRef)@(getpid()), NNPSpotifySharedPreferences);
+    CFPreferencesAppSynchronize(NNPSpotifySharedPreferences);
+}
+
 void NNPSpotifyLyricsProbeStart(void) {
 #if NNP_ENABLE_VERBOSE_DIAGNOSTICS
     [NSUserDefaults.standardUserDefaults setObject:[NSDate date] forKey:@"NNPSpotifyLyricsProbeStartedAt"];
@@ -1168,10 +1181,28 @@ void NNPSpotifyLyricsProbeStart(void) {
     NNPSpotifyDumpLyricsRuntime();
 #endif
     dispatch_async(dispatch_get_main_queue(), ^{
-        NNPSpotifyLyricsProbeCapture();
-        [NSTimer scheduledTimerWithTimeInterval:0.2 repeats:YES block:^(__unused NSTimer *timer) {
-            NNPSpotifyLyricsProbeCapture();
-        }];
+        static NNPSpotifyLyricsCaptureLoop *captureLoop;
+        static dispatch_once_t captureOnce;
+        dispatch_once(&captureOnce, ^{
+            captureLoop = [[NNPSpotifyLyricsCaptureLoop alloc]
+                initWithCapture:^{ NNPSpotifyLyricsProbeCapture(); }
+                isActive:^{ return UIApplication.sharedApplication.applicationState == UIApplicationStateActive; }];
+            NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+            [center addObserverForName:UIApplicationDidBecomeActiveNotification object:nil
+                queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) {
+                    [captureLoop start];
+                    NNPSpotifyPublishCaptureLifecycle(captureLoop);
+                }];
+            for (NSString *name in @[UIApplicationWillResignActiveNotification, UIApplicationDidEnterBackgroundNotification]) {
+                [center addObserverForName:name object:nil queue:NSOperationQueue.mainQueue
+                    usingBlock:^(__unused NSNotification *note) {
+                        [captureLoop stop];
+                        NNPSpotifyPublishCaptureLifecycle(captureLoop);
+                    }];
+            }
+        });
+        [captureLoop start];
+        NNPSpotifyPublishCaptureLifecycle(captureLoop);
         [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(__unused NSTimer *timer) {
             NNPSpotifyLyricsProbeEnsureCurrentTrackLyrics();
         }];
