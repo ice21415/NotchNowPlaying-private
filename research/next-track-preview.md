@@ -16,4 +16,4 @@ Only changes to the current/next track metadata write a small `SpotifyQueueSnaps
 - AOD package SHA-256: `ba78ae11cb90ff5d94dacf47f486369f23f06ac4178112c484c6fc2fc9eaff97`.
 - Installed 0.1.113 on the existing test phone. Spotify's native observer populated distinct current and next track metadata, and SpringBoard reported `SpotifyNextTrackAvailable = YES`.
 - Device track names and raw probe logs remain in ignored local build artifacts.
-- Visual placement/transition quality requires the user's on-device check; runtime validation does not prove visual quality or absence of OLED aging.
+- The user confirmed the next-track preview appears after playing the playlist and entering AOD. Transition quality has not been separately rated; runtime and visibility checks do not prove absence of OLED aging.
