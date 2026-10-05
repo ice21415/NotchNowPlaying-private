@@ -389,7 +389,11 @@ static void NNPSpotifyPublishTimedLyrics(NSArray<NSDictionary *> *lines, NSStrin
 
 BOOL NNPSpotifyLyricsProbeShouldTraceNetworkRequest(NSURLRequest *request) {
     NSString *url = request.URL.absoluteString.lowercaseString ?: @"";
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
     return [url containsString:@"lyrics"] || [url containsString:@"spclient.wg.spotify.com"];
+#else
+    return [url containsString:@"lyrics"];
+#endif
 }
 
 void NNPSpotifyLyricsProbeCaptureNetworkResponse(NSURLRequest *request, NSData *data, NSURLResponse *response, NSError *error) {
