@@ -9,7 +9,7 @@ STRIP := 1
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME := NotchNowPlaying NNPSpotifyProbe
-NotchNowPlaying_FILES := Tweak.xm NNPState.m NNPView.m NNPController.m NNPChargingController.m NNPAODAmbientLight.m NNPDiagnostics.m NNPNotificationDiagnostics.m NNPPreferences.m NNPLockStateController.m NNPDisplayController.m
+NotchNowPlaying_FILES := Tweak.xm NNPState.m NNPView.m NNPController.m NNPNextArtwork.m NNPChargingController.m NNPAODAmbientLight.m NNPDiagnostics.m NNPNotificationDiagnostics.m NNPPreferences.m NNPLockStateController.m NNPDisplayController.m
 NNPSpotifyProbe_FILES := NNPSpotifyProbe.xm NNPSpotifyLyricsProbe.m NNPSpotifyQueue.m
 NNPSpotifyProbe_CFLAGS := -fobjc-arc -fvisibility=hidden -fno-ident
 NNPSpotifyProbe_FRAMEWORKS := Foundation UIKit MediaPlayer
@@ -61,7 +61,7 @@ NotchNowPlaying_CFLAGS += -DNNP_PHASE4A_CTOR_PREFERENCES_PROBE=$(NNP_PHASE4A_CTO
 NotchNowPlaying_CFLAGS += -DNNP_ENABLE_PHASE4B_DISPLAY_MODE_TRACE=$(NNP_ENABLE_PHASE4B_DISPLAY_MODE_TRACE)
 NotchNowPlaying_LDFLAGS := -Wl,-dead_strip
 NotchNowPlaying_CFLAGS += -DNNP_ENABLE_VERBOSE_DIAGNOSTICS=$(NNP_ENABLE_VERBOSE_DIAGNOSTICS)
-NotchNowPlaying_FRAMEWORKS := UIKit QuartzCore
+NotchNowPlaying_FRAMEWORKS := UIKit QuartzCore ImageIO
 NNPSpotifyProbe_LDFLAGS := -Wl,-dead_strip
 
 ifeq ($(NNP_SAFE_BOOT_TEST),0)

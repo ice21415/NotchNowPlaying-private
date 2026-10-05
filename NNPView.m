@@ -184,6 +184,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 @property(nonatomic, strong) UILabel *nextTrackArtist;
 @property(nonatomic, strong) UILabel *nextTrackBadge;
 @property(nonatomic, strong) UIImageView *nextTrackIcon;
+@property(nonatomic, strong) UIImage *nextTrackArtwork;
+@property(nonatomic, strong) UIColor *nextTrackAccent;
 @property(nonatomic, copy) NSString *lastPlaybackTimeDisplay;
 @property(nonatomic, copy) NSString *lastLyricsCurrentLine;
 @property(nonatomic, copy) NSString *lastLyricsNextLine;
@@ -267,6 +269,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 - (void)stopContentAnimation {
     [self.contentContainer.layer removeAllAnimations];
     [self.nextTrackPreview.layer removeAllAnimations];
+    [self.nextTrackIcon.layer removeAllAnimations];
 }
 
 - (void)setPlaybackVisible:(BOOL)playbackVisible {
@@ -274,6 +277,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     _playbackVisible = playbackVisible;
     if (!playbackVisible) {
         [self.nextTrackPreview.layer removeAllAnimations];
+        [self.nextTrackIcon.layer removeAllAnimations];
         [self stopTitleMarqueeCycle];
         self.marqueeAnimating = NO;
     }
@@ -397,6 +401,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     _nextTrackIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"forward.end.fill"]];
     _nextTrackIcon.contentMode = UIViewContentModeScaleAspectFit;
     _nextTrackIcon.tintColor = [UIColor colorWithWhite:1.0 alpha:0.75];
+    _nextTrackIcon.layer.cornerRadius = 6.0;
+    _nextTrackIcon.clipsToBounds = YES;
     [_nextTrackPreview addSubview:_nextTrackLabel];
     [_nextTrackPreview addSubview:_nextTrackArtist];
     [_nextTrackPreview addSubview:_nextTrackBadge];
@@ -626,12 +632,12 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     if (!self.batteryStatus.hidden)
         lyricsTop = MAX(lyricsTop, CGRectGetMaxY(self.batteryStatus.frame) + 4.0);
     CGFloat previewWidth = MIN(286.0, MAX(1.0, width - side * 2.0));
-    self.nextTrackPreview.frame = CGRectMake((width - previewWidth) / 2.0, lyricsTop, previewWidth, 40.0);
-    self.nextTrackIcon.frame = CGRectMake(10.0, 14.0, 12.0, 12.0);
-    self.nextTrackBadge.frame = CGRectMake(27.0, 14.0, 34.0, 12.0);
-    self.nextTrackLabel.frame = CGRectMake(72.0, self.nextTrackArtist.text.length ? 5.0 : 11.0, MAX(1.0, previewWidth - 82.0), 18.0);
-    self.nextTrackArtist.frame = CGRectMake(72.0, 24.0, MAX(1.0, previewWidth - 82.0), 12.0);
-    if (!self.nextTrackPreview.hidden) lyricsTop += 45.0;
+    self.nextTrackPreview.frame = CGRectMake((width - previewWidth) / 2.0, lyricsTop, previewWidth, 48.0);
+    self.nextTrackIcon.frame = CGRectMake(8.0, 8.0, 32.0, 32.0);
+    self.nextTrackBadge.frame = CGRectMake(48.0, 4.0, 42.0, 11.0);
+    self.nextTrackLabel.frame = CGRectMake(48.0, self.nextTrackArtist.text.length ? 16.0 : 21.0, MAX(1.0, previewWidth - 58.0), 16.0);
+    self.nextTrackArtist.frame = CGRectMake(48.0, 33.0, MAX(1.0, previewWidth - 58.0), 12.0);
+    if (!self.nextTrackPreview.hidden) lyricsTop += 53.0;
     self.lyricsLabel.frame = CGRectMake(side, lyricsTop, MAX(1.0, width - side * 2.0), 34.0);
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
@@ -1277,7 +1283,21 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     [self scheduleTitleMarqueeCycleAfter:NNPTitleMarqueeIdleSeconds];
 }
 
-- (void)updateNextTrackTitle:(NSString *)title artist:(NSString *)artist {
+- (void)updateNextTrackTitle:(NSString *)title artist:(NSString *)artist artwork:(UIImage *)artwork {
+    if (self.nextTrackArtwork != artwork) {
+        self.nextTrackArtwork = artwork;
+        self.nextTrackIcon.image = artwork ?: [UIImage systemImageNamed:@"forward.end.fill"];
+        self.nextTrackIcon.contentMode = artwork ? UIViewContentModeScaleAspectFill : UIViewContentModeScaleAspectFit;
+        self.nextTrackAccent = artwork ? NNPAccentColorForArtwork(artwork) : nil;
+        UIColor *accent = self.nextTrackAccent ?: self.accentColor ?: UIColor.whiteColor;
+        self.nextTrackPreview.layer.borderColor = [accent colorWithAlphaComponent:0.25].CGColor;
+        self.nextTrackBadge.textColor = [accent colorWithAlphaComponent:0.85];
+        if (artwork && self.playbackVisible && self.window) {
+            CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
+            fade.fromValue = @0; fade.toValue = @1; fade.duration = 0.2;
+            [self.nextTrackIcon.layer addAnimation:fade forKey:@"coverFade"];
+        }
+    }
     NSString *text = title.length ? [NSString stringWithFormat:@"下一首 · %@%@", title,
         artist.length ? [NSString stringWithFormat:@" — %@", artist] : @""] : @"";
     if ([self.nextTrackPreview.accessibilityLabel isEqualToString:text]) return;
@@ -1321,8 +1341,9 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         self.artist.textColor = [self.accentColor colorWithAlphaComponent:0.82];
         self.track.strokeColor = [self.accentColor colorWithAlphaComponent:0.17].CGColor;
         self.fill.strokeColor = [self.accentColor colorWithAlphaComponent:0.94].CGColor;
-        self.nextTrackPreview.layer.borderColor = [self.accentColor colorWithAlphaComponent:0.25].CGColor;
-        self.nextTrackBadge.textColor = [self.accentColor colorWithAlphaComponent:0.85];
+        UIColor *previewAccent = self.nextTrackAccent ?: self.accentColor;
+        self.nextTrackPreview.layer.borderColor = [previewAccent colorWithAlphaComponent:0.25].CGColor;
+        self.nextTrackBadge.textColor = [previewAccent colorWithAlphaComponent:0.85];
         self.nextTrackIcon.tintColor = [self.accentColor colorWithAlphaComponent:0.85];
     }
     self.art.image = artwork ?: [UIImage systemImageNamed:@"music.note"];

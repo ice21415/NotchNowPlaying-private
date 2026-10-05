@@ -2,6 +2,7 @@
 #import <CoreFoundation/CoreFoundation.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import "NNPCoverURL.h"
 
 // Read only object-returning getters. Spotify's private model varies by version.
 static id NNPQueueGet(id object, NSString *name) {
@@ -33,13 +34,19 @@ void NNPSpotifyQueueReport(id state) {
         if (![future isKindOfClass:NSArray.class]) return;
         id next = [future count] ? [future firstObject] : nil;
         if (NNPQueueBool(NNPQueueGet(state, @"options"), @"repeatingTrack")) next = track;
+        NSString *coverURL = @"";
+        for (NSString *getter in @[@"coverArtURLSmall", @"coverArtURL", @"imageURL"]) {
+            coverURL = NNPCoverURLString(NNPQueueGet(next, getter));
+            if (coverURL.length) break;
+        }
         NSDictionary *snapshot = @{
             @"currentURI": NNPQueueString(NNPQueueGet(track, @"URI")),
             @"currentTitle": NNPQueueString(NNPQueueGet(track, @"trackTitle")),
             @"currentArtist": NNPQueueString(NNPQueueGet(track, @"artistName")),
             @"nextURI": NNPQueueString(NNPQueueGet(next, @"URI")),
             @"nextTitle": NNPQueueString(NNPQueueGet(next, @"trackTitle")),
-            @"nextArtist": NNPQueueString(NNPQueueGet(next, @"artistName"))
+            @"nextArtist": NNPQueueString(NNPQueueGet(next, @"artistName")),
+            @"nextArtworkURL": coverURL
         };
         static NSDictionary *lastSnapshot;
         if ([lastSnapshot isEqual:snapshot]) return;

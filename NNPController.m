@@ -6,6 +6,7 @@
 #import "NNPMediaController.h"
 #import "NNPState.h"
 #import "NNPQueueSnapshot.h"
+#import "NNPNextArtwork.h"
 #import "NNPView.h"
 #import "NNPPreferences.h"
 #import "NNPLockStateController.h"
@@ -191,6 +192,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic, strong) UIWindow *window;
 @property(nonatomic, strong) NNPView *view;
 @property(nonatomic, strong) NNPState *state;
+@property(nonatomic, strong) NNPNextArtwork *nextArtwork;
 @property(nonatomic, strong) NSTimer *progressTimer;
 @property(nonatomic, strong) NSTimer *pixelShiftTimer;
 @property(nonatomic) NSUInteger pixelShiftStep;
@@ -849,8 +851,13 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         NNPQueueSnapshotMatches(queue, self.state.trackURI, self.state.title, self.state.artist, NSDate.date.timeIntervalSince1970);
     NSString *nextTitle = validQueue ? NNPQueueText(queue[@"nextTitle"]) : @"";
     NSString *nextArtist = validQueue ? NNPQueueText(queue[@"nextArtist"]) : @"";
-    [self.view updateNextTrackTitle:nextTitle artist:nextArtist];
-    [self.statusBarPlayerView updateNextTrackTitle:nextTitle artist:nextArtist];
+    if (!self.nextArtwork) self.nextArtwork = [NNPNextArtwork new];
+    __weak typeof(self) weakSelf = self;
+    [self.nextArtwork setURL:validQueue ? NNPQueueText(queue[@"nextArtworkURL"]) : @""
+        active:self.view.playbackVisible && nextTitle.length > 0 onChange:^{ [weakSelf applyLyricsPreferences]; }];
+    [self.view updateNextTrackTitle:nextTitle artist:nextArtist artwork:self.nextArtwork.image];
+    [self.statusBarPlayerView updateNextTrackTitle:nextTitle artist:nextArtist artwork:self.nextArtwork.image];
+    NNPDiagnosticSetBool(@"SpotifyNextArtworkAvailable", self.nextArtwork.image != nil);
     NNPDiagnosticSetBool(@"SpotifyNextTrackAvailable", nextTitle.length > 0);
     BOOL spotifyTrack = [self.state.bundleIdentifier isEqualToString:NNPSpotify];
     NSString *mediaTitle = self.state.title ?: @"";
@@ -1045,6 +1052,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         self.view.contentOpacity = 0.0;
     }
     self.view.playbackVisible = NO;
+    [self.nextArtwork setURL:@"" active:NO onChange:nil];
     self.statusBarPlayerView.playbackVisible = NO;
     [self removeNotchGestureWindow];
     [self updateCoverSheetPresentation];
