@@ -11,3 +11,13 @@ These are native blanking requests rather than just black overlay content. Actua
 GitHub Actions run 37274797899 passed normal and AOD builds and existing checks. AOD package SHA256: `16e55b015016bc59d3ac5809c70d9daf6af66c3132ba709532291ff2b98c08da`.
 
 Primary UIKit references: [UIDevice](https://developer.apple.com/documentation/uikit/uidevice), [proximity monitoring](https://developer.apple.com/documentation/uikit/uidevice/isproximitymonitoringenabled), [proximity state](https://developer.apple.com/documentation/uikit/uidevice/proximitystate).
+
+## Investigation and 0.1.124
+
+0.1.123 did not receive UIKit cover or face-down transitions in AOD. Native capability inspection showed that the UIKit monitoring flag was set while BackBoard proximity detection was inactive. A standalone CoreMotion diagnostic aborted when run as root, but succeeded as mobile and returned measured acceleration including z ≈ +1 for face-down. Standalone sensor assertions were obtainable, although they did not show active proximity in that process; they do not prove delivery inside SpringBoard.
+
+0.1.124 uses accelerometer updates at 2 Hz in the SpringBoard/mobile context and an owned native low-power proximity request. Face-down uses z > 0.85 to enter and z < 0.65 to leave. Repeated equal sensor samples no longer restart the confirmation timer. The Foundation confirmation test covers repeated samples, transient occlusion, interrupted recovery, cancellation after leaving AOD, and owner release. Sensor resources are released when the feature or AOD is disabled.
+
+GitHub Actions 37277004606 passed normal and AOD builds. The first AOD attempt hit the existing lock observer test's startup timing assertion; rerunning the failed job passed. Package SHA256: `fc6e532bb46c127f970965b289e5b37b6bb1d33edea336e769e761124d2d6cec`.
+
+Device 0.1.124: motion available and samples received, face-down detected, covered state confirmed, native display blank requested. The proximity assertion exists, but native proximity active still reads false. Physical face-down blanking/restoration and hand-cover detection are pending user validation. Do not treat capability flags or requests as proof of actual screen state or measured power savings.
