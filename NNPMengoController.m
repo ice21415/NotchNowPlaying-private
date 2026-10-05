@@ -4,11 +4,11 @@
 #import "NNPAODPresentation.h"
 #import <ImageIO/ImageIO.h>
 
-@interface NNPMengoWindow : UIWindow
+@interface NNPMengoOverlay : UIView
 @property(nonatomic) CGRect entryRegion;
 @property(nonatomic) BOOL ticketOpen;
 @end
-@implementation NNPMengoWindow
+@implementation NNPMengoOverlay
 - (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
     return (self.ticketOpen || CGRectContainsPoint(self.entryRegion, point)) && [super pointInside:point withEvent:event];
 }
@@ -36,7 +36,7 @@ static NSDictionary *NNPMengoSession(void) {
 }
 
 @interface NNPMengoController ()
-@property(nonatomic, strong) NNPMengoWindow *window;
+@property(nonatomic, strong) NNPMengoOverlay *overlay;
 @property(nonatomic, strong) UIView *panel;
 @property(nonatomic, strong) UIButton *entry;
 @property(nonatomic, strong) UIImageView *codeView;
@@ -49,34 +49,34 @@ static NSDictionary *NNPMengoSession(void) {
 @property(nonatomic) BOOL active;
 @end
 @implementation NNPMengoController
-- (void)setHostWindow:(UIWindow *)host active:(BOOL)active {
-    active = active && host.windowScene != nil;
+- (void)setHostView:(UIView *)host active:(BOOL)active {
+    active = active && host.window != nil;
     self.active = active;
     NNPDiagnosticSetBool(@"MengoEntryVisible", active);
+    if (!active) NNPDiagnosticSetBool(@"MengoEntryAttachedToAOD", NO);
     if (!active) {
         [self close];
-        self.window.hidden = YES;
-        self.window = nil;
+        [self.overlay removeFromSuperview];
+        self.overlay = nil;
         self.panel = nil; self.entry = nil; self.codeView = nil; self.status = nil;
         return;
     }
-    if (!self.window || self.window.windowScene != host.windowScene) {
-        [self close]; self.window.hidden = YES;
-        self.window = [[NNPMengoWindow alloc] initWithWindowScene:host.windowScene];
-        self.window.windowLevel = UIWindowLevelStatusBar + 81;
-        self.window.backgroundColor = UIColor.clearColor;
-        UIViewController *root = [UIViewController new];
-        root.view.backgroundColor = UIColor.clearColor;
-        self.window.rootViewController = root;
+    if (!self.overlay || self.overlay.superview != host) {
+        [self close]; [self.overlay removeFromSuperview];
+        self.overlay = [[NNPMengoOverlay alloc] initWithFrame:host.bounds];
+        self.overlay.backgroundColor = UIColor.clearColor;
+        self.overlay.opaque = NO;
+        self.overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [host addSubview:self.overlay];
         self.entry = [UIButton buttonWithType:UIButtonTypeSystem];
         [self.entry setImage:[UIImage systemImageNamed:@"qrcode"] forState:UIControlStateNormal];
         self.entry.tintColor = [UIColor colorWithWhite:0.75 alpha:1];
         self.entry.accessibilityLabel = @"MeN Go 乘車碼";
         [self.entry addTarget:self action:@selector(open) forControlEvents:UIControlEventTouchUpInside];
-        [root.view addSubview:self.entry];
+        [self.overlay addSubview:self.entry];
         self.panel = [UIView new]; self.panel.backgroundColor = UIColor.blackColor;
         self.panel.accessibilityViewIsModal = YES;
-        self.panel.hidden = YES; [root.view addSubview:self.panel];
+        self.panel.hidden = YES; [self.overlay addSubview:self.panel];
         self.codeView = [UIImageView new]; self.codeView.contentMode = UIViewContentModeScaleAspectFit;
         self.codeView.backgroundColor = UIColor.whiteColor;
         self.codeView.layer.magnificationFilter = kCAFilterNearest;
@@ -96,22 +96,24 @@ static NSDictionary *NNPMengoSession(void) {
         [refresh addTarget:self action:@selector(fetch) forControlEvents:UIControlEventTouchUpInside];
         [self.panel addSubview:refresh];
     }
-    self.window.frame = host.windowScene.coordinateSpace.bounds;
-    CGFloat width = CGRectGetWidth(self.window.bounds), height = CGRectGetHeight(self.window.bounds);
-    self.window.rootViewController.view.frame = self.window.bounds;
+    self.overlay.frame = host.bounds;
+    CGFloat width = CGRectGetWidth(self.overlay.bounds), height = CGRectGetHeight(self.overlay.bounds);
     self.entry.frame = CGRectMake(width - 76, height - 132, 52, 52);
-    self.window.entryRegion = self.entry.frame;
-    self.panel.frame = self.window.bounds;
+    self.overlay.entryRegion = self.entry.frame;
+    self.panel.frame = self.overlay.bounds;
     CGFloat size = MIN(240, MIN(width - 64, height - 260));
     self.codeView.frame = CGRectMake((width - size) / 2, (height - size) / 2 - 20, size, size);
     self.status.frame = CGRectMake(24, CGRectGetMinY(self.codeView.frame) - 90, width - 48, 72);
     [self.panel viewWithTag:1].frame = CGRectMake(width / 2 - 114, CGRectGetMaxY(self.codeView.frame) + 24, 100, 48);
     [self.panel viewWithTag:2].frame = CGRectMake(width / 2 + 14, CGRectGetMaxY(self.codeView.frame) + 24, 100, 48);
-    self.window.hidden = NO;
+    self.overlay.hidden = NO;
+    [host bringSubviewToFront:self.overlay];
+    NNPDiagnosticSetBool(@"MengoEntryAttachedToAOD", self.overlay.superview == host);
+    NNPDiagnosticSetString(@"MengoEntryFrame", NSStringFromCGRect(self.entry.frame));
 }
 - (void)open {
-    if (!self.active || self.window.ticketOpen) return;
-    self.window.ticketOpen = YES; self.panel.hidden = NO;
+    if (!self.active || self.overlay.ticketOpen) return;
+    self.overlay.ticketOpen = YES; self.panel.hidden = NO;
     if (self.presentationChanged) self.presentationChanged(YES);
     NNPDiagnosticSetBool(@"MengoTicketOpen", YES);
     __weak typeof(self) weakSelf = self;
@@ -120,26 +122,26 @@ static NSDictionary *NNPMengoSession(void) {
     [self fetch];
 }
 - (void)close {
-    BOOL wasOpen = self.window.ticketOpen;
+    BOOL wasOpen = self.overlay.ticketOpen;
     self.generation++;
     [self.task cancel]; self.task = nil;
     [self.session invalidateAndCancel]; self.session = nil;
     [self.refreshTimer invalidate]; self.refreshTimer = nil;
     [self.closeTimer invalidate]; self.closeTimer = nil;
     self.codeView.image = nil; self.codeView.hidden = YES;
-    self.panel.hidden = YES; self.window.ticketOpen = NO;
+    self.panel.hidden = YES; self.overlay.ticketOpen = NO;
     if (wasOpen && self.presentationChanged) self.presentationChanged(NO);
     NNPDiagnosticSetBool(@"MengoTicketOpen", NO);
     NNPDiagnosticSetBool(@"MengoRequestActive", NO);
     NNPDiagnosticSetBool(@"MengoTicketImageAvailable", NO);
 }
 - (void)restPixelsAtOffset:(CGPoint)pixels {
-    if (!self.window || self.window.hidden) return;
-    NNPAODRestPixels(self.window.layer);
-    NNPAODApplyPixelShift(self.window.layer, pixels);
+    if (!self.overlay || self.overlay.hidden) return;
+    NNPAODRestPixels(self.overlay.layer);
+    NNPAODApplyPixelShift(self.overlay.layer, pixels);
 }
 - (void)fetch {
-    if (!self.active || !self.window.ticketOpen || self.task) return;
+    if (!self.active || !self.overlay.ticketOpen || self.task) return;
     [self.refreshTimer invalidate]; self.refreshTimer = nil;
     self.codeView.image = nil; self.codeView.hidden = YES;
     self.status.text = @"正在取得乘車碼…";
@@ -186,7 +188,7 @@ static NSDictionary *NNPMengoSession(void) {
         }
         dispatch_async(dispatch_get_main_queue(), ^{
             NNPMengoController *owner = weakSelf;
-            if (!owner || generation != owner.generation || !owner.active || !owner.window.ticketOpen) return;
+            if (!owner || generation != owner.generation || !owner.active || !owner.overlay.ticketOpen) return;
             owner.task = nil;
             NNPDiagnosticSetBool(@"MengoRequestActive", NO);
             NNPDiagnosticSetBool(@"MengoTicketImageAvailable", image != nil);
@@ -205,6 +207,6 @@ static NSDictionary *NNPMengoSession(void) {
 - (void)dealloc {
     [self.task cancel]; [self.session invalidateAndCancel];
     [self.refreshTimer invalidate]; [self.closeTimer invalidate];
-    self.window.hidden = YES;
+    [self.overlay removeFromSuperview];
 }
 @end

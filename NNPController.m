@@ -686,7 +686,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)updateNotchGestureWindow {
     BOOL mengoEligible = self.preferences.mengoEnabled && [self shouldPresentInsideCoverSheet] &&
         !self.coverSheetBlackoutRevealed && ![self pocketSuspended] && self.view.playbackVisible;
-    [self.mengo setHostWindow:self.coverSheetHostView.window active:mengoEligible];
+    [self.mengo setHostView:self.coverSheetHostView active:mengoEligible];
     BOOL eligible = [self shouldPresentInsideCoverSheet] && !self.coverSheetBlackoutRevealed &&
         self.view.playbackVisible && self.state.hasTrack && [self isAllowedMedia:self.state];
     UIWindowScene *scene = self.coverSheetHostView.window.windowScene;
@@ -790,7 +790,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     return presented;
 }
 - (void)revealCoverSheetControlsWithReason:(NSString *)reason {
-    [self.mengo setHostWindow:nil active:NO];
+    [self.mengo setHostView:nil active:NO];
     if (!self.coverSheetHostView || !self.coverSheetBlackoutView || self.coverSheetBlackoutRevealed) return;
     self.coverSheetBlackoutRevealed = YES;
     self.coverSheetBlackoutView.hidden = YES;
@@ -1125,7 +1125,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         [self startProgressTimer]; [self startAODPixelShiftTimer]; [self updateProgress]; });
 }
 - (void)hide {
-    [self.mengo setHostWindow:nil active:NO];
+    [self.mengo setHostView:nil active:NO];
     [self.view cancelNotificationSnakeAnimation];
     [self.statusBarPlayerView cancelNotificationSnakeAnimation];
     BOOL keepAmbient = [self shouldPresentInsideCoverSheet] && ![self pocketSuspended];
@@ -1249,7 +1249,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [self.statusBarPlayerView updateElapsed:elapsed duration:self.state.duration playing:self.state.playing];
 }
 - (void)dealloc {
-    [_mengo setHostWindow:nil active:NO];
+    [_mengo setHostView:nil active:NO];
     [self setAODOrientationMonitoring:NO];
     [self.screenCoverObserver setActive:NO];
     [self.pocketObserver setActive:NO];
