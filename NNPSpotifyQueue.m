@@ -16,6 +16,15 @@ static NSString *NNPQueueString(id value) {
     if ([value isKindOfClass:NSURL.class]) value = [value absoluteString];
     return [value isKindOfClass:NSString.class] ? [value substringToIndex:MIN((NSUInteger)512, [value length])] : @"";
 }
+static BOOL NNPQueueBool(id object, NSString *name) {
+    SEL selector = NSSelectorFromString(name);
+    Method method = class_getInstanceMethod([object class], selector);
+    if (!method || method_getNumberOfArguments(method) != 2) return NO;
+    char type[32] = {0};
+    method_getReturnType(method, type, sizeof(type));
+    if (type[0] != 'B' && type[0] != 'c') return NO;
+    return ((BOOL (*)(id, SEL))objc_msgSend)(object, selector);
+}
 void NNPSpotifyQueueReport(id state) {
     if (!state) return;
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -23,6 +32,7 @@ void NNPSpotifyQueueReport(id state) {
         id future = NNPQueueGet(state, @"future");
         if (![future isKindOfClass:NSArray.class]) return;
         id next = [future count] ? [future firstObject] : nil;
+        if (NNPQueueBool(NNPQueueGet(state, @"options"), @"repeatingTrack")) next = track;
         NSDictionary *snapshot = @{
             @"currentURI": NNPQueueString(NNPQueueGet(track, @"URI")),
             @"currentTitle": NNPQueueString(NNPQueueGet(track, @"trackTitle")),

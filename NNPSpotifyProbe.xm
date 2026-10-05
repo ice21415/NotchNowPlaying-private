@@ -1,7 +1,7 @@
 #import "NNPSpotifyLyricsProbe.h"
 #import <objc/runtime.h>
 #import <stdlib.h>
-extern void NNPSpotifyQueueObserve(id player);
+extern "C" void NNPSpotifyQueueObserve(id player);
 %group NNPSpotifyQueueHooks
 %hook SPTEsperantoPlayer
 - (void)addPlayerObserver:(id)observer {
