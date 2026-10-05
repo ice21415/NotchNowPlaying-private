@@ -61,3 +61,15 @@ Device validation still needs: reopen MeN Go after installation, display its QR
 page once, open the AOD entry, confirm a fresh image, close/cover/unlock cleanup,
 60-second renewal and 90-second close. Actual gate scanning and power savings
 remain unmeasured.
+
+## Build and installation
+
+GitHub Actions run `37310766615` passed both normal and AOD jobs for source
+`ff80e8bfcc3d2117ce2762f55413aea4b0b1a799`. Installed 0.1.125 AOD via dpkg and
+reloaded SpringBoard successfully. Package SHA-256:
+`d6cdb35647cbd2b7cdd80d2b50c83f9009a79da316b5fdd373aa9e69151f33f3`.
+
+The user explicitly confirmed the desired entry behavior: a button to choose
+whether to open the ticket. This implementation requests only after that press.
+MeN Go was terminated once after installation so its next launch loads the bridge.
+Initial login synchronization and AOD button/image testing await the user.
