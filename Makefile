@@ -9,7 +9,7 @@ STRIP := 1
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME := NotchNowPlaying NNPSpotifyProbe
-NotchNowPlaying_FILES := Tweak.xm NNPState.m NNPView.m NNPController.m NNPNextArtwork.m NNPChargingController.m NNPAODAmbientLight.m NNPDiagnostics.m NNPNotificationDiagnostics.m NNPPreferences.m NNPSnapshotCache.m NNPLockStateController.m NNPDisplayController.m
+NotchNowPlaying_FILES := Tweak.xm NNPState.m NNPView.m NNPController.m NNPNextArtwork.m NNPChargingController.m NNPAODAmbientLight.m NNPDiagnostics.m NNPNotificationDiagnostics.m NNPPreferences.m NNPSnapshotCache.m NNPLockStateController.m NNPPocketObserver.m NNPDisplayController.m
 NNPSpotifyProbe_FILES := NNPSpotifyProbe.xm NNPSpotifyLyricsProbe.m NNPSpotifyQueue.m NNPSpotifyLyricsCaptureLoop.m
 NNPSpotifyProbe_CFLAGS := -fobjc-arc -fvisibility=hidden -fno-ident
 NNPSpotifyProbe_FRAMEWORKS := Foundation UIKit MediaPlayer

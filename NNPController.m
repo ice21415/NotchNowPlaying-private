@@ -10,6 +10,7 @@
 #import "NNPView.h"
 #import "NNPPreferences.h"
 #import "NNPLockStateController.h"
+#import "NNPPocketObserver.h"
 #import "NNPDisplayController.h"
 #import "NNPNotificationDiagnostics.h"
 #import "NNPDiagnostics.h"
@@ -193,6 +194,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic, strong) NNPView *view;
 @property(nonatomic, strong) NNPState *state;
 @property(nonatomic, strong) NNPNextArtwork *nextArtwork;
+@property(nonatomic, strong) NNPPocketObserver *pocketObserver;
+@property(nonatomic) BOOL orientationMonitoring;
+@property(nonatomic) UIDeviceOrientation aodOrientation;
 @property(nonatomic, strong) NSTimer *progressTimer;
 @property(nonatomic, strong) NSTimer *pixelShiftTimer;
 @property(nonatomic) NSUInteger pixelShiftStep;
@@ -335,6 +339,11 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(spotifyDataChanged:) name:NNPSpotifyDataDidChangeNotification object:self.preferences];
     self.display = [NNPDisplayController new]; self.lockState = [NNPLockStateController new];
     __weak typeof(self) weakSelf = self;
+    self.pocketObserver = [NNPPocketObserver new];
+    self.pocketObserver.stateChanged = ^(__unused BOOL pocket) { [weakSelf reconcile]; };
+    self.aodOrientation = UIDeviceOrientationPortrait;
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(aodOrientationChanged:)
+        name:UIDeviceOrientationDidChangeNotification object:nil];
     self.ambientBrightnessTargetNits = 0;
     self.ambientLight = [NNPAODAmbientLight new];
     self.ambientLight.sampleHandler = ^(double lux, BOOL valid) {
@@ -443,13 +452,42 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         if (spotifyChanged) NNPDiagnosticSetBool(@"SpotifyDetected", [self isAllowedMedia:state]);
         if (playbackChanged) NNPDiagnosticSetBool(@"PlaybackActive", state.playing);
         if (presentationChanged) [self reconcile];
-        else [self updateProgress];
+        else if (![self pocketSuspended]) [self updateProgress];
     };
     if ([NSThread isMainThread]) applyState();
     else dispatch_async(dispatch_get_main_queue(), applyState);
 }
 - (BOOL)isAllowedMedia:(NNPState *)state { if (!state.bundleIdentifier.length) return NO; return !self.preferences.spotifyOnly || [state.bundleIdentifier isEqualToString:NNPSpotify]; }
+- (BOOL)pocketSuspended {
+    return self.preferences.aodPocketModeEnabled && self.locked &&
+        self.display.aodPresentationActive && self.pocketObserver.inPocket;
+}
+- (void)aodOrientationChanged:(__unused NSNotification *)note {
+    if (!self.orientationMonitoring) return;
+    UIDeviceOrientation orientation = UIDevice.currentDevice.orientation;
+    if (orientation != UIDeviceOrientationPortrait && !UIDeviceOrientationIsLandscape(orientation)) return;
+    if (self.aodOrientation == orientation) return;
+    self.aodOrientation = orientation;
+    NNPDiagnosticSetInteger(@"AODLayoutOrientation", orientation);
+    [self applyViewPreferences];
+    self.statusBarPlayerView.displayOrientation = self.view.displayOrientation;
+    [self.statusBarPlayerView setNeedsLayout];
+}
+- (void)setAODOrientationMonitoring:(BOOL)active {
+    if (self.orientationMonitoring == active) return;
+    self.orientationMonitoring = active;
+    if (active) {
+        [UIDevice.currentDevice beginGeneratingDeviceOrientationNotifications];
+        [self aodOrientationChanged:nil];
+    } else {
+        [UIDevice.currentDevice endGeneratingDeviceOrientationNotifications];
+        self.aodOrientation = UIDeviceOrientationPortrait;
+    }
+    NNPDiagnosticSetBool(@"AODOrientationMonitoring", active);
+}
+
 - (BOOL)shouldShow {
+    if ([self pocketSuspended]) return NO;
     NNPState *state = self.state;
     if (!self.preferences.enabled || !state.hasTrack || ![self isAllowedMedia:state]) return NO;
     if (self.locked && !self.preferences.showOnLockScreen) return NO;
@@ -574,6 +612,10 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         self.statusBarPlayerView.showArtwork = self.view.showArtwork;
         self.statusBarPlayerView.showArtist = self.view.showArtist;
         self.statusBarPlayerView.showProgress = self.view.showProgress;
+        self.statusBarPlayerView.showLyrics = self.view.showLyrics;
+        self.statusBarPlayerView.showClock = self.view.showClock;
+        self.statusBarPlayerView.showBattery = self.view.showBattery;
+        self.statusBarPlayerView.displayOrientation = self.view.displayOrientation;
         self.statusBarPlayerView.artworkSize = self.view.artworkSize;
         self.statusBarPlayerView.cornerRadius = self.view.cornerRadius;
         self.statusBarPlayerView.textSize = self.view.textSize;
@@ -690,6 +732,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [self revealCoverSheetControlsWithReason:@"side-button-wake"];
 }
 - (BOOL)showNotificationSnakeAnimation {
+    if ([self pocketSuspended]) return NO;
     if (![NSThread isMainThread]) return NO;
     NSDictionary *pendingNotificationPayload = NNPNotificationDiagnosticsConsumePendingPresentationPayload();
     UIWindow *presentationWindow = self.view.window;
@@ -842,6 +885,10 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     self.view.showArtist = self.preferences.showArtist;
     self.view.showProgress = self.preferences.showProgress;
     self.view.showLyrics = self.preferences.showLyrics;
+    self.view.showClock = self.preferences.showClock;
+    self.view.showBattery = self.preferences.showBattery;
+    self.view.displayOrientation = self.preferences.aodLandscapeEnabled &&
+        self.locked && self.display.aodPresentationActive ? self.aodOrientation : UIDeviceOrientationPortrait;
     self.view.artworkSize = self.preferences.artworkSize;
     self.view.cornerRadius = self.preferences.cornerRadius;
     self.view.textSize = self.preferences.textSize;
@@ -851,7 +898,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 }
 - (void)applyLyricsPreferences {
     NSDictionary *queue = self.preferences.spotifyQueueSnapshot;
-    BOOL previewDue = NNPQueuePreviewDue(self.state.duration, self.state.elapsed, self.state.timestamp,
+    BOOL previewDue = self.preferences.showNextTrack && NNPQueuePreviewDue(self.state.duration, self.state.elapsed, self.state.timestamp,
         self.state.playbackRate, NSDate.date.timeIntervalSince1970);
     BOOL validQueue = [self.state.bundleIdentifier isEqualToString:NNPSpotify] &&
         NNPQueueSnapshotMatches(queue, self.state.trackURI, self.state.title, self.state.artist, NSDate.date.timeIntervalSince1970);
@@ -993,15 +1040,21 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
             [self.display stopLockedVisibleMode];
         }
 #endif
-        BOOL ambientActive = self.preferences.aodAutomaticBrightnessEnabled && [self shouldPresentInsideCoverSheet];
+        BOOL activeAOD = self.locked && self.display.aodPresentationActive &&
+            self.display.lifecycleState == NNPDisplayLifecycleStateActive;
+        [self.pocketObserver setActive:activeAOD && self.preferences.aodPocketModeEnabled];
+        BOOL pocket = [self pocketSuspended];
+        NNPDiagnosticSetBool(@"PocketUISuspended", pocket);
+        [self setAODOrientationMonitoring:activeAOD && self.preferences.aodLandscapeEnabled && !pocket];
+        BOOL ambientActive = self.preferences.aodAutomaticBrightnessEnabled && [self shouldPresentInsideCoverSheet] && !pocket;
         [self.ambientLight setActive:ambientActive];
-        if (!ambientActive) {
+        if (!ambientActive && !pocket) {
             self.ambientBrightnessTargetNits = 0;
             self.display.automaticBrightnessNits = 0;
         }
         BOOL show = [self shouldShow];
         self.charging.aodPresentationActive = self.locked && self.display.aodPresentationActive &&
-            self.display.lifecycleState == NNPDisplayLifecycleStateActive;
+            self.display.lifecycleState == NNPDisplayLifecycleStateActive && ![self pocketSuspended];
         NSInteger lifecycle = self.display.lifecycleState;
         BOOL reconcileStateChanged = !self.didRecordReconcileState ||
             self.recordedReconcileLocked != self.locked ||
@@ -1045,7 +1098,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)hide {
     [self.view cancelNotificationSnakeAnimation];
     [self.statusBarPlayerView cancelNotificationSnakeAnimation];
-    BOOL keepAmbient = [self shouldPresentInsideCoverSheet];
+    BOOL keepAmbient = [self shouldPresentInsideCoverSheet] && ![self pocketSuspended];
     if (keepAmbient) [self startAODPixelShiftTimer];
     else [self stopAODPixelShiftTimer];
     if (keepAmbient) {
@@ -1057,7 +1110,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
                          } completion:nil];
     } else {
         [self.view stopContentAnimation];
+        [self.statusBarPlayerView stopContentAnimation];
         self.view.contentOpacity = 0.0;
+        self.statusBarPlayerView.contentOpacity = 0.0;
     }
     self.view.playbackVisible = NO;
     [self.nextArtwork setURL:@"" active:NO onChange:nil];
@@ -1102,7 +1157,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER AOD all-surface physical pixel shift x=%d y=%d step=%lu rest=0.21s", offset.x, offset.y, (unsigned long)self.pixelShiftStep]);
 }
 - (void)startAODPixelShiftTimer {
-    if (![self shouldPresentInsideCoverSheet]) {
+    if (![self shouldPresentInsideCoverSheet] || [self pocketSuspended]) {
         [self stopAODPixelShiftTimer];
         return;
     }
@@ -1158,6 +1213,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [self.statusBarPlayerView updateElapsed:elapsed duration:self.state.duration playing:self.state.playing];
 }
 - (void)dealloc {
+    [self setAODOrientationMonitoring:NO];
+    [self.pocketObserver setActive:NO];
     [_charging stop];
     [_ambientLight setActive:NO];
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE

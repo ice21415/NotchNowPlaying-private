@@ -5,6 +5,9 @@
 @property(nonatomic) BOOL showArtist;
 @property(nonatomic) BOOL showProgress;
 @property(nonatomic) BOOL showLyrics;
+@property(nonatomic) BOOL showClock;
+@property(nonatomic) BOOL showBattery;
+@property(nonatomic) UIDeviceOrientation displayOrientation;
 @property(nonatomic) CGFloat artworkSize;
 @property(nonatomic) CGFloat cornerRadius;
 @property(nonatomic) CGFloat textSize;

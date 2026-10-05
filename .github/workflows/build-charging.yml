@@ -88,6 +88,9 @@ jobs:
           xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
             research/tools/lyrics_capture_loop_test.m NNPSpotifyLyricsCaptureLoop.m -o lyrics-capture-loop-test
           ./lyrics-capture-loop-test
+          xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
+            research/tools/pocket_observer_test.m -o pocket-observer-test
+          ./pocket-observer-test
           for verbose in 0 1; do
             xcrun --sdk iphoneos clang -fsyntax-only -arch arm64e -miphoneos-version-min=15.0 \
               -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" -fobjc-arc \

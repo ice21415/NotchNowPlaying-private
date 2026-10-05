@@ -470,6 +470,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     _showArtist = YES;
     _showProgress = YES;
     _showLyrics = YES;
+    _showClock = YES;
+    _showBattery = YES;
     _artworkSize = 40.0;
     _cornerRadius = 9.0;
     _textSize = 14.0;
@@ -528,7 +530,12 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 
 - (void)layoutSubviews {
     [super layoutSubviews];
-    self.contentContainer.frame = self.bounds;
+    BOOL landscape = UIDeviceOrientationIsLandscape(self.displayOrientation);
+    self.contentContainer.transform = CGAffineTransformIdentity;
+    self.contentContainer.bounds = landscape ? CGRectMake(0, 0, CGRectGetHeight(self.bounds), CGRectGetWidth(self.bounds)) : self.bounds;
+    self.contentContainer.center = CGPointMake(CGRectGetMidX(self.bounds), CGRectGetMidY(self.bounds));
+    if (landscape) self.contentContainer.transform = CGAffineTransformMakeRotation(
+        self.displayOrientation == UIDeviceOrientationLandscapeLeft ? M_PI_2 : -M_PI_2);
     CGFloat width = CGRectGetWidth(self.bounds);
     UIEdgeInsets safe = self.safeAreaInsets;
     CGFloat side = MAX(12.0, safe.left + 12.0);
@@ -617,10 +624,10 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     CGFloat clockTop = self.showArtist ? CGRectGetMaxY(self.artist.frame) + 1.0
                                        : CGRectGetMaxY(self.titleViewport.frame) + 2.0;
     self.clockLabel.frame = CGRectMake(textX, clockTop, MIN(76.0, textWidth), 14.0);
-    self.clockLabel.hidden = !self.playbackVisible;
-    CGFloat batteryTop = CGRectGetMaxY(self.clockLabel.frame) + 1.0;
+    self.clockLabel.hidden = !self.showClock || !self.playbackVisible;
+    CGFloat batteryTop = self.showClock ? CGRectGetMaxY(self.clockLabel.frame) + 1.0 : clockTop;
     self.batteryStatus.frame = CGRectMake(textX, batteryTop, 58.0, 14.0);
-    self.batteryStatus.hidden = !self.batteryStatusAvailable || !self.playbackVisible;
+    self.batteryStatus.hidden = !self.showBattery || !self.batteryStatusAvailable || !self.playbackVisible;
     self.batteryIcon.frame = CGRectMake(0.0, 1.0, 14.0, 12.0);
     self.batteryPercentage.frame = CGRectMake(17.0, 0.0, 29.0, 14.0);
     self.batteryChargingIcon.frame = CGRectMake(47.0, 1.0, 9.0, 12.0);
@@ -689,8 +696,45 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         self.notificationSnakeDebugMarkersLayer.path = NNPNotificationSnakeCornerMarkersPath(notch).CGPath;
     }
 #endif
+    if (landscape) [self layoutLandscapeContent];
     [CATransaction commit];
     [self updateTitleMarquee];
+}
+
+- (void)layoutLandscapeContent {
+    CGFloat width = CGRectGetWidth(self.contentContainer.bounds);
+    CGFloat height = CGRectGetHeight(self.contentContainer.bounds);
+    CGFloat side = 48.0; // Reserve space for the physical notch on either side.
+    CGFloat contentWidth = MAX(1.0, width - side * 2);
+    CGFloat top = 30.0;
+    CGFloat artSize = self.showArtwork ? MIN(96.0, height * 0.27) : 0;
+    self.art.frame = CGRectMake(side, top, artSize, artSize);
+    self.art.layer.cornerRadius = MIN(14.0, artSize / 2);
+    CGFloat textX = side + (artSize > 0 ? artSize + 18.0 : 0);
+    CGFloat textWidth = MAX(1.0, width - side - textX);
+    self.titleViewport.frame = CGRectMake(textX, top, textWidth, 24.0);
+    self.artist.frame = CGRectMake(textX, top + 29.0, textWidth, 18.0);
+    CGFloat infoY = top + (self.showArtist ? 53.0 : 31.0);
+    self.clockLabel.frame = CGRectMake(textX, infoY, 76.0, 16.0);
+    self.batteryStatus.frame = CGRectMake(textX + (self.showClock ? 88.0 : 0), infoY, 58.0, 14.0);
+    self.notificationIndicatorStrip.frame = CGRectMake(side, top + artSize + 5,
+        CGRectGetWidth(self.notificationIndicatorStrip.frame), 12);
+    CGFloat progressY = MAX(top + artSize + 24.0, infoY + 35.0);
+    UIBezierPath *path = [UIBezierPath bezierPath];
+    [path moveToPoint:CGPointMake(side, progressY)];
+    [path addLineToPoint:CGPointMake(width - side, progressY)];
+    self.track.path = self.fill.path = path.CGPath;
+    self.playbackTime.frame = CGRectMake(side, progressY + 5, contentWidth, 16);
+    CGFloat rowY = progressY + (self.showProgress ? 29.0 : 5.0);
+    CGFloat previewWidth = MIN(286.0, contentWidth);
+    self.nextTrackPreview.frame = CGRectMake((width - previewWidth) / 2, rowY, previewWidth, 48);
+    if (!self.nextTrackPreview.hidden) rowY += 55;
+    self.lyricsLabel.frame = CGRectMake(side, rowY, contentWidth, 42);
+    if (self.notificationCard) {
+        self.notificationCard.frame = CGRectMake(side, MAX(15.0, height - 108.0), contentWidth, 90);
+        self.notificationCardTitle.frame = CGRectMake(68, 25, MAX(1.0, contentWidth - 80), 19);
+        self.notificationCardMessage.frame = CGRectMake(68, 45, MAX(1.0, contentWidth - 80), 38);
+    }
 }
 
 - (UIBezierPath *)notificationSnakePath {

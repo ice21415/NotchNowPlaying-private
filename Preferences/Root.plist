@@ -31,6 +31,13 @@
         { cell = PSGroupCell; label = "歌曲名稱字級"; footerText = "只調整歌曲名稱的字級，歌手名稱大小不受影響。預設 14 pt，範圍 10 至 20 pt。"; },
         { cell = PSSliderCell; defaults = "com.user.notchnowplaying"; key = TextSize; label = "字級（pt）"; default = 14; min = 10; max = 20; showValue = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
 
+        { cell = PSGroupCell; label = "自訂資訊與版面"; footerText = "封面、歌手、歌詞與進度可使用上方開關。橫放時保留所選資訊並重新排列；拿回直向會恢復原版面。口袋模式只依系統有效的口袋事件暫停畫面工作，不以暗室亮度判斷。"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowClock; label = "顯示時鐘"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowBattery; label = "顯示電量"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = ShowNextTrack; label = "顯示下一首預覽"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = AODLandscapeEnabled; label = "AOD 橫向版面"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+        { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = AODPocketModeEnabled; label = "AOD 口袋模式"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
+
         { cell = PSGroupCell; label = "播放行為"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = HideWhenPaused; label = "暫停時隱藏播放器"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
         { cell = PSGroupCell; label = "播放進度更新頻率"; footerText = "設定播放器更新進度的間隔。間隔越短，更新越頻繁。預設 1 秒，範圍 0.5 至 5 秒。"; },

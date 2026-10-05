@@ -63,6 +63,11 @@ static CGFloat NNPFloat(NSString *key, CGFloat fallback) {
 @property(nonatomic) BOOL showArtist;
 @property(nonatomic) BOOL showProgress;
 @property(nonatomic) BOOL showLyrics;
+@property(nonatomic) BOOL showClock;
+@property(nonatomic) BOOL showBattery;
+@property(nonatomic) BOOL showNextTrack;
+@property(nonatomic) BOOL aodLandscapeEnabled;
+@property(nonatomic) BOOL aodPocketModeEnabled;
 @property(nonatomic) CGFloat lyricsSyncOffsetMilliseconds;
 @property(nonatomic, copy) NSString *spotifyLyricsText;
 @property(nonatomic, copy) NSString *spotifyLyricsNextLine;
@@ -103,6 +108,11 @@ static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observe
     self.showArtist = NNPBool(@"ShowArtist", YES);
     self.showProgress = NNPBool(@"ShowProgress", YES);
     self.showLyrics = NNPBool(@"ShowLyrics", YES);
+    self.showClock = NNPBool(@"ShowClock", YES);
+    self.showBattery = NNPBool(@"ShowBattery", YES);
+    self.showNextTrack = NNPBool(@"ShowNextTrack", YES);
+    self.aodLandscapeEnabled = NNPBool(@"AODLandscapeEnabled", YES);
+    self.aodPocketModeEnabled = NNPBool(@"AODPocketModeEnabled", YES);
     self.lyricsSyncOffsetMilliseconds = MAX(-500.0, MIN(500.0, NNPFloat(@"LyricsSyncOffsetMilliseconds", 100.0)));
     [self reloadSpotifyLyricsSnapshot];
     self.hideWhenPaused = NNPBool(@"HideWhenPaused", YES);
