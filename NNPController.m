@@ -11,6 +11,7 @@
 #import "NNPPreferences.h"
 #import "NNPLockStateController.h"
 #import "NNPPocketObserver.h"
+#import "NNPScreenCoverObserver.h"
 #import "NNPDisplayController.h"
 #import "NNPNotificationDiagnostics.h"
 #import "NNPDiagnostics.h"
@@ -195,6 +196,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic, strong) NNPState *state;
 @property(nonatomic, strong) NNPNextArtwork *nextArtwork;
 @property(nonatomic, strong) NNPPocketObserver *pocketObserver;
+@property(nonatomic, strong) NNPScreenCoverObserver *screenCoverObserver;
 @property(nonatomic) BOOL orientationMonitoring;
 @property(nonatomic) UIDeviceOrientation aodOrientation;
 @property(nonatomic, strong) NSTimer *progressTimer;
@@ -339,6 +341,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(spotifyDataChanged:) name:NNPSpotifyDataDidChangeNotification object:self.preferences];
     self.display = [NNPDisplayController new]; self.lockState = [NNPLockStateController new];
     __weak typeof(self) weakSelf = self;
+    self.screenCoverObserver = [NNPScreenCoverObserver new];
+    self.screenCoverObserver.stateChanged = ^(__unused BOOL covered) { [weakSelf reconcile]; };
     self.pocketObserver = [NNPPocketObserver new];
     self.pocketObserver.stateChanged = ^(__unused BOOL pocket) { [weakSelf reconcile]; };
     self.aodOrientation = UIDeviceOrientationPortrait;
@@ -460,7 +464,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (BOOL)isAllowedMedia:(NNPState *)state { if (!state.bundleIdentifier.length) return NO; return !self.preferences.spotifyOnly || [state.bundleIdentifier isEqualToString:NNPSpotify]; }
 - (BOOL)pocketSuspended {
     return self.preferences.aodPocketModeEnabled && self.locked &&
-        self.display.aodPresentationActive && self.pocketObserver.inPocket;
+        self.display.aodPresentationActive && (self.screenCoverObserver.covered || self.pocketObserver.inPocket);
 }
 - (void)aodOrientationChanged:(__unused NSNotification *)note {
     if (!self.orientationMonitoring) return;
@@ -1043,7 +1047,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         BOOL activeAOD = self.locked && self.display.aodPresentationActive &&
             self.display.lifecycleState == NNPDisplayLifecycleStateActive;
         [self.pocketObserver setActive:activeAOD && self.preferences.aodPocketModeEnabled];
+        [self.screenCoverObserver setActive:activeAOD && self.preferences.aodPocketModeEnabled];
         BOOL pocket = [self pocketSuspended];
+        NNPDiagnosticSetBool(@"CoverNativeBlankAvailable", NNPPhase7SetScreenCovered(pocket));
         NNPDiagnosticSetBool(@"PocketUISuspended", pocket);
         [self setAODOrientationMonitoring:activeAOD && self.preferences.aodLandscapeEnabled && !pocket];
         BOOL ambientActive = self.preferences.aodAutomaticBrightnessEnabled && [self shouldPresentInsideCoverSheet] && !pocket;
@@ -1214,6 +1220,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 }
 - (void)dealloc {
     [self setAODOrientationMonitoring:NO];
+    [self.screenCoverObserver setActive:NO];
     [self.pocketObserver setActive:NO];
     [_charging stop];
     [_ambientLight setActive:NO];

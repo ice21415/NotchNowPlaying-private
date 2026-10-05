@@ -24,6 +24,7 @@ typedef void (*NNPBacklightFactorFunction)(int displayID, float factor, float fa
 static NNPBacklightFactorFunction gNNPOriginalBacklightFactorFunction;
 #endif
 
+static _Atomic(bool) gNNPPhase7ScreenCovered = false;
 static _Atomic(bool) gNNPPhase7Armed = false;
 static _Atomic(int) gNNPPhase7Lifecycle = NNPDisplayLifecycleStateDisabled;
 static _Atomic(bool) gNNPPhase7DeviceLocked = false;
@@ -380,7 +381,8 @@ static void NNPPhase7BacklightFactorReplacement(int displayID, float factor, flo
         ? atomic_fetch_add_explicit(&gNNPPhase7FactorCallCount, 1, memory_order_relaxed) + 1
         : 0;
     float incomingFactor = factor;
-    BOOL shouldSubstitute = displayID == 1 && factor == 0.0f && armed;
+    BOOL shouldSubstitute = displayID == 1 && factor == 0.0f && armed &&
+        !atomic_load_explicit(&gNNPPhase7ScreenCovered, memory_order_acquire);
     if (shouldSubstitute) {
         float dimmedFactor = 0.0f;
         if (!NNPPhase7ReadDimmedFactor(provider, &dimmedFactor)) {
@@ -423,6 +425,26 @@ static void NNPPhase7BacklightFactorReplacement(int displayID, float factor, flo
     }
 }
 
+BOOL NNPPhase7SetScreenCovered(BOOL covered) {
+    if (!gNNPOriginalSetScreenBlanked || !gNNPOriginalBacklightFactorFunction) return NO;
+    BOOL changed = atomic_exchange_explicit(&gNNPPhase7ScreenCovered, covered, memory_order_acq_rel) != covered;
+    if (!changed) return YES;
+    BOOL armed = atomic_load_explicit(&gNNPPhase7Armed, memory_order_acquire);
+    if (covered) {
+        if (!armed) { atomic_store_explicit(&gNNPPhase7ScreenCovered, false, memory_order_release); return NO; }
+        gNNPOriginalSetScreenBlanked(YES);
+        gNNPOriginalBacklightFactorFunction(1, 0.0f, 0.15f);
+    } else if (armed && atomic_load_explicit(&gNNPPhase7DeviceLocked, memory_order_acquire)) {
+        float factor = atomic_load_explicit(&gNNPPhase7SubstitutedFactor, memory_order_relaxed);
+        if (!isfinite(factor) || factor <= 0.0f) factor = 0.01f;
+        gNNPOriginalSetScreenBlanked(NO);
+        gNNPOriginalBacklightFactorFunction(1, factor, 0.2f);
+    }
+    NNPDiagnosticSetBool(@"CoverNativeBlankRequested", covered);
+    NNPDiagnosticLogTransition(covered ? @"COVER native display blank and zero backlight" : @"COVER native display restored");
+    return YES;
+}
+
 static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
     NNPSetScreenBlankedFunction original = gNNPOriginalSetScreenBlanked;
     if (!original) return;
@@ -451,6 +473,7 @@ static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
     }
 
     BOOL suppress = blanked && fromBacklightServicesHost &&
+        !atomic_load_explicit(&gNNPPhase7ScreenCovered, memory_order_acquire) &&
         atomic_load_explicit(&gNNPPhase7Armed, memory_order_relaxed);
     if (suppress) {
         atomic_store_explicit(&gNNPPhase7BlankRequestSuppressed, true, memory_order_release);
@@ -546,7 +569,8 @@ static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger stat
 static void NNPPhase7ProviderTransitionReplacement(id self, SEL _cmd, long long mode, double duration) {
     NNPProviderTransitionIMP original = gNNPOriginalProviderTransition;
     if (!original) return;
-    if (mode != 0 || !atomic_load_explicit(&gNNPPhase7Armed, memory_order_relaxed)) {
+    if (mode != 0 || atomic_load_explicit(&gNNPPhase7ScreenCovered, memory_order_acquire) ||
+        !atomic_load_explicit(&gNNPPhase7Armed, memory_order_relaxed)) {
         original(self, _cmd, mode, duration);
         return;
     }

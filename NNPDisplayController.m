@@ -28,6 +28,7 @@ void NNPPhase7NotifyDisplayWake(void) {}
 BOOL NNPPhase7PresentNotificationSnakeAnimation(void) { return NO; }
 void NNPPhase7StartIncidentDiagnostics(void) {}
 BOOL NNPPhase7EnsureBacklightFactorHook(void) { return NO; }
+BOOL NNPPhase7SetScreenCovered(__unused BOOL covered) { return NO; }
 void NNPPhase7UpdateForensicsState(__unused NSInteger lifecycleState, __unused BOOL deviceLocked, __unused BOOL modeSubstitutionObserved, __unused BOOL timerActive) {}
 #elif NNP_PHASE7_DRY_RUN == 2
 void NNPPhase7NotifyBacklightFactorSubstitution(__unused float originalFactor, __unused float dimmedFactor) {}
