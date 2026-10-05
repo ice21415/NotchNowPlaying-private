@@ -201,6 +201,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 @property(nonatomic) NSUInteger marqueeGeneration;
 @property(nonatomic, strong) UIImage *accentArtwork;
 @property(nonatomic, strong) UIColor *accentColor;
+@property(nonatomic) BOOL songEnding;
+@property(nonatomic, copy) NSString *endingTrackKey;
 @property(nonatomic, strong) CAShapeLayer *notificationSnakeLayer;
 @property(nonatomic, strong) CAShapeLayer *notificationSnakeFinishLayer;
 @property(nonatomic, strong) UIView *notificationCard;
@@ -267,6 +269,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 }
 
 - (void)stopContentAnimation {
+    [self.fill removeAnimationForKey:@"songEndingColor"];
     [self.contentContainer.layer removeAllAnimations];
     [self.nextTrackPreview.layer removeAllAnimations];
     [self.nextTrackIcon.layer removeAllAnimations];
@@ -278,6 +281,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     if (_playbackVisible == playbackVisible) return;
     _playbackVisible = playbackVisible;
     if (!playbackVisible) {
+        [self.fill removeAnimationForKey:@"songEndingColor"];
         [self.nextTrackPreview.layer removeAllAnimations];
         [self.nextTrackIcon.layer removeAllAnimations];
         [self.nextTrackLabel.layer removeAllAnimations];
@@ -291,6 +295,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 - (void)didMoveToWindow {
     [super didMoveToWindow];
     [self updateTitleMarquee];
+    if (!self.window) [self.fill removeAnimationForKey:@"songEndingColor"];
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -489,6 +494,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 }
 
 - (void)reduceMotionChanged:(__unused NSNotification *)notification {
+    if (UIAccessibilityIsReduceMotionEnabled()) [self.fill removeAnimationForKey:@"songEndingColor"];
     [self setNeedsLayout];
 }
 
@@ -1333,7 +1339,36 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         }
     }
 }
+- (void)applySongEndingColorAnimated:(BOOL)animated {
+    UIColor *base = self.accentColor ?: UIColor.whiteColor;
+    UIColor *color = self.songEnding ? [UIColor colorWithRed:0.92 green:0.63 blue:0.30 alpha:0.94]
+                                    : [base colorWithAlphaComponent:0.94];
+    CAShapeLayer *presentation = (CAShapeLayer *)self.fill.presentationLayer;
+    id from = (__bridge id)(presentation.strokeColor ?: self.fill.strokeColor);
+    [self.fill removeAnimationForKey:@"songEndingColor"];
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    self.fill.strokeColor = color.CGColor;
+    [CATransaction commit];
+    if (animated && self.playbackVisible && self.showProgress && self.window &&
+        !UIAccessibilityIsReduceMotionEnabled()) {
+        CABasicAnimation *transition = [CABasicAnimation animationWithKeyPath:@"strokeColor"];
+        transition.fromValue = from;
+        transition.toValue = (__bridge id)color.CGColor;
+        transition.duration = 0.65;
+        transition.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
+        [self.fill addAnimation:transition forKey:@"songEndingColor"];
+    }
+}
+
 - (void)updateState:(NNPState *)state {
+    NSString *trackKey = state.trackURI.length ? state.trackURI :
+        [NSString stringWithFormat:@"%@|%@|%@", state.uniqueIdentifier ?: @"", state.title ?: @"", state.artist ?: @""];
+    if (![self.endingTrackKey isEqualToString:trackKey]) {
+        self.endingTrackKey = trackKey;
+        self.songEnding = NO;
+        [self applySongEndingColorAnimated:NO];
+    }
     NSString *title = state.title.length ? state.title : @"Not Playing";
 #if NNP_ENABLE_PHASE4A_READONLY_BACKLIGHT_LOG
     title = [NSString stringWithFormat:@"[P4A-%@] %@", @NNP_PHASE4A_BUILD_ID, title];
@@ -1354,7 +1389,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         self.art.layer.borderColor = [self.accentColor colorWithAlphaComponent:0.38].CGColor;
         self.artist.textColor = [self.accentColor colorWithAlphaComponent:0.82];
         self.track.strokeColor = [self.accentColor colorWithAlphaComponent:0.17].CGColor;
-        self.fill.strokeColor = [self.accentColor colorWithAlphaComponent:0.94].CGColor;
+        [self applySongEndingColorAnimated:NO];
         UIColor *previewAccent = self.nextTrackAccent ?: self.accentColor;
         self.nextTrackPreview.layer.borderColor = [previewAccent colorWithAlphaComponent:0.25].CGColor;
         self.nextTrackBadge.textColor = [previewAccent colorWithAlphaComponent:0.85];
@@ -1372,7 +1407,13 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     BOOL valid = duration > 0.0 && isfinite(duration);
     self.track.hidden = self.fill.hidden = !valid || !self.showProgress;
     self.playbackTime.hidden = !valid || !self.showProgress;
-    if (!valid) return;
+    BOOL ending = valid && isfinite(elapsed) && elapsed >= 0.0 && playing &&
+                  duration - elapsed > 0.0 && duration - elapsed <= 10.0;
+    if (ending != self.songEnding) {
+        self.songEnding = ending;
+        [self applySongEndingColorAnimated:valid && playing];
+    }
+    if (!valid || !isfinite(elapsed)) return;
     elapsed = MIN(duration, MAX(0.0, elapsed));
     NSString *played = NNPPlaybackTimeString(elapsed);
     NSString *remaining = [@"−" stringByAppendingString:NNPPlaybackTimeString(ceil(duration - elapsed))];
