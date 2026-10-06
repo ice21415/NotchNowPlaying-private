@@ -17,9 +17,9 @@ int main(void) {
         NSString *encoded = [[NSString alloc] initWithData:[NSJSONSerialization dataWithJSONObject:inner options:0 error:nil] encoding:NSUTF8StringEncoding];
         assert([NNPMengoImageData(Response(encoded), NULL) isEqual:bytes]);
         NSMutableDictionary *expired = [inner mutableCopy]; expired[@"IsExpired"] = @YES;
-        assert(!NNPMengoImageData(Response(expired), &message) && message.length);
+        assert([NNPMengoImageData(Response(expired), &message) isEqual:bytes] && [message containsString:@"僅可出站"]);
         expired[@"IsExpired"] = @NO; expired[@"Ticket"] = @{@"IsExpired": @YES};
-        assert(!NNPMengoImageData(Response(expired), NULL));
+        assert([NNPMengoImageData(Response(expired), NULL) isEqual:bytes]);
         NSDictionary *badAuth = @{@"ok": @NO, @"toekn_error": @YES};
         assert(!NNPMengoImageData([NSJSONSerialization dataWithJSONObject:badAuth options:0 error:nil], &message));
         assert([message containsString:@"登入"]);

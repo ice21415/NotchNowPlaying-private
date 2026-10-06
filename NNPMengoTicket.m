@@ -24,15 +24,14 @@ NSData *NNPMengoImageData(NSData *response, NSString **message) {
         inner = [NSJSONSerialization JSONObjectWithData:[inner dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
     if (![inner isKindOfClass:NSDictionary.class]) return nil;
     id ticket = inner[@"Ticket"];
-    if (NNPMengoBool(inner[@"IsExpired"]) ||
-        ([ticket isKindOfClass:NSDictionary.class] && NNPMengoBool(ticket[@"IsExpired"]))) {
-        if (message) *message = @"票券已到期，請至 MeN Go 確認";
-        return nil;
-    }
+    BOOL exitOnly = NNPMengoBool(inner[@"IsExpired"]) ||
+        ([ticket isKindOfClass:NSDictionary.class] && NNPMengoBool(ticket[@"IsExpired"]));
     NSString *base64 = [inner[@"QRCode"] isKindOfClass:NSString.class] ? inner[@"QRCode"] : nil;
     if (!base64.length || base64.length > 2 * 1024 * 1024) return nil;
     NSData *image = [[NSData alloc] initWithBase64EncodedString:base64 options:0];
     if (image.length < 8 || image.length > 1024 * 1024) return nil;
-    if (message) *message = nil;
+    // MeN Go still shows the server-issued code for an expired ticket so a
+    // rider can exit/alight. Match its warning instead of blocking that code.
+    if (message) *message = exitOnly ? @"票券已到期 · 僅可出站／下車" : nil;
     return image;
 }
