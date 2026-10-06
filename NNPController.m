@@ -862,6 +862,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [self revealCoverSheetControlsWithReason:@"bottom-center-unlock-gesture"];
 }
 - (void)revealCoverSheetControlsForWake {
+    [self clearLockedPresentationBackgroundForUnlock];
     if (!self.locked || !self.coverSheetHostView || !self.coverSheetBlackoutView) return;
     [self revealCoverSheetControlsWithReason:@"side-button-wake"];
 }
@@ -997,7 +998,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     NNPDiagnosticLogTransition(@"CONTROLLER cleared plugin window black background immediately on logical unlock");
 }
 - (void)applyLockedBackground {
-    BOOL dedicatedBlackPresentation = self.locked;
+    BOOL dedicatedBlackPresentation = self.locked && [self shouldPresentInsideCoverSheet];
     UIColor *background = dedicatedBlackPresentation ? UIColor.blackColor : UIColor.clearColor;
     UIColor *playerBackground = self.coverSheetHostView && self.view.superview == self.coverSheetHostView
         ? UIColor.clearColor : background;

@@ -2,6 +2,7 @@
 #import "NNPDiagnostics.h"
 #import "NNPNotificationDiagnostics.h"
 #import "NNPChargingPolicy.h"
+#import "NNPDisplayWakePolicy.h"
 #import "NNPPreferences.h"
 #import <mach/mach_time.h>
 #import <pthread.h>
@@ -488,10 +489,12 @@ static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
     }
     if (!blanked) {
         atomic_store_explicit(&gNNPPhase7BlankRequestSuppressed, false, memory_order_release);
-        bool shouldReveal = fromBacklightServicesHost &&
-            atomic_load_explicit(&gNNPPhase7Armed, memory_order_acquire) &&
-            atomic_load_explicit(&gNNPPhase7DeviceLocked, memory_order_acquire) &&
-            atomic_exchange_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_acq_rel);
+        bool pending = atomic_exchange_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_acq_rel);
+        bool shouldReveal = fromBacklightServicesHost && NNPDisplayWakeShouldReveal(
+            atomic_load_explicit(&gNNPPhase7Armed, memory_order_acquire),
+            atomic_load_explicit(&gNNPPhase7DeviceLocked, memory_order_acquire),
+            atomic_load_explicit(&gNNPPhase7AODPresentationActive, memory_order_acquire), pending,
+            atomic_load_explicit(&gNNPPhase7ScreenCovered, memory_order_acquire));
         if (shouldReveal) {
             NNPDiagnosticLogTransition(@"PHASE7 BLS unblank received after suppressed lock blank; revealing native Lock Screen");
             NNPPhase7NotifyDisplayWake();
@@ -559,9 +562,13 @@ static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger stat
         atomic_store_explicit(&gNNPPhase7NotificationUnblankSuppressionDeadlineTicks, 0, memory_order_release);
     }
 
-    bool shouldReveal = state == 1 &&
-        armed && locked &&
-        atomic_exchange_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_acq_rel);
+    bool shouldReveal = false;
+    if (state == 1) {
+        bool pending = atomic_exchange_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_acq_rel);
+        shouldReveal = NNPDisplayWakeShouldReveal(armed, locked,
+            atomic_load_explicit(&gNNPPhase7AODPresentationActive, memory_order_acquire), pending,
+            atomic_load_explicit(&gNNPPhase7ScreenCovered, memory_order_acquire));
+    }
     if (shouldReveal) {
         NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 SpringBoard backlight state=%ld source=%ld; revealing native Lock Screen before wake transition",
                                    (long)state, (long)source]);
