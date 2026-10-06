@@ -140,3 +140,9 @@ Diagnostics add `MengoFullTouchAssertionActive` and the native `AODLastWakeSourc
 Actual prevailing sensor mode, delivered touches, side-key behavior and battery
 cost remain device-test questions. Ordinary digitizer operation may increase
 AOD power while this feature is enabled; no power saving claim is made.
+
+Actions run `37392979023` passed both builds and the new assertion test for source
+`9522e3f171d10414c7dd3f0272868b24a71f0e35`. Installed 0.1.128 and reloaded
+SpringBoard. Package SHA-256:
+`6cfb320c8e2ff948aa2d87c008a1fe0a6b6e0d190350ab73fc0835891a75e42a`.
+Awaiting physical tap, ticket panel and side-button regression results.
