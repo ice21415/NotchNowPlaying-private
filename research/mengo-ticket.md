@@ -97,3 +97,19 @@ SpringBoard successfully. Package SHA-256:
 Before installation, the device already held a synced MeN Go session with
 `MQRCode` endpoint and mode 0600, owned by mobile. No re-login is needed solely
 for this UI correction. Awaiting physical button and ticket display validation.
+
+## 0.1.127 touch routing
+
+After 0.1.126 the user reported that tapping the entry did nothing. No ticket-open
+or session-request state had been recorded. Route the entry and the open panel
+through the existing AOD gesture window while retaining the visible host overlay.
+Convert the actual control rectangles across views for routing. Ticket taps do
+not toggle CoverSheet controls, and ticket gestures cannot skip tracks. Normal
+notch tap/pan behavior remains available when the ticket panel is closed. Record
+`MengoTouchRoutingActive` and `MengoLastTouchAction` without ticket/session data.
+
+Actions run `37312454597` passed for source
+`f03e6ae649b9bcfd37112f325e07a52752365877`. Installed 0.1.127 and reloaded SpringBoard.
+Package SHA-256:
+`191444b95a83a5f2e5bc59497f8009c4ce3dcf740af30c870bbdd1897778be1e`.
+Actual tap delivery and image display still require the user's device test.
