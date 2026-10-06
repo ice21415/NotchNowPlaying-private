@@ -225,3 +225,10 @@ Diagnostics include early HID-hook availability, actual early touch point and
 matched-region state. Real delivery/position and side-key/cover regressions remain
 device-test requirements. Keeping ordinary digitizer input enabled while this
 feature is visible can add power cost; it has not been measured.
+
+Actions `37399670027` passed both variants, source
+`e59919ca477571f23ec0e99c78c3418c2a362857`. Installed 0.1.132 and reloaded
+SpringBoard. SHA-256:
+`e23eb3d05ed0f031c52c8764cedbf29db78d205a2c27f9c87d8afc4516174972`.
+Device confirms early HID and application event hooks installed. Physical tap
+coordinates, successful region match and real ticket image display remain pending.
