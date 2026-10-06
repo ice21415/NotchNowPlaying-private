@@ -146,3 +146,30 @@ Actions run `37392979023` passed both builds and the new assertion test for sour
 SpringBoard. Package SHA-256:
 `6cfb320c8e2ff948aa2d87c008a1fe0a6b6e0d190350ab73fc0835891a75e42a`.
 Awaiting physical tap, ticket panel and side-button regression results.
+
+## 0.1.129 native tap-to-wake routing
+
+0.1.128 failed the same physical test. Device diagnostics showed the full-touch
+assertion acquired, native wake source 9, and no ticket action. An acquired
+assertion therefore was insufficient; do not treat its diagnostic flag as proof
+that native tap handling changed. Remove the ineffective assertion/runtime files.
+
+Runtime headers identify `SBTapToWakeController tapToWakeDidRecognize:` and
+`SBFTapToWakeGestureRecognizer _succesfullyRecognizeFromEvent:`. Hook their
+verified void/object and void/pointer signatures, preserving the originals.
+During eligible music AOD only, retain a normalized digitizer coordinate from
+the native recognition event for at most 0.5 seconds. Reject missing/nonfinite,
+out-of-range, future or stale coordinates; optionally use a nonzero ordinary
+UIGestureRecognizer location if available. Convert the point into the actual
+CoverSheet host/control coordinates.
+
+Only matching entry/panel taps go to the ticket controller before native wake.
+Nonmatching, unavailable, inactive, covered and non-main-thread events invoke the
+original native action. The side-button and backlight wake implementations are
+unchanged. No always-on raw HID monitor or full digitizer assertion remains.
+The new C policy test covers malformed coordinates and stale/future timestamps;
+device testing must establish whether this native event contains usable positions.
+
+Diagnostics: `MengoNativeWakeGestureHookInstalled`,
+`MengoNativeWakeCoordinateHookInstalled`, `MengoWakeTapCoordinateAvailable`,
+`MengoWakeTapPoint`, `MengoWakeTapConsumed`, and existing ticket-action fields.
