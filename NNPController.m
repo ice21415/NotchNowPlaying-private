@@ -742,8 +742,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (BOOL)handleMengoWakeGesture:(id)gesture {
     if (![self shouldHandleMengoWakeTap] || ![gesture isKindOfClass:UIGestureRecognizer.class]) return NO;
     UIView *host = self.coverSheetHostView;
-    NNPDiagnosticSetString(@"MengoWakeRecognizerBounds", NSStringFromCGRect([gesture view].bounds));
-    NNPDiagnosticSetString(@"MengoWakeRecognizerWindowBounds", NSStringFromCGRect([gesture view].window.bounds));
+    UIView *recognizerView = [(UIGestureRecognizer *)gesture view];
+    NNPDiagnosticSetString(@"MengoWakeRecognizerBounds", NSStringFromCGRect(recognizerView.bounds));
+    NNPDiagnosticSetString(@"MengoWakeRecognizerWindowBounds", NSStringFromCGRect(recognizerView.window.bounds));
     CGPoint normalized, point;
     BOOL raw = NNPMengoWakeNormalizedPoint(gesture, &normalized);
     NNPDiagnosticSetBool(@"MengoWakeTapCoordinateAvailable", raw);

@@ -40,6 +40,7 @@ static void NNPMengoRawRecognition(id gesture, SEL selector, CFTypeRef event) {
         [sample[@"UIKit"] boolValue] && NNPMengoWakeSampleFresh([sample[@"time"] doubleValue], NSProcessInfo.processInfo.systemUptime);
     if (!hasUIKitPoint) objc_setAssociatedObject(gesture, &NNPMengoWakePointKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (event && NSThread.isMainThread && [[NNPController sharedController] shouldHandleMengoWakeTap]) {
+        NNPDiagnosticSetString(@"MengoWakeCoordinateSource", hasUIKitPoint ? @"UIKit touch" : @"unavailable");
         static CFTypeRef (*getEvent)(CFTypeRef, uint32_t, uint32_t);
         static double (*getFloat)(CFTypeRef, uint32_t);
         static uint32_t (*getType)(CFTypeRef);
@@ -122,8 +123,13 @@ void NNPMengoInstallWakeGestureHook(void) {
             method_getReturnType(ended, result, sizeof(result));
             method_getArgumentType(ended, 2, first, sizeof(first));
             method_getArgumentType(ended, 3, second, sizeof(second));
-            if (result[0] == 'v' && first[0] == '@' && second[0] == '@')
-                NNPOriginalWakeTouchesEnded = (void (*)(id, SEL, id, id))method_setImplementation(ended, (IMP)NNPMengoWakeTouchesEnded);
+            if (result[0] == 'v' && first[0] == '@' && second[0] == '@') {
+                IMP previous = method_getImplementation(ended);
+                BOOL added = class_addMethod(NSClassFromString(@"SBFTapToWakeGestureRecognizer"),
+                    @selector(touchesEnded:withEvent:), (IMP)NNPMengoWakeTouchesEnded, method_getTypeEncoding(ended));
+                if (!added) previous = method_setImplementation(ended, (IMP)NNPMengoWakeTouchesEnded);
+                NNPOriginalWakeTouchesEnded = (void (*)(id, SEL, id, id))previous;
+            }
         }
         Method wake = NNPMengoRecognitionMethod(NSClassFromString(@"SBTapToWakeController"), "tapToWakeDidRecognize:", '@');
         if (wake) NNPOriginalWakeRecognition = (void (*)(id, SEL, id))method_setImplementation(wake, (IMP)NNPMengoWakeRecognition);
