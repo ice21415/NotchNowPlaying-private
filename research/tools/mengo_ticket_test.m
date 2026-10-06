@@ -7,6 +7,16 @@ static NSData *Response(id inner) {
 }
 int main(void) {
     @autoreleasepool {
+        assert(NNPMengoLoginCheckStatus([@"{\"ok\":true}" dataUsingEncoding:NSUTF8StringEncoding]) == NNPMengoCredentialValid);
+        assert(NNPMengoLoginCheckStatus([@"{\"ok\":false,\"token_error\":true}" dataUsingEncoding:NSUTF8StringEncoding]) == NNPMengoCredentialRejected);
+        assert(NNPMengoLoginCheckStatus([@"{\"toekn_error\":true}" dataUsingEncoding:NSUTF8StringEncoding]) == NNPMengoCredentialRejected);
+        assert(NNPMengoLoginCheckStatus([@"{\"error\":\"login required\"}" dataUsingEncoding:NSUTF8StringEncoding]) == NNPMengoCredentialRejected);
+        assert(NNPMengoLoginCheckStatus([@"{\"ok\":true,\"token_error\":true}" dataUsingEncoding:NSUTF8StringEncoding]) == NNPMengoCredentialRejected);
+        assert(NNPMengoLoginCheckStatus([@"{\"ok\":false}" dataUsingEncoding:NSUTF8StringEncoding]) == NNPMengoCredentialUnknown);
+        assert(NNPMengoLoginCheckStatus([@"{\"ok\":null,\"error\":[],\"token_error\":null}" dataUsingEncoding:NSUTF8StringEncoding]) == NNPMengoCredentialUnknown);
+        assert(NNPMengoLoginCheckStatus([@"<html>network proxy error</html>" dataUsingEncoding:NSUTF8StringEncoding]) == NNPMengoCredentialUnknown);
+        assert(NNPMengoLoginCheckStatus([@"[]" dataUsingEncoding:NSUTF8StringEncoding]) == NNPMengoCredentialUnknown);
+        assert(NNPMengoLoginCheckStatus([NSMutableData dataWithLength:65537]) == NNPMengoCredentialUnknown);
         NSString *body = [[NSString alloc] initWithData:NNPMengoFormBody(@"a+b&c=d %") encoding:NSUTF8StringEncoding];
         assert([body isEqual:@"token=a%2Bb%26c%3Dd%20%25"]);
         NSData *bytes = [@"valid-test-image-bytes" dataUsingEncoding:NSUTF8StringEncoding];

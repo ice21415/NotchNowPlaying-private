@@ -43,6 +43,15 @@ static NSDictionary *NNPMengoSession(void) {
 @property(nonatomic, strong) NNPMengoOverlay *overlay;
 @property(nonatomic, strong) UIView *panel;
 @property(nonatomic, strong) UIButton *entry;
+@property(nonatomic, strong) UILabel *credentialLabel;
+@property(nonatomic, strong) NSURLSession *credentialSession;
+@property(nonatomic, strong) NSURLSessionDataTask *credentialTask;
+@property(nonatomic, strong) NSTimer *credentialTimer;
+@property(nonatomic) NSUInteger credentialGeneration;
+@property(nonatomic) NSTimeInterval credentialVersion;
+@property(nonatomic) NSTimeInterval credentialAttempt;
+@property(nonatomic) NSTimeInterval credentialChecked;
+@property(nonatomic) NNPMengoCredentialStatus credentialStatus;
 @property(nonatomic, strong) UIImageView *codeView;
 @property(nonatomic, strong) UILabel *status;
 @property(nonatomic, strong) UILabel *countdown;
@@ -65,6 +74,7 @@ static NSDictionary *NNPMengoSession(void) {
 @implementation NNPMengoController
 - (void)setHostView:(UIView *)host active:(BOOL)active {
     active = active && host.window != nil;
+    BOOL becameActive = active && !self.active;
     self.active = active;
     if (active && !self.sensorMode) self.sensorMode = [NNPMengoSensorMode new];
     [self.sensorMode setActive:active];
@@ -79,10 +89,16 @@ static NSDictionary *NNPMengoSession(void) {
     NNPDiagnosticSetBool(@"MengoEntryVisible", active);
     if (!active) NNPDiagnosticSetBool(@"MengoEntryAttachedToAOD", NO);
     if (!active) {
+        self.credentialGeneration++;
+        [self.credentialTimer invalidate]; self.credentialTimer = nil;
+        if (self.credentialTask) self.credentialAttempt = 0;
+        [self.credentialTask cancel]; self.credentialTask = nil;
+        [self.credentialSession invalidateAndCancel]; self.credentialSession = nil;
         [self close];
         [self.overlay removeFromSuperview];
         self.overlay = nil;
         self.panel = nil; self.entry = nil; self.codeView = nil; self.status = nil; self.countdown = nil;
+        self.credentialLabel = nil;
         return;
     }
     if (!self.overlay || self.overlay.superview != host) {
@@ -98,6 +114,12 @@ static NSDictionary *NNPMengoSession(void) {
         self.entry.accessibilityLabel = @"MeN Go 乘車碼";
         [self.entry addTarget:self action:@selector(open) forControlEvents:UIControlEventTouchUpInside];
         [self.overlay addSubview:self.entry];
+        self.credentialLabel = [UILabel new];
+        self.credentialLabel.font = [UIFont systemFontOfSize:10];
+        self.credentialLabel.textAlignment = NSTextAlignmentRight;
+        self.credentialLabel.numberOfLines = 2;
+        self.credentialLabel.isAccessibilityElement = YES;
+        [self.overlay addSubview:self.credentialLabel];
         self.panel = [UIView new]; self.panel.backgroundColor = UIColor.blackColor;
         self.panel.accessibilityViewIsModal = YES;
         self.panel.hidden = YES; [self.overlay addSubview:self.panel];
@@ -127,6 +149,7 @@ static NSDictionary *NNPMengoSession(void) {
     self.overlay.frame = host.bounds;
     CGFloat width = CGRectGetWidth(self.overlay.bounds), height = CGRectGetHeight(self.overlay.bounds);
     self.entry.frame = CGRectMake(width - 76, height - 132, 52, 52);
+    self.credentialLabel.frame = CGRectMake(width - 144, height - 78, 120, 30);
     self.overlay.entryRegion = self.entry.frame;
     self.panel.frame = self.overlay.bounds;
     CGFloat size = MIN(240, MIN(width - 64, height - 260));
@@ -145,6 +168,105 @@ static NSDictionary *NNPMengoSession(void) {
     NNPDiagnosticSetString(@"MengoScreenBounds", NSStringFromCGRect(UIScreen.mainScreen.bounds));
     NNPDiagnosticSetString(@"MengoNativeScreenBounds", NSStringFromCGRect(UIScreen.mainScreen.nativeBounds));
     NNPDiagnosticSetDouble(@"MengoScreenScale", UIScreen.mainScreen.scale);
+    if (becameActive) [self checkCredentialIfNeeded];
+    if (!self.credentialLabel.text.length) [self updateCredentialLabel];
+    if (!self.credentialTimer) {
+        __weak typeof(self) weakSelf = self;
+        self.credentialTimer = [NSTimer timerWithTimeInterval:1800 repeats:YES block:^(NSTimer *timer) {
+            [weakSelf checkCredentialIfNeeded];
+        }];
+        NSTimeInterval age = NSDate.date.timeIntervalSince1970 - self.credentialAttempt;
+        if (self.credentialAttempt > 0 && age >= 0)
+            self.credentialTimer.fireDate = [NSDate dateWithTimeIntervalSinceNow:MAX(30, 1800 - age)];
+        self.credentialTimer.tolerance = 60;
+        [NSRunLoop.mainRunLoop addTimer:self.credentialTimer forMode:NSRunLoopCommonModes];
+    }
+}
+- (void)updateCredentialLabel {
+    NSString *text;
+    UIColor *color = [UIColor colorWithWhite:0.65 alpha:1];
+    if (self.credentialTask) text = @"正在檢查登入…";
+    else if (self.credentialStatus == NNPMengoCredentialMissing) text = @"請先同步 MeN Go 登入";
+    else if (self.credentialStatus == NNPMengoCredentialRejected) {
+        text = @"需重新登入 MeN Go";
+        color = [UIColor colorWithRed:0.85 green:0.4 blue:0.35 alpha:1];
+    } else if (self.credentialStatus == NNPMengoCredentialValid) {
+        NSDateFormatter *format = [NSDateFormatter new]; format.dateFormat = @"HH:mm";
+        text = [NSString stringWithFormat:@"登入有效 · %@", [format stringFromDate:[NSDate dateWithTimeIntervalSince1970:self.credentialChecked]]];
+    } else {
+        text = @"登入狀態未確認";
+        color = [UIColor colorWithRed:0.8 green:0.65 blue:0.3 alpha:1];
+    }
+    self.credentialLabel.text = text;
+    self.credentialLabel.textColor = color;
+    self.entry.accessibilityValue = text;
+    NNPDiagnosticSetString(@"MengoCredentialCaption", text);
+    NNPDiagnosticSetInteger(@"MengoCredentialStatus", self.credentialStatus);
+    NNPDiagnosticSetDouble(@"MengoCredentialCheckedTimestamp", self.credentialChecked);
+}
+- (void)checkCredentialIfNeeded {
+    if (!self.active || self.credentialTask) return;
+    NSDictionary *auth = NNPMengoSession();
+    NSString *token = [auth[@"token"] isKindOfClass:NSString.class] ? auth[@"token"] : nil;
+    NSString *agent = [auth[@"agent"] isKindOfClass:NSString.class] ? auth[@"agent"] : nil;
+    NSTimeInterval version = [auth[@"updated"] isKindOfClass:NSNumber.class] ? [auth[@"updated"] doubleValue] : 0;
+    NSTimeInterval now = NSDate.date.timeIntervalSince1970;
+    if (!token.length || token.length > 16384 || !agent.length || agent.length > 512 ||
+        [agent rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound) {
+        self.credentialStatus = NNPMengoCredentialMissing;
+        self.credentialVersion = 0; self.credentialChecked = 0; self.credentialAttempt = 0;
+        [self updateCredentialLabel];
+        return;
+    }
+    if (version != self.credentialVersion) {
+        self.credentialVersion = version; self.credentialAttempt = 0;
+        self.credentialChecked = 0; self.credentialStatus = NNPMengoCredentialUnknown;
+        NSDictionary *saved = [NSUserDefaults.standardUserDefaults dictionaryForKey:@"NNPMengoCredentialCheck"];
+        if ([saved[@"version"] doubleValue] == version) {
+            self.credentialChecked = [saved[@"checked"] doubleValue];
+            self.credentialStatus = [saved[@"state"] integerValue];
+            self.credentialAttempt = [saved[@"attempted"] doubleValue];
+        }
+    }
+    NSTimeInterval age = now - self.credentialAttempt;
+    NSTimeInterval interval = self.credentialStatus == NNPMengoCredentialUnknown ? 300 : 1800;
+    if (self.credentialAttempt > 0 && age >= 0 && age < interval) return;
+    self.credentialAttempt = now;
+    NSURLSessionConfiguration *config = NSURLSessionConfiguration.ephemeralSessionConfiguration;
+    config.timeoutIntervalForRequest = 15; config.timeoutIntervalForResource = 20;
+    config.URLCache = nil; config.HTTPCookieStorage = nil; config.URLCredentialStorage = nil;
+    self.credentialSession = [NSURLSession sessionWithConfiguration:config delegate:[NNPMengoRedirectGuard new] delegateQueue:nil];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:@"https://men-go.tw/Platform/Htmlv2/LoginCheck"]
+        cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:15];
+    request.HTTPMethod = @"POST"; request.HTTPBody = NNPMengoFormBody(token);
+    [request setValue:@"application/x-www-form-urlencoded; charset=UTF-8" forHTTPHeaderField:@"Content-Type"];
+    [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+    [request setValue:agent forHTTPHeaderField:@"User-Agent"];
+    [request setValue:@"null" forHTTPHeaderField:@"Origin"];
+    [request setValue:@"XMLHttpRequest" forHTTPHeaderField:@"X-Requested-With"];
+    NSUInteger generation = ++self.credentialGeneration;
+    __weak typeof(self) weakSelf = self;
+    self.credentialTask = [self.credentialSession dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NNPMengoCredentialStatus state = !error && [response isKindOfClass:NSHTTPURLResponse.class] &&
+            [(NSHTTPURLResponse *)response statusCode] == 200 ? NNPMengoLoginCheckStatus(data) : NNPMengoCredentialUnknown;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NNPMengoController *owner = weakSelf;
+            if (!owner || generation != owner.credentialGeneration || !owner.active) return;
+            owner.credentialTask = nil;
+            [owner.credentialSession finishTasksAndInvalidate]; owner.credentialSession = nil;
+            // A network failure cannot undo a known rejection of this credential.
+            if (state != NNPMengoCredentialUnknown || owner.credentialStatus != NNPMengoCredentialRejected)
+                owner.credentialStatus = state;
+            if (state != NNPMengoCredentialUnknown) {
+                owner.credentialChecked = NSDate.date.timeIntervalSince1970;
+            }
+            [NSUserDefaults.standardUserDefaults setObject:@{@"version": @(version), @"checked": @(owner.credentialChecked),
+                @"attempted": @(owner.credentialAttempt), @"state": @(owner.credentialStatus)} forKey:@"NNPMengoCredentialCheck"];
+            [owner updateCredentialLabel];
+        });
+    }];
+    [self.credentialTask resume];
+    [self updateCredentialLabel];
 }
 - (void)monitorContact:(CGPoint)normalized down:(BOOL)down {
     if (!self.active || !self.overlay.window || !self.overlay.superview) return;
@@ -304,6 +426,14 @@ static NSDictionary *NNPMengoSession(void) {
             NNPMengoController *owner = weakSelf;
             if (!owner || generation != owner.generation || !owner.active || !owner.overlay.ticketOpen) return;
             owner.task = nil;
+            if ([message isEqualToString:@"請開啟 MeN Go 重新登入"]) {
+                owner.credentialStatus = NNPMengoCredentialRejected;
+                owner.credentialChecked = NSDate.date.timeIntervalSince1970;
+                [NSUserDefaults.standardUserDefaults setObject:@{@"version": @(owner.credentialVersion),
+                    @"checked": @(owner.credentialChecked), @"attempted": @(owner.credentialAttempt),
+                    @"state": @(NNPMengoCredentialRejected)} forKey:@"NNPMengoCredentialCheck"];
+                [owner updateCredentialLabel];
+            }
             NNPDiagnosticSetBool(@"MengoRequestActive", NO);
             NNPDiagnosticSetBool(@"MengoTicketImageAvailable", image != nil);
             NNPDiagnosticSetBool(@"MengoQRCodeReadable", readable);
@@ -324,6 +454,8 @@ static NSDictionary *NNPMengoSession(void) {
     [self.task resume];
 }
 - (void)dealloc {
+    [self.credentialTimer invalidate];
+    [self.credentialTask cancel]; [self.credentialSession invalidateAndCancel];
     [self.countdownTimer invalidate];
     [_monitor setActive:NO];
     [_sensorMode setActive:NO];

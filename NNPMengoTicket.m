@@ -3,6 +3,17 @@ static BOOL NNPMengoBool(id value) {
     return [value isKindOfClass:NSNumber.class] && [value boolValue];
 }
 
+NNPMengoCredentialStatus NNPMengoLoginCheckStatus(NSData *response) {
+    if (!response.length || response.length > 64 * 1024) return NNPMengoCredentialUnknown;
+    id body = [NSJSONSerialization JSONObjectWithData:response options:0 error:nil];
+    if (![body isKindOfClass:NSDictionary.class]) return NNPMengoCredentialUnknown;
+    BOOL rejected = NNPMengoBool(body[@"token_error"]) || NNPMengoBool(body[@"toekn_error"]);
+    id error = body[@"error"];
+    rejected |= ([error isKindOfClass:NSString.class] && [error length] > 0) || NNPMengoBool(error);
+    if (rejected) return NNPMengoCredentialRejected;
+    return NNPMengoBool(body[@"ok"]) ? NNPMengoCredentialValid : NNPMengoCredentialUnknown;
+}
+
 NSData *NNPMengoFormBody(NSString *token) {
     NSCharacterSet *safe = [NSCharacterSet characterSetWithCharactersInString:
         @"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"];

@@ -48,7 +48,7 @@
         { cell = PSGroupCell; label = "AOD 通知提醒"; footerText = "只在鎖定且 AOD 顯示時生效。通知到達時，光點會從瀏海旁沿螢幕邊緣繞行兩圈，並短暫顯示 App 圖示和通知內容。收到的通知 App 圖示會列在專輯封面下方，最多顯示 3 個，更多以「+N」表示；解鎖或離開 AOD 後清除。通知仍保留在系統通知中心。減少動態效果開啟時改用靜態邊框提示。側鍵喚醒維持原行為。此功能預設關閉。"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = NotificationSnakeWakeEnabled; label = "蛇形動畫顯示通知"; default = 0; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
 
-        { cell = PSGroupCell; label = "MeN Go 乘車碼"; footerText = "首次請開啟 MeN Go，登入並顯示一次乘車碼。音樂 AOD 右下角會出現 QR 按鈕，點按後自動取得最新碼並暫時提高亮度；關閉、解鎖或遮住螢幕後停止請求。乘車碼畫面 90 秒後自動關閉。登入失效時需回 MeN Go 登入。"; },
+        { cell = PSGroupCell; label = "MeN Go 乘車碼"; footerText = "首次請開啟 MeN Go，登入並顯示一次乘車碼。音樂 AOD 右下角會出現 QR 按鈕，旁邊顯示登入狀態與最近確認時間。AOD 期間每 30 分鐘向官方檢查登入，離開或遮住螢幕後停止；網路失敗顯示未確認。登入有效不代表票券有效。點按 QR 後才取得最新乘車碼並暫時提高亮度，畫面 90 秒後自動關閉。登入失效時需回 MeN Go 登入。"; },
         { cell = PSSwitchCell; defaults = "com.user.notchnowplaying"; key = MengoEnabled; label = "顯示乘車碼入口"; default = 1; PostNotification = "com.user.notchnowplaying.preferences.changed"; },
 
         { cell = PSGroupCell; label = "AOD 像素保護"; footerText = "AOD 期間每 30 秒移動播放器、通知與充電流光，水平及垂直各不超過 6 個面板像素；每次短暫淡至黑色，讓重疊區域也休息。保護自動啟用，離開 AOD 後停止。可降低烙印風險，無法保證完全避免。"; },

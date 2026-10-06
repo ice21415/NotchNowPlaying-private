@@ -374,3 +374,26 @@ future expiry are separate questions; a successful QR request proves validity
 only at the time of that request. Exact TTL requires server documentation or
 controlled observations over time. Avoid background polling solely for this
 purpose; record non-secret success/auth-failure times during normal QR use.
+
+## 0.1.138 advance credential check
+
+A live LoginCheck request using the existing phone session returned HTTP 200
+and exactly {"ok":true}. Only response field types and boolean status were
+printed. The temporary local session copy was deleted immediately afterward.
+
+Add a credential status caption beside the QR entry. Check LoginCheck on AOD
+entry when due and every 30 minutes while the entry remains active; reuse a
+recent check across wake/respring. No QR image is fetched for preflight. Cancel
+requests/timer when leaving AOD or entering covered-screen suspension. A failed
+check means unknown, not expired; retain a known rejection until a successful
+check or a new session. A new stored-session timestamp invalidates cached status.
+Persist only session update timestamp, check/attempt times and classification;
+never credential contents. Display the last confirmed time for valid login.
+The caption shares the existing overlay's pixel shift and black-rest behavior.
+
+Tests cover valid LoginCheck, both authentication-error spellings, explicit
+LoginCheck error, conflicting success/error, unknown failure, null/array fields,
+malformed JSON/proxy HTML and oversized response. Existing QR parsing tests remain.
+These checks validate login only; ticket expiry and gate acceptance are separate.
+Outside active music AOD there is no background checker or notification. This is
+advance information, not a guarantee against revocation after a successful check.
