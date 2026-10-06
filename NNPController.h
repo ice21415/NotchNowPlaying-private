@@ -6,4 +6,6 @@
 - (void)setLocked:(BOOL)locked;
 - (void)revealCoverSheetControlsForWake;
 - (BOOL)showNotificationSnakeAnimation;
+- (BOOL)shouldHandleMengoWakeTap;
+- (BOOL)handleMengoWakeGesture:(id)gesture;
 @end

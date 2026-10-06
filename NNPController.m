@@ -8,6 +8,7 @@
 #import "NNPQueueSnapshot.h"
 #import "NNPNextArtwork.h"
 #import "NNPMengoController.h"
+#import "NNPMengoWakeGesture.h"
 #import "NNPView.h"
 #import "NNPPreferences.h"
 #import "NNPLockStateController.h"
@@ -346,6 +347,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(spotifyDataChanged:) name:NNPSpotifyDataDidChangeNotification object:self.preferences];
     self.display = [NNPDisplayController new]; self.lockState = [NNPLockStateController new];
     __weak typeof(self) weakSelf = self;
+    NNPMengoInstallWakeGestureHook();
     self.mengo = [NNPMengoController new];
     self.mengo.presentationChanged = ^(BOOL open) {
         NNPController *controller = weakSelf;
@@ -720,6 +722,31 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     self.notchGestureWindow.ticketTouchRegion = [self.mengo interactiveRectInView:self.notchGestureWindow.rootViewController.view];
     NNPDiagnosticSetBool(@"MengoTouchRoutingActive", !CGRectIsNull(self.notchGestureWindow.ticketTouchRegion));
     self.notchGestureWindow.hidden = NO;
+}
+- (BOOL)shouldHandleMengoWakeTap {
+    return self.preferences.mengoEnabled && [self shouldPresentInsideCoverSheet] &&
+        !self.coverSheetBlackoutRevealed && ![self pocketSuspended] && self.view.playbackVisible;
+}
+- (BOOL)handleMengoWakeGesture:(id)gesture {
+    if (![self shouldHandleMengoWakeTap] || ![gesture isKindOfClass:UIGestureRecognizer.class]) return NO;
+    UIView *host = self.coverSheetHostView;
+    CGPoint normalized, point;
+    BOOL raw = NNPMengoWakeNormalizedPoint(gesture, &normalized);
+    NNPDiagnosticSetBool(@"MengoWakeTapCoordinateAvailable", raw);
+    if (raw) {
+        CGRect screen = UIScreen.mainScreen.bounds;
+        CGPoint screenPoint = CGPointMake(normalized.x * CGRectGetWidth(screen), normalized.y * CGRectGetHeight(screen));
+        CGPoint windowPoint = [host.window convertPoint:screenPoint fromWindow:nil];
+        point = [host convertPoint:windowPoint fromView:host.window];
+    } else {
+        point = [(UIGestureRecognizer *)gesture locationInView:host];
+        if (CGPointEqualToPoint(point, CGPointZero)) return NO;
+    }
+    if (!isfinite(point.x) || !isfinite(point.y)) return NO;
+    NNPDiagnosticSetString(@"MengoWakeTapPoint", NSStringFromCGPoint(point));
+    BOOL handled = [self.mengo handleTapAtPoint:point inView:host];
+    NNPDiagnosticSetBool(@"MengoWakeTapConsumed", handled);
+    return handled;
 }
 - (void)handleAODTap:(UITapGestureRecognizer *)gesture {
     if (gesture.state != UIGestureRecognizerStateRecognized || ![self shouldPresentInsideCoverSheet] ||
