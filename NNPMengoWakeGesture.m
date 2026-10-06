@@ -22,15 +22,25 @@ static void NNPMengoRawRecognition(id gesture, SEL selector, CFTypeRef event) {
     if (event && NSThread.isMainThread && [[NNPController sharedController] shouldHandleMengoWakeTap]) {
         static CFTypeRef (*getEvent)(CFTypeRef, uint32_t, uint32_t);
         static double (*getFloat)(CFTypeRef, uint32_t);
+        static uint32_t (*getType)(CFTypeRef);
         static dispatch_once_t once;
         dispatch_once(&once, ^{
             void *handle = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_LAZY | RTLD_LOCAL);
             getEvent = dlsym(handle, "IOHIDEventGetEvent");
             getFloat = dlsym(handle, "IOHIDEventGetFloatValue");
+            getType = dlsym(handle, "IOHIDEventGetType");
         });
         CFTypeRef digitizer = getEvent ? getEvent(event, 11, 0) : NULL;
+        if (getType) {
+            uint32_t type = getType(event);
+            NNPDiagnosticSetInteger(@"MengoWakeRawEventType", type);
+            if (!digitizer && type == 11) digitizer = event;
+        }
+        NNPDiagnosticSetBool(@"MengoWakeDigitizerPresent", digitizer != NULL);
         if (digitizer && getFloat) {
             double x = getFloat(digitizer, 11u << 16), y = getFloat(digitizer, (11u << 16) | 1);
+            if (isfinite(x)) NNPDiagnosticSetDouble(@"MengoWakeRawX", x);
+            if (isfinite(y)) NNPDiagnosticSetDouble(@"MengoWakeRawY", y);
             if (NNPMengoWakePositionValid(x, y)) {
                 objc_setAssociatedObject(gesture, &NNPMengoWakePointKey,
                     @{@"point": [NSValue valueWithCGPoint:CGPointMake(x, y)], @"time": @(NSProcessInfo.processInfo.systemUptime)},
