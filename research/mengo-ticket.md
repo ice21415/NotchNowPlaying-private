@@ -113,3 +113,30 @@ Actions run `37312454597` passed for source
 Package SHA-256:
 `191444b95a83a5f2e5bc59497f8009c4ce3dcf740af30c870bbdd1897778be1e`.
 Actual tap delivery and image display still require the user's device test.
+
+## 0.1.128 sensor classification
+
+The user reports that ticket taps wake the normal screen. Existing device capture
+`aod-0107-events.json` shows native backlight-off mode uses sensor display state 1,
+digitizer disabled, tap-to-wake enabled; native backlight-on uses state 2 with
+digitizer enabled and tap-to-wake disabled. A gesture window alone cannot convert
+the low-power wake gesture into an ordinary UI touch.
+
+The ticket controller now owns a separate BKSHIDUISensorService assertion while
+its AOD entry is eligible. Runtime-checked setters request sensor display state 2,
+ordinary digitizer input and no wake gestures. This is a sensor-mode request, not
+a backlight/display transition, system preference change or source-number wake
+suppression. The existing physical side-button wake code remains intact. Release
+on blanking, AOD exit, feature disable or controller destruction restores native
+mode arbitration. A host test uses the real assertion implementation against
+mock native classes to check the requested fields, no duplicate request,
+idempotent cleanup and destruction cleanup.
+
+Primary runtime header references: MTACS/iOS-17-Runtime-Headers,
+`BackBoardServices.framework/BKSHIDUISensorMode.h`, `BKSMutableHIDUISensorMode.h`
+and `BKSHIDUISensorService.h` (retrieved via GitHub contents API).
+
+Diagnostics add `MengoFullTouchAssertionActive` and the native `AODLastWakeSource`.
+Actual prevailing sensor mode, delivered touches, side-key behavior and battery
+cost remain device-test questions. Ordinary digitizer operation may increase
+AOD power while this feature is enabled; no power saving claim is made.
