@@ -531,6 +531,10 @@ static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger stat
         }
     }
 
+    if (state == 1 && armed && locked && activeAOD) {
+        NNPDiagnosticSetInteger(@"AODLastWakeSource", source);
+    }
+
     bool notificationWakeMatched = NNPNotificationDiagnosticsConsumeWakeForSnakeAnimation(state, source);
 
     if (state == 1 && armed && locked && activeAOD && notificationWakeMatched) {
