@@ -781,23 +781,22 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 }
 - (void)requestAODTouchWake {
     if (![self shouldHandleMengoWakeTap] || self.mengoOpen) return;
-    Class cls = NSClassFromString(@"SBBacklightController");
+    Class cls = NSClassFromString(@"SBLockScreenManager");
     SEL shared = NSSelectorFromString(@"sharedInstance");
     if (![cls respondsToSelector:shared]) return;
-    id controller = ((id (*)(id, SEL))objc_msgSend)(cls, shared);
-    SEL wake = NSSelectorFromString(@"turnOnScreenFullyWithBacklightSource:");
-    Method method = class_getInstanceMethod([controller class], wake);
-    char result[16] = {0}, argument[16] = {0};
-    if (!method || method_getNumberOfArguments(method) != 3) return;
+    id manager = ((id (*)(id, SEL))objc_msgSend)(cls, shared);
+    SEL wake = NSSelectorFromString(@"_wakeScreenForTapToWake");
+    Method method = class_getInstanceMethod([manager class], wake);
+    char result[16] = {0};
+    if (!method || method_getNumberOfArguments(method) != 2) return;
     method_getReturnType(method, result, sizeof(result));
-    method_getArgumentType(method, 2, argument, sizeof(argument));
-    if (result[0] != 'v' || argument[0] != 'q') return;
+    if (result[0] != 'v') return;
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
     NNPPhase7NotifyDisplayWake();
 #endif
     NNPDiagnosticSetBool(@"MengoOutsideTouchWakeRequested", YES);
-    // 13 is the ordinary-touch wake source observed on this device.
-    ((void (*)(id, SEL, long long))objc_msgSend)(controller, wake, 13);
+    NNPDiagnosticSetString(@"MengoOutsideTouchWakePath", @"native Lock Screen tap wake");
+    ((void (*)(id, SEL))objc_msgSend)(manager, wake);
 }
 - (BOOL)shouldHandleMengoWakeTap {
     return self.preferences.mengoEnabled && [self shouldPresentInsideCoverSheet] &&
