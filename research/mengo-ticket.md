@@ -342,3 +342,10 @@ calling the backlight controller directly with source 13. This follows the nativ
 Lock Screen tap wake flow and avoids hardcoding its backlight source. Retain
 AOD cleanup and the deferred monitor lifetime fix. Physical wallpaper restoration
 and side-key/ticket regression still require device testing.
+
+Actions `37421289121` passed both AOD and normal jobs (normal passed after
+rerunning the existing lock-observer timing failure). Source
+`4c6a1393b300d49149dfc4bc766085af4e7c7c84`; AOD package SHA-256
+`f90c2e60af886e12f9ad18829008c7a2a89e5135280a893d1165c733da8307f3`.
+Installed 0.1.137; dpkg version and new SpringBoard PID 27905 confirmed. Physical
+tap-wake wallpaper verification is pending user testing.
