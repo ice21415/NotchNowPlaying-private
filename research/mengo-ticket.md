@@ -275,3 +275,30 @@ already cleared. Clear the plugin window/root background and remove the CoverShe
 masks; black dedicated presentation applies only to actual AOD. Existing notification
 and charging wake guards execute before this cleanup path. A C policy test covers
 pending-free AOD wake, inactive/unlocked exclusions and covered-screen exclusions.
+
+Actions `37402835428` passed both variants for source
+`7ff7fcead9727165608c9bb55e9f9db5aab55876`. Installed 0.1.134; SHA-256
+`7062acd623a24ef563ba287a352643c64726083dd4528b990a9d6870f6696d33`.
+
+## 0.1.135 outside touch wake and pixel diagnostics
+
+The user reports outside taps no longer wake with ordinary input enabled.
+Retain a contact-down position even outside the closed entry. On a low-displacement
+release outside the entry, clear AOD through its existing wake cleanup and call
+SpringBoard's runtime-verified full-screen-wake method with the ordinary-touch
+source 13 observed on this device. Entry/panel controls remain routed to the ticket
+controller. Side-button dispatch remains native. No outside wake is synthesized
+while the ticket panel is open.
+
+The entry, QR image, countdown and panel controls already share the overlay layer
+included in the 30-second physical pixel shift and black rest. Add layer transform,
+X/Y and presentation-opacity diagnostics to confirm that behavior on device.
+This protection reduces OLED aging risk; no zero-burn-in guarantee is made.
+
+Actions `37403863322` passed both variants for source
+`3e31cc4988425664e284b6bd2672f18ded447934`. Installed 0.1.135; SHA-256
+`dd695b3430d36b2c15c98c98c1e3ccca3037513ac6e9b45da98a22fa63cd579a`.
+Post-install read retained QR readability true and exit-only false from the prior
+successful fetch. The phone was outside AOD at that read, so no new overlay pixel
+shift/rest sample was available. Current-build outside wake, wallpaper and pixel
+behavior await the user's regression test.
