@@ -117,8 +117,14 @@ static BOOL NNPTrackArtistMatches(NSString *mediaArtist, NSString *lyricsArtist)
 static void (*NNPOriginalApplicationSendEvent)(id, SEL, UIEvent *);
 static id (*NNPOriginalRequestUISensorMode)(id, SEL, id);
 static void NNPApplicationSendEventReplacement(id application, SEL selector, UIEvent *event) {
+    if ([[NNPController sharedController] handleEarlyMengoTouchEvent:event]) return;
     [[NNPController sharedController] observeTouchEvent:event];
     if (NNPOriginalApplicationSendEvent) NNPOriginalApplicationSendEvent(application, selector, event);
+}
+static BOOL (*NNPOriginalEarlyHIDEvent)(id, SEL, const void *, id);
+static BOOL NNPEarlyHIDEventReplacement(id application, SEL selector, const void *hid, id event) {
+    if ([[NNPController sharedController] handleEarlyMengoTouchEvent:event]) return YES;
+    return NNPOriginalEarlyHIDEvent ? NNPOriginalEarlyHIDEvent(application, selector, hid, event) : NO;
 }
 static BOOL NNPSensorModeBool(id mode, const char *selectorName) {
     SEL selector = sel_registerName(selectorName);
@@ -202,6 +208,10 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic, strong) NNPPocketObserver *pocketObserver;
 @property(nonatomic, strong) NNPMengoController *mengo;
 @property(nonatomic) BOOL mengoOpen;
+@property(nonatomic, weak) UITouch *mengoOwnedTouch;
+@property(nonatomic, weak) UIWindow *mengoTouchWindow;
+@property(nonatomic) CGPoint mengoTouchStart;
+@property(nonatomic) CGRect mengoTouchRegion;
 @property(nonatomic, strong) NNPScreenCoverObserver *screenCoverObserver;
 @property(nonatomic) BOOL orientationMonitoring;
 @property(nonatomic) UIDeviceOrientation aodOrientation;
@@ -327,10 +337,24 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)install {
     if (_installed) return; _installed = YES;
     self.preferences = [NNPPreferences sharedPreferences]; [self.preferences startObserving];
-    Method sendEventMethod = class_getInstanceMethod(UIApplication.class, @selector(sendEvent:));
+    Class applicationClass = [UIApplication.sharedApplication class];
+    Method early = class_getInstanceMethod(applicationClass, NSSelectorFromString(@"__handleHIDEvent:withUIEvent:"));
+    if (early && method_getNumberOfArguments(early) == 4 && !NNPOriginalEarlyHIDEvent) {
+        char result[16] = {0}, first[32] = {0}, second[16] = {0};
+        method_getReturnType(early, result, sizeof(result));
+        method_getArgumentType(early, 2, first, sizeof(first));
+        method_getArgumentType(early, 3, second, sizeof(second));
+        if ((result[0] == 'B' || result[0] == 'c') && first[0] == '^' && second[0] == '@')
+            NNPOriginalEarlyHIDEvent = (BOOL (*)(id, SEL, const void *, id))method_setImplementation(early, (IMP)NNPEarlyHIDEventReplacement);
+    }
+    NNPDiagnosticSetBool(@"MengoEarlyHIDHookInstalled", NNPOriginalEarlyHIDEvent != NULL);
+    Method sendEventMethod = class_getInstanceMethod(applicationClass, @selector(sendEvent:));
     if (sendEventMethod && !NNPOriginalApplicationSendEvent) {
-        NNPOriginalApplicationSendEvent = (void (*)(id, SEL, UIEvent *))method_setImplementation(
-            sendEventMethod, (IMP)NNPApplicationSendEventReplacement);
+        IMP previous = method_getImplementation(sendEventMethod);
+        BOOL added = class_addMethod(applicationClass, @selector(sendEvent:), (IMP)NNPApplicationSendEventReplacement,
+            method_getTypeEncoding(sendEventMethod));
+        if (!added) previous = method_setImplementation(sendEventMethod, (IMP)NNPApplicationSendEventReplacement);
+        NNPOriginalApplicationSendEvent = (void (*)(id, SEL, UIEvent *))previous;
         NNPDiagnosticSetBool(@"ApplicationTouchEventHookInstalled", NNPOriginalApplicationSendEvent != NULL);
     }
     Class sensorServiceClass = NSClassFromString(@"BKSHIDUISensorService");
@@ -414,6 +438,36 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [self.media start]; NNPDiagnosticSetBool(@"MediaRemoteConnected", YES);
     NSLog(@"%@ loaded, locked=%@", NNPLog, self.locked ? @"YES" : @"NO");
 #endif
+}
+- (BOOL)handleEarlyMengoTouchEvent:(id)candidate {
+    if (![candidate isKindOfClass:UIEvent.class] || [candidate type] != UIEventTypeTouches || !NSThread.isMainThread) return NO;
+    if (![self shouldHandleMengoWakeTap]) { self.mengoOwnedTouch = nil; return NO; }
+    UIEvent *event = candidate;
+    for (UITouch *touch in event.allTouches) {
+        if (touch.type != UITouchTypeDirect) continue;
+        UIWindow *window = touch.window ?: self.coverSheetHostView.window;
+        CGPoint point = [touch locationInView:window];
+        if (touch.phase == UITouchPhaseBegan) {
+            NNPDiagnosticSetString(@"MengoEarlyTouchPoint", NSStringFromCGPoint(point));
+            CGRect region = [self.mengo interactiveRectInView:window];
+            if (event.allTouches.count != 1 || !window || !CGRectContainsPoint(region, point)) continue;
+            self.mengoOwnedTouch = touch; self.mengoTouchWindow = window;
+            self.mengoTouchStart = point; self.mengoTouchRegion = region;
+            NNPDiagnosticSetBool(@"MengoEarlyTouchMatched", YES);
+            return YES;
+        }
+        if (touch != self.mengoOwnedTouch) continue;
+        if (touch.phase == UITouchPhaseEnded || touch.phase == UITouchPhaseCancelled) {
+            CGPoint end = [touch locationInView:self.mengoTouchWindow];
+            BOOL tap = touch.phase == UITouchPhaseEnded && CGRectContainsPoint(self.mengoTouchRegion, end) &&
+                hypot(end.x - self.mengoTouchStart.x, end.y - self.mengoTouchStart.y) < 18;
+            UIWindow *ownedWindow = self.mengoTouchWindow;
+            self.mengoOwnedTouch = nil; self.mengoTouchWindow = nil;
+            if (tap) [self.mengo handleTapAtPoint:end inView:ownedWindow];
+        }
+        return YES;
+    }
+    return NO;
 }
 - (void)observeTouchEvent:(UIEvent *)event {
     if (event.type != UIEventTypeTouches || !self.locked ||

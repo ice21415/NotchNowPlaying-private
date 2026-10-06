@@ -9,4 +9,5 @@
 - (BOOL)shouldHandleMengoWakeTap;
 - (BOOL)handleMengoWakeGesture:(id)gesture;
 - (void)captureMengoWakeTouches:(id)touches gesture:(id)gesture;
+- (BOOL)handleEarlyMengoTouchEvent:(id)event;
 @end
