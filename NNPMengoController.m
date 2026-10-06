@@ -1,6 +1,7 @@
 #import "NNPMengoController.h"
 #import "NNPMengoTicket.h"
 #import "NNPMengoSensorMode.h"
+#import "NNPMengoTouchMonitor.h"
 #import "NNPDiagnostics.h"
 #import "NNPAODPresentation.h"
 #import <ImageIO/ImageIO.h>
@@ -49,6 +50,10 @@ static NSDictionary *NNPMengoSession(void) {
 @property(nonatomic) NSUInteger generation;
 @property(nonatomic) BOOL active;
 @property(nonatomic, strong) NNPMengoSensorMode *sensorMode;
+@property(nonatomic, strong) NNPMengoTouchMonitor *monitor;
+@property(nonatomic) BOOL monitorTracking;
+@property(nonatomic) CGPoint monitorStart;
+@property(nonatomic) CGRect monitorRegion;
 @end
 @implementation NNPMengoController
 - (void)setHostView:(UIView *)host active:(BOOL)active {
@@ -56,6 +61,13 @@ static NSDictionary *NNPMengoSession(void) {
     self.active = active;
     if (active && !self.sensorMode) self.sensorMode = [NNPMengoSensorMode new];
     [self.sensorMode setActive:active];
+    if (active && !self.monitor) {
+        self.monitor = [NNPMengoTouchMonitor new];
+        __weak typeof(self) weakSelf = self;
+        self.monitor.contact = ^(CGPoint normalized, BOOL down) { [weakSelf monitorContact:normalized down:down]; };
+    }
+    [self.monitor setActive:active];
+    if (!active) self.monitorTracking = NO;
     NNPDiagnosticSetBool(@"MengoFullTouchAssertionActive", NO);
     NNPDiagnosticSetBool(@"MengoEntryVisible", active);
     if (!active) NNPDiagnosticSetBool(@"MengoEntryAttachedToAOD", NO);
@@ -121,6 +133,24 @@ static NSDictionary *NNPMengoSession(void) {
     NNPDiagnosticSetString(@"MengoScreenBounds", NSStringFromCGRect(UIScreen.mainScreen.bounds));
     NNPDiagnosticSetString(@"MengoNativeScreenBounds", NSStringFromCGRect(UIScreen.mainScreen.nativeBounds));
     NNPDiagnosticSetDouble(@"MengoScreenScale", UIScreen.mainScreen.scale);
+}
+- (void)monitorContact:(CGPoint)normalized down:(BOOL)down {
+    if (!self.active || !self.overlay.window || !self.overlay.superview) return;
+    CGRect screen = UIScreen.mainScreen.bounds;
+    CGPoint screenPoint = CGPointMake(normalized.x * CGRectGetWidth(screen), normalized.y * CGRectGetHeight(screen));
+    UIWindow *window = self.overlay.window;
+    CGPoint point = [window convertPoint:screenPoint fromWindow:nil];
+    if (down) {
+        self.monitorRegion = [self interactiveRectInView:window];
+        self.monitorTracking = CGRectContainsPoint(self.monitorRegion, point);
+        self.monitorStart = point;
+        NNPDiagnosticSetBool(@"MengoMonitorMatched", self.monitorTracking);
+    } else {
+        BOOL tap = self.monitorTracking && CGRectContainsPoint(self.monitorRegion, point) &&
+            hypot(point.x - self.monitorStart.x, point.y - self.monitorStart.y) < 18;
+        self.monitorTracking = NO;
+        if (tap) [self handleTapAtPoint:point inView:window];
+    }
 }
 - (void)open {
     if (!self.active || self.overlay.ticketOpen) return;
@@ -237,6 +267,7 @@ static NSDictionary *NNPMengoSession(void) {
     [self.task resume];
 }
 - (void)dealloc {
+    [_monitor setActive:NO];
     [_sensorMode setActive:NO];
     [self.task cancel]; [self.session invalidateAndCancel];
     [self.refreshTimer invalidate]; [self.closeTimer invalidate];
