@@ -8,6 +8,13 @@ typedef struct {
     bool hasAnchor;
 } NNPAODAmbientSamplingPolicy;
 
+static inline bool NNPAODBrightnessNeedsUpdate(float current, float target) {
+    // Switching between automatic override and fallback must never be filtered.
+    if ((current > 0) != (target > 0)) return true;
+    float tolerance = fmaxf(0.75f, fmaxf(current, target) * 0.015f);
+    return fabsf(current - target) >= tolerance;
+}
+
 static inline double NNPAODAmbientNextSampleInterval(NNPAODAmbientSamplingPolicy *policy, double lux, bool valid) {
     float target = valid ? NNPAODAmbientTargetNits(lux) : 0;
     if (target <= 0) {

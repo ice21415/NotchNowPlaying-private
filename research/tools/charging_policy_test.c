@@ -5,6 +5,34 @@
 #include <stdio.h>
 
 int main(void) {
+    assert(!NNPAODBrightnessNeedsUpdate(0, 0));
+    assert(NNPAODBrightnessNeedsUpdate(0, 6));
+    assert(NNPAODBrightnessNeedsUpdate(90, 0));
+    assert(!NNPAODBrightnessNeedsUpdate(6, 6.6f));
+    assert(NNPAODBrightnessNeedsUpdate(6, 6.8f));
+    assert(!NNPAODBrightnessNeedsUpdate(100, 100.8f));
+    assert(!NNPAODBrightnessNeedsUpdate(100, 99.2f));
+    assert(NNPAODBrightnessNeedsUpdate(100, 101.6f));
+    assert(NNPAODBrightnessNeedsUpdate(100, 98.4f));
+    assert(NNPAODBrightnessNeedsUpdate(6, 180));
+    assert(NNPAODBrightnessNeedsUpdate(180, 6));
+    // Compare against the last accepted target, so slow cumulative drift wins.
+    float accepted = 100;
+    unsigned updates = 0;
+    for (unsigned i = 1; i <= 10; i++) {
+        float target = 100 + i * 0.2f;
+        if (NNPAODBrightnessNeedsUpdate(accepted, target)) { accepted = target; updates++; }
+    }
+    assert(updates == 1 && accepted > 101.5f);
+    // Alternating sensor noise used to restart every ramp; it now causes none.
+    unsigned oldUpdates = 0, newUpdates = 0;
+    float oldTarget = 100, newTarget = 100;
+    for (unsigned i = 0; i < 60; i++) {
+        float target = i % 2 ? 100.8f : 99.2f;
+        if (fabsf(oldTarget - target) >= 0.5f) { oldTarget = target; oldUpdates++; }
+        if (NNPAODBrightnessNeedsUpdate(newTarget, target)) { newTarget = target; newUpdates++; }
+    }
+    assert(oldUpdates == 60 && newUpdates == 0);
     NNPAODAmbientDiagnosticPolicy telemetry = {0};
     assert(NNPAODAmbientShouldReport(&telemetry, 100, true));
     for (unsigned i = 1; i < 30; i++) assert(!NNPAODAmbientShouldReport(&telemetry, 100 + i, true));

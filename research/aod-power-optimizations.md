@@ -91,3 +91,12 @@ Spotify track recovery must be preserved until alternatives are verified.
 
 User was asked whether an uninterrupted unplugged 15-minute baseline is possible.
 No controlled measurement has started without that physical-state confirmation.
+
+Before installing 0.1.139, additionally filter tiny brightness target changes.
+Previously any >=0.5-nit change could schedule the 24-step ramp plus readbacks.
+Use max(0.75 nits, 1.5% of current/target) against the last accepted target;
+zero-to-positive and positive-to-zero mode changes bypass this filter. The
+sampling intervals, lux curve, brightness limits and linear ramp remain unchanged.
+C tests verify cumulative drift, both mode transitions, large lighting changes
+and a synthetic +/-0.8-nit jitter sequence (60 old ramp requests versus zero new).
+That simulation demonstrates reduced requests for this input, not measured power.
