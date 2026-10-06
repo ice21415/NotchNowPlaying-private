@@ -188,3 +188,40 @@ SpringBoard. SHA-256:
 Post-install device read confirmed both native wake/coordinate hooks installed,
 the ineffective full-touch assertion inactive, and SpringBoard PID 26386.
 Physical coordinate delivery and button handling still await the user's test.
+
+## 0.1.130 and 0.1.131 results
+
+0.1.130 added declared pixel/screen-point conversion and UIKit touch capture.
+Actions `37396862156` passed both variants, source
+`ddb5cdecb4586eb1880e357cf04648d187f63207`; installed package SHA-256
+`69f02e5bcacfa92bd593979cd9653c8be9bd5535b5b0a5c5e5c76bb06c8c7185`.
+The user reports the entry is complete, but wake taps still fail. Actual captured
+UIKit position was `{375,455.3333}`, raw `{1125,1366}`, versus entry screen frame
+`{{299,680},{52,52}}`. Screen bounds are 375x812, native bounds 1080x2340, scale 3.
+This wake-event position cannot reliably identify the user's QR-button press.
+
+0.1.131 replays SpringBoard's sensor-only update with the ordinary-input state,
+preserving the actual backlight state. The policy restores the current native
+sensor state on exit and latches off if replay changes backlight state. Host tests
+check physical-state preservation, native update forwarding, current-state restore,
+destruction cleanup and failure-loop avoidance. Actions `37398128772` passed both
+variants, source `3f171917d5dd1fa3c57f2debe27d69cc68126682`; installed SHA-256
+`9e693ce0a505226645d33f8ed2b5299d2662c49148c1e9b42552feb3636da96c`.
+Device read showed policy active, digitizer enabled, tap-to-wake flag off, backlight
+state 4 before and after. The user still reports wake; observed wake source changed
+to 13. Ordinary input is now configured, but a separate touch-to-wake path remains.
+
+## 0.1.132 early input dispatch
+
+Intercept the actual SpringBoard application subclass's `sendEvent:` and its
+runtime-verified `__handleHIDEvent:withUIEvent:` callback. Inspect ordinary UI touch
+coordinates before SpringBoard consumes the first touch as wake. Only a single
+finger starting within the entry/panel is owned. Consume that touch sequence;
+activate on release inside the region with under 18 points of movement. Other
+touches, keyboard/button events, inactive AOD and covered screens retain native
+dispatch. No global wake-source suppression is introduced.
+
+Diagnostics include early HID-hook availability, actual early touch point and
+matched-region state. Real delivery/position and side-key/cover regressions remain
+device-test requirements. Keeping ordinary digitizer input enabled while this
+feature is visible can add power cost; it has not been measured.
