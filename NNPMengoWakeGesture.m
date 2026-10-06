@@ -23,12 +23,14 @@ static void NNPMengoRawRecognition(id gesture, SEL selector, CFTypeRef event) {
         static CFTypeRef (*getEvent)(CFTypeRef, uint32_t, uint32_t);
         static double (*getFloat)(CFTypeRef, uint32_t);
         static uint32_t (*getType)(CFTypeRef);
+        static CFArrayRef (*getChildren)(CFTypeRef);
         static dispatch_once_t once;
         dispatch_once(&once, ^{
             void *handle = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_LAZY | RTLD_LOCAL);
             getEvent = dlsym(handle, "IOHIDEventGetEvent");
             getFloat = dlsym(handle, "IOHIDEventGetFloatValue");
             getType = dlsym(handle, "IOHIDEventGetType");
+            getChildren = dlsym(handle, "IOHIDEventGetChildren");
         });
         CFTypeRef digitizer = getEvent ? getEvent(event, 11, 0) : NULL;
         if (getType) {
@@ -36,17 +38,30 @@ static void NNPMengoRawRecognition(id gesture, SEL selector, CFTypeRef event) {
             NNPDiagnosticSetInteger(@"MengoWakeRawEventType", type);
             if (!digitizer && type == 11) digitizer = event;
         }
-        NNPDiagnosticSetBool(@"MengoWakeDigitizerPresent", digitizer != NULL);
-        if (digitizer && getFloat) {
-            double x = getFloat(digitizer, 11u << 16), y = getFloat(digitizer, (11u << 16) | 1);
-            if (isfinite(x)) NNPDiagnosticSetDouble(@"MengoWakeRawX", x);
-            if (isfinite(y)) NNPDiagnosticSetDouble(@"MengoWakeRawY", y);
-            if (NNPMengoWakePositionValid(x, y)) {
-                objc_setAssociatedObject(gesture, &NNPMengoWakePointKey,
-                    @{@"point": [NSValue valueWithCGPoint:CGPointMake(x, y)], @"time": @(NSProcessInfo.processInfo.systemUptime)},
-                    OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        BOOL foundDigitizer = NO;
+        if (getFloat && getType) {
+            CFTypeRef events[16] = { digitizer ?: event };
+            int count = 1;
+            for (int index = 0; index < count; index++) {
+                CFTypeRef current = events[index];
+                if (getType(current) == 11) {
+                    foundDigitizer = YES;
+                    double x = getFloat(current, 11u << 16), y = getFloat(current, (11u << 16) | 1);
+                    if (isfinite(x)) NNPDiagnosticSetDouble(@"MengoWakeRawX", x);
+                    if (isfinite(y)) NNPDiagnosticSetDouble(@"MengoWakeRawY", y);
+                    if (NNPMengoWakePositionValid(x, y)) {
+                        objc_setAssociatedObject(gesture, &NNPMengoWakePointKey,
+                            @{@"point": [NSValue valueWithCGPoint:CGPointMake(x, y)], @"time": @(NSProcessInfo.processInfo.systemUptime)},
+                            OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                        break;
+                    }
+                }
+                CFArrayRef children = getChildren ? getChildren(current) : NULL;
+                if (children) for (CFIndex child = 0; child < CFArrayGetCount(children) && count < 16; child++)
+                    events[count++] = CFArrayGetValueAtIndex(children, child);
             }
         }
+        NNPDiagnosticSetBool(@"MengoWakeDigitizerPresent", foundDigitizer);
     }
     if (NNPOriginalRawRecognition) NNPOriginalRawRecognition(gesture, selector, event);
 }
