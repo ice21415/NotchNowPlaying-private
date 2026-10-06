@@ -1,6 +1,8 @@
 #import "NNPMengoTouchMonitor.h"
 #import "NNPMengoWakePolicy.h"
 #import "NNPDiagnostics.h"
+#import "NNPMengoDeferredClose.h"
+#include <stdint.h>
 #import <dlfcn.h>
 
 static uint32_t (*NNPType)(CFTypeRef);
@@ -15,21 +17,23 @@ static void (*NNPUnschedule)(CFTypeRef, CFRunLoopRef, CFStringRef);
 @interface NNPMengoTouchMonitor ()
 @property(nonatomic) BOOL active;
 @property(nonatomic) BOOL lastDown;
-- (void)receive:(CFTypeRef)event;
+@property(nonatomic) NSUInteger generation;
+- (void)receive:(CFTypeRef)event generation:(NSUInteger)generation;
 @end
 static void NNPMonitorEvent(void *target, void *refcon, void *sender, CFTypeRef event) {
-    [(__bridge NNPMengoTouchMonitor *)target receive:event];
+    NNPMengoTouchMonitor *owner = (__bridge NNPMengoTouchMonitor *)target;
+    [owner receive:event generation:(NSUInteger)(uintptr_t)refcon];
 }
 @implementation NNPMengoTouchMonitor {
     CFTypeRef _client;
 }
 - (void)setActive:(BOOL)active {
     if (_active == active) return;
-    _active = active; _lastDown = NO;
+    _active = active; _lastDown = NO; self.generation++;
     if (!active) {
         if (_client) {
-            NNPUnschedule(_client, CFRunLoopGetMain(), kCFRunLoopCommonModes);
-            NNPUnregister(_client); CFRelease(_client); _client = NULL;
+            CFTypeRef retired = _client; _client = NULL;
+            NNPMengoDeferredClose(retired, self, NNPUnschedule, NNPUnregister);
         }
         NNPDiagnosticSetBool(@"MengoTouchMonitorActive", NO);
         return;
@@ -49,13 +53,13 @@ static void NNPMonitorEvent(void *target, void *refcon, void *sender, CFTypeRef 
     if (create && NNPRegister && NNPUnregister && NNPSchedule && NNPUnschedule && NNPType && NNPFloat && NNPInteger && NNPChildren)
         _client = create(kCFAllocatorDefault, 1, NULL);
     if (_client) {
-        NNPRegister(_client, NNPMonitorEvent, (__bridge void *)self, NULL);
+        NNPRegister(_client, NNPMonitorEvent, (__bridge void *)self, (void *)(uintptr_t)self.generation);
         NNPSchedule(_client, CFRunLoopGetMain(), kCFRunLoopCommonModes);
     }
     NNPDiagnosticSetBool(@"MengoTouchMonitorActive", _client != NULL);
 }
-- (void)receive:(CFTypeRef)event {
-    if (!_active || !event || NNPType(event) != 11 || !NSThread.isMainThread) return;
+- (void)receive:(CFTypeRef)event generation:(NSUInteger)generation {
+    if (!_active || generation != self.generation || !event || NNPType(event) != 11 || !NSThread.isMainThread) return;
     CFTypeRef nodes[16] = {event}; int count = 1;
     for (int index = 0; index < count; index++) {
         CFTypeRef node = nodes[index];

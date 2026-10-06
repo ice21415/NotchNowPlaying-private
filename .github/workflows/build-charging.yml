@@ -107,6 +107,9 @@ jobs:
           xcrun clang -fobjc-arc -Wall -Wextra -Werror -Wno-unused-parameter -framework Foundation \
             research/tools/mengo_sensor_mode_test.m NNPMengoSensorMode.m -o mengo-sensor-mode-test
           ./mengo-sensor-mode-test
+          xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
+            research/tools/mengo_deferred_close_test.m NNPMengoDeferredClose.m -o mengo-deferred-close-test
+          ./mengo-deferred-close-test
           python3 research/tools/mengo_bridge_test.py
           for verbose in 0 1; do
             xcrun --sdk iphoneos clang -fsyntax-only -arch arm64e -miphoneos-version-min=15.0 \
