@@ -100,3 +100,27 @@ sampling intervals, lux curve, brightness limits and linear ramp remain unchange
 C tests verify cumulative drift, both mode transitions, large lighting changes
 and a synthetic +/-0.8-nit jitter sequence (60 old ramp requests versus zero new).
 That simulation demonstrates reduced requests for this input, not measured power.
+
+The initial diagnostic-only commit passed run `37424648525`. Final 0.1.139
+source `7f295a937059d24f7de9b8e86dfe5a9b5f50d9d7` passed both variants in Actions
+`37424851800`, including release/verbose call-site tests and jitter policy tests.
+AOD package SHA-256:
+`94b2108e6c366096f1711d76a3f186cc9940373bbcedab0f9214fefd62be3bcb`.
+
+Comparison should use 0.1.138 and 0.1.139, matched brightness, playlist/audio,
+connectivity, thermal state and active AOD. Exclude initial settling and all
+charging/unlock/covered-screen intervals. The current phone was outside AOD at
+the audit read, so its instantaneous battery current is not an AOD baseline.
+Only a controlled matched measurement can establish useful battery savings.
+
+Hardware context: the phone is iPhone12 mini, while Apple's native iPhone AOD
+was introduced on iPhone14 Pro with a 1 Hz panel and multiple display power
+technologies. Do not assume this pseudo-AOD has equivalent panel behavior or
+that reducing app timers alone addresses all display power. Primary reference:
+https://www.apple.com/hk/en/newsroom/2022/09/apple-debuts-iphone-14-pro-and-iphone-14-pro-max/
+
+Installed 0.1.139; dpkg confirms version and new SpringBoard PID 28037. At the
+post-install read, AOD/ALS and MeN Go sensor override are inactive. No fresh
+AODAmbientDiagnosticTimestamp exists yet; retained applied-nits values are old
+and must not be used as evidence of a new AOD session. Active brightness/QR
+regression and controlled battery comparison remain pending physical testing.
