@@ -56,3 +56,38 @@ the AOD pixel-shift timer was inactive and the new sample-interval/marquee keys 
 not yet been created; old ambient-active/lux keys were retained historical data.
 Do not treat those as proof of a new sensor session. User visual and active-AOD
 adaptive-interval checks are pending.
+
+## 0.1.139 first reduction pass (2026-10-06)
+
+Baseline is functional 0.1.138. Backup directory outside the repository:
+`backups/NotchNowPlaying-0.1.138-before-power-20261006`, containing all-ref bundle,
+tracked source, installed AOD package and phone preferences. Package hash matches
+`98e585138e5c2c1f31531b48d33cf6583b70537f3c6da0aa869a238ad90a06b5`.
+
+Audit found these ongoing sources: progress/lyrics at the configured interval,
+ALS reads at 2/3/5 seconds, cover accelerometer at 2 Hz, 30-second OLED rest,
+Spotify recovery at 1 Hz, and ordinary digitizer sensor mode for the QR button.
+QR preflight is only every 30 minutes while AOD is active; QR image renewal and
+1 Hz countdown only run while its panel is open. The status-bar player mirror is
+clipped to the top 40 points but contains visible notch metadata, so it cannot
+be deleted as an entirely invisible duplicate without changing presentation.
+
+First pass keeps all feature and brightness timing unchanged:
+
+- Disabled verbose log calls no longer evaluate message formatting or stack
+  arguments at their call sites. Exported implementations remain available and
+  verbose builds retain the calls. CI exercises argument side effects in both
+  release and verbose modes.
+- ALS diagnostic lux/target timestamps are reported every 30 seconds, immediately
+  on validity changes and on each activation; actual sensor processing and the
+  continuous brightness ramp still run on every sample. Diagnostic target values
+  are snapshots, not live readings; consult AODAmbientDiagnosticTimestamp for age.
+  Pure C tests cover cadence, invalid/recovery transitions and clock rollback.
+
+Do not infer a battery percentage improvement from these changes. The most
+important unmeasured suspect is ordinary digitizer mode; removing it would break
+working AOD QR interaction. Cover detection, pixel rest, brightness response and
+Spotify track recovery must be preserved until alternatives are verified.
+
+User was asked whether an uninterrupted unplugged 15-minute baseline is possible.
+No controlled measurement has started without that physical-state confirmation.

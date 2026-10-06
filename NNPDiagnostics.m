@@ -1,3 +1,4 @@
+#define NNP_DIAGNOSTICS_IMPLEMENTATION 1
 #import "NNPDiagnostics.h"
 #import <CoreFoundation/CoreFoundation.h>
 #import <fcntl.h>

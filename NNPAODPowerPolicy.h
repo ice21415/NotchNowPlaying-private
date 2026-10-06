@@ -25,3 +25,17 @@ static inline double NNPAODAmbientNextSampleInterval(NNPAODAmbientSamplingPolicy
 
 #define NNPTitleMarqueeInitialPause 1.4
 #define NNPTitleMarqueeIdleSeconds 20.0
+
+typedef struct {
+    double lastReport;
+    bool reported;
+    bool valid;
+} NNPAODAmbientDiagnosticPolicy;
+
+// Telemetry cadence must never change the sensor or brightness cadence.
+static inline bool NNPAODAmbientShouldReport(NNPAODAmbientDiagnosticPolicy *policy, double now, bool valid) {
+    bool report = !policy->reported || valid != policy->valid ||
+        now < policy->lastReport || now - policy->lastReport >= 30.0;
+    if (report) *policy = (NNPAODAmbientDiagnosticPolicy){now, true, valid};
+    return report;
+}

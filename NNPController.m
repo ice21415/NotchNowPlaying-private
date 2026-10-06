@@ -408,7 +408,6 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         }
         controller.ambientBrightnessTargetNits = target;
         if (!controller.mengoOpen) controller.display.automaticBrightnessNits = target;
-        NNPDiagnosticSetDouble(@"AODAutomaticBrightnessTargetNits", target);
     };
     self.display.stateChangedHandler = ^{
         NNPController *controller = weakSelf;

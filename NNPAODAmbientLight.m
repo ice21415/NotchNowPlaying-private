@@ -29,6 +29,7 @@ typedef uint64_t (*NNPHIDTimestamp)(CFTypeRef);
     NNPHIDTimestamp _timestamp;
     BOOL _loaded;
     NNPAODAmbientSamplingPolicy _samplingPolicy;
+    NNPAODAmbientDiagnosticPolicy _diagnosticPolicy;
     NSUInteger _sampleCount;
 }
 - (instancetype)init {
@@ -96,8 +97,16 @@ typedef uint64_t (*NNPHIDTimestamp)(CFTypeRef);
                 [self sample];
                 return;
             }
-            NNPDiagnosticSetBool(@"AODAmbientSampleValid", valid);
-            NNPDiagnosticSetDouble(@"AODAmbientLux", lux);
+            BOOL report = NNPAODAmbientShouldReport(&self->_diagnosticPolicy, NSProcessInfo.processInfo.systemUptime, valid);
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
+            report = YES;
+#endif
+            if (report) {
+                NNPDiagnosticSetBool(@"AODAmbientSampleValid", valid);
+                NNPDiagnosticSetDouble(@"AODAmbientLux", lux);
+                NNPDiagnosticSetDouble(@"AODAutomaticBrightnessTargetNits", valid ? NNPAODAmbientTargetNits(lux) : 0);
+                NNPDiagnosticSetDouble(@"AODAmbientDiagnosticTimestamp", NSDate.date.timeIntervalSince1970);
+            }
 #if NNP_ENABLE_VERBOSE_DIAGNOSTICS
             NNPDiagnosticSetInteger(@"AODAmbientSampleCount", ++self->_sampleCount);
             NNPDiagnosticSetDouble(@"AODAmbientSampleAge", age);
@@ -123,6 +132,7 @@ typedef uint64_t (*NNPHIDTimestamp)(CFTypeRef);
     _active = active;
     _generation++;
     _samplingPolicy = (NNPAODAmbientSamplingPolicy){0};
+    _diagnosticPolicy = (NNPAODAmbientDiagnosticPolicy){0};
     [_timer invalidate];
     _timer = nil;
     NNPDiagnosticSetBool(@"AODAmbientSensorActive", active);

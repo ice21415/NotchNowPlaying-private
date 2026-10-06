@@ -78,6 +78,12 @@ jobs:
             research/tools/diagnostics_batch_test.m -o diagnostics-batch-test
           ./diagnostics-batch-test
           xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
+            research/tools/diagnostics_callsite_test.m -o diagnostics-callsite-test
+          ./diagnostics-callsite-test
+          xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
+            -DNNP_ENABLE_VERBOSE_DIAGNOSTICS=1 research/tools/diagnostics_callsite_test.m -o diagnostics-callsite-verbose-test
+          ./diagnostics-callsite-verbose-test
+          xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
             research/tools/queue_snapshot_test.m -o queue-snapshot-test
           ./queue-snapshot-test
           xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \

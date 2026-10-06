@@ -5,6 +5,16 @@
 #include <stdio.h>
 
 int main(void) {
+    NNPAODAmbientDiagnosticPolicy telemetry = {0};
+    assert(NNPAODAmbientShouldReport(&telemetry, 100, true));
+    for (unsigned i = 1; i < 30; i++) assert(!NNPAODAmbientShouldReport(&telemetry, 100 + i, true));
+    assert(NNPAODAmbientShouldReport(&telemetry, 130, true));
+    assert(NNPAODAmbientShouldReport(&telemetry, 131, false));
+    assert(!NNPAODAmbientShouldReport(&telemetry, 132, false));
+    assert(NNPAODAmbientShouldReport(&telemetry, 133, true));
+    assert(NNPAODAmbientShouldReport(&telemetry, 1, true));
+    telemetry = (NNPAODAmbientDiagnosticPolicy){0};
+    assert(NNPAODAmbientShouldReport(&telemetry, 1, true));
     NNPAODAmbientSamplingPolicy sampling = {0};
     assert(NNPAODAmbientNextSampleInterval(&sampling, 600, true) == 2);
     assert(NNPAODAmbientNextSampleInterval(&sampling, 600, true) == 2);
