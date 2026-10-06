@@ -58,6 +58,7 @@ static NSDictionary *NNPMengoSession(void) {
 @property(nonatomic, strong) NNPMengoSensorMode *sensorMode;
 @property(nonatomic, strong) NNPMengoTouchMonitor *monitor;
 @property(nonatomic) BOOL monitorTracking;
+@property(nonatomic) BOOL monitorContactActive;
 @property(nonatomic) CGPoint monitorStart;
 @property(nonatomic) CGRect monitorRegion;
 @end
@@ -73,7 +74,7 @@ static NSDictionary *NNPMengoSession(void) {
         self.monitor.contact = ^(CGPoint normalized, BOOL down) { [weakSelf monitorContact:normalized down:down]; };
     }
     [self.monitor setActive:active];
-    if (!active) self.monitorTracking = NO;
+    if (!active) { self.monitorTracking = NO; self.monitorContactActive = NO; }
     NNPDiagnosticSetBool(@"MengoFullTouchAssertionActive", NO);
     NNPDiagnosticSetBool(@"MengoEntryVisible", active);
     if (!active) NNPDiagnosticSetBool(@"MengoEntryAttachedToAOD", NO);
@@ -152,15 +153,21 @@ static NSDictionary *NNPMengoSession(void) {
     UIWindow *window = self.overlay.window;
     CGPoint point = [window convertPoint:screenPoint fromWindow:nil];
     if (down) {
+        self.monitorContactActive = YES;
         self.monitorRegion = [self interactiveRectInView:window];
         self.monitorTracking = CGRectContainsPoint(self.monitorRegion, point);
         self.monitorStart = point;
         NNPDiagnosticSetBool(@"MengoMonitorMatched", self.monitorTracking);
     } else {
+        if (!self.monitorContactActive) return;
+        self.monitorContactActive = NO;
+        BOOL beganInside = self.monitorTracking;
+        BOOL stillTap = hypot(point.x - self.monitorStart.x, point.y - self.monitorStart.y) < 18;
         BOOL tap = self.monitorTracking && CGRectContainsPoint(self.monitorRegion, point) &&
             hypot(point.x - self.monitorStart.x, point.y - self.monitorStart.y) < 18;
         self.monitorTracking = NO;
         if (tap) [self handleTapAtPoint:point inView:window];
+        else if (!beganInside && stillTap && !self.overlay.ticketOpen && self.outsideTap) self.outsideTap();
     }
 }
 - (void)open {
