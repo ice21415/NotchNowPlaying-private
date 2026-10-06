@@ -397,3 +397,11 @@ malformed JSON/proxy HTML and oversized response. Existing QR parsing tests rema
 These checks validate login only; ticket expiry and gate acceptance are separate.
 Outside active music AOD there is no background checker or notification. This is
 advance information, not a guarantee against revocation after a successful check.
+
+Actions `37423765771` passed both variants for source
+`d3ff0d1de2baa1a3932e7369c5a14983b49c4ced`. Installed 0.1.138, package SHA-256
+`98e585138e5c2c1f31531b48d33cf6583b70537f3c6da0aa869a238ad90a06b5`.
+Device confirms version 0.1.138, new SpringBoard PID 27967 and automatic preflight
+caption "login valid" with the device check time 14:29. Physical caption layout
+still requires user confirmation; invalid-login/network states were fixture-tested,
+not induced on the live account.
