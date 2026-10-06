@@ -349,3 +349,28 @@ rerunning the existing lock-observer timing failure). Source
 `f90c2e60af886e12f9ad18829008c7a2a89e5135280a893d1165c733da8307f3`.
 Installed 0.1.137; dpkg version and new SpringBoard PID 27905 confirmed. Physical
 tap-wake wallpaper verification is pending user testing.
+
+## Credential lifetime audit (installed MeN Go 2.0.23)
+
+Static analysis of the installed app source map, SHA-256
+`7ad0ba0c03b253f3286239499918fc198541bd111cc4c8102de6c8cf93d000c1`, found:
+
+- `src/utils/storage.js`: Cordova/mobile uses plain localStorage get/set/remove.
+  The time argument is used only in the website cookie branch. Login calls with
+  `1y` therefore do not establish a one-year mobile credential lifetime.
+- `src/App.vue`: startup invokes loginCheck, POSTs the stored token to
+  `/Platform/Htmlv2/LoginCheck`, and removes local credentials on response.error
+  after the user dismisses the dialog. Success does not save a replacement token.
+- QR pages recognize `toekn_error`; CheckQRCode recognizes `token_error`.
+  The plugin parser already recognizes both and displays a re-login message.
+- No explicit refresh-token, expires_in or token_exp references were found in
+  this source map. This is evidence about this client, not proof of all server
+  capabilities. The server's absolute/idle expiry and whether validation extends
+  a session cannot be determined from client code alone.
+
+No logout, fabricated credential, clock alteration or ticket mutation was used.
+No new authenticated network call was made in this audit. Current validity and
+future expiry are separate questions; a successful QR request proves validity
+only at the time of that request. Exact TTL requires server documentation or
+controlled observations over time. Avoid background polling solely for this
+purpose; record non-secret success/auth-failure times during normal QR use.
