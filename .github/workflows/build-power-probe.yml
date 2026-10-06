@@ -8,6 +8,7 @@ on:
       - 'research/tools/media_queue_probe.m'
       - 'research/tools/cover_sensor_probe.m'
       - 'research/tools/cover_sensor_probe_info.plist'
+      - 'research/tools/mengo_touch_probe*'
       - '.github/workflows/build-power-probe.yml'
 permissions:
   contents: read
@@ -36,6 +37,11 @@ jobs:
             -Wl,-sectcreate,__TEXT,__info_plist,research/tools/cover_sensor_probe_info.plist \
             research/tools/cover_sensor_probe.m -o cover-sensor-probe
           ldid -S cover-sensor-probe
+          xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=15.0 \
+            -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -fobjc-arc -Wall -Wextra -Werror -Wno-unused-parameter -framework Foundation \
+            research/tools/mengo_touch_probe.m -o mengo-touch-probe
+          ldid -Sresearch/tools/mengo_touch_probe_entitlements.plist mengo-touch-probe
           shasum -a 256 aod-power-probe > power-probe-sha256.txt
       - uses: actions/upload-artifact@v4
         with:
@@ -44,4 +50,5 @@ jobs:
             aod-power-probe
             media-queue-probe
             cover-sensor-probe
+            mengo-touch-probe
             power-probe-sha256.txt
