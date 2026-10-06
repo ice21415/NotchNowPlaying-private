@@ -18,6 +18,7 @@ on:
       - 'control'
       - 'layout/**'
       - 'Preferences/**'
+      - 'research/tools/*_test.*'
       - '.github/workflows/build-charging.yml'
 
 permissions:
