@@ -235,6 +235,14 @@ static NSDictionary *NNPMengoSession(void) {
     if (!self.overlay || self.overlay.hidden) return;
     NNPAODRestPixels(self.overlay.layer);
     NNPAODApplyPixelShift(self.overlay.layer, pixels);
+    NNPDiagnosticSetString(@"MengoLayerPixelShift", NSStringFromCGAffineTransform(CATransform3DGetAffineTransform(self.overlay.layer.sublayerTransform)));
+    NNPDiagnosticSetInteger(@"MengoPixelShiftX", (NSInteger)pixels.x);
+    NNPDiagnosticSetInteger(@"MengoPixelShiftY", (NSInteger)pixels.y);
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        CALayer *presentation = weakSelf.overlay.layer.presentationLayer;
+        NNPDiagnosticSetBool(@"MengoPixelRestObserved", presentation && presentation.opacity < 0.01);
+    });
 }
 - (void)fetch {
     if (!self.active || !self.overlay.ticketOpen || self.task) return;
