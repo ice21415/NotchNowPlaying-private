@@ -5,3 +5,4 @@ build-packages/
 .build-tools/
 package-check/
 SOURCE-MANIFEST.csv
+__pycache__/

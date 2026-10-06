@@ -61,3 +61,54 @@ polling is free or that the feature saves a particular percentage without adequa
 repeatable comparisons. A second comparison against the previous fixed high
 brightness can evaluate practical savings from dimming, but does not isolate ALS
 overhead. Matching equal brightness comes first.
+
+## Comparing 0.1.138 and 0.1.139
+
+The previous analyzer compares automatic/manual brightness, not app revisions.
+Use `research/tools/aod_version_power_capture.sh` and
+`research/tools/analyze_aod_versions.py` for the revision comparison. The capture
+script is uploaded as `/tmp/nnp-version-power-capture.sh`, and its native shell
+syntax is checked. It refuses to start unless locked AOD, an accepted brightness
+override, uncovered UI and a closed QR panel are already reported. Start it only
+after the user confirms uninterrupted unplugged playback/AOD with stable light,
+volume and connectivity. Never infer that physical confirmation from a single
+state read. No automatic capture or version rollback has been started yet.
+
+Each phase is 15 minutes: 91 battery samples at ten-second intervals and matching
+condition checks. Exclude the initial two minutes from analysis. The condition
+checks also invoke command-line plist readers and have measurement overhead;
+use the same collector in both phases. Sampling observes whole-device power.
+Use unique tags, for example `old138-20261006-1` and `new139-20261006-1`:
+
+```sh
+sh /tmp/nnp-version-power-capture.sh old138-20261006-1
+```
+
+The script produces samples/checks/error files under `/tmp/nnp-version-power-*`.
+Keep downloaded logs in ignored `build-packages/power-measurement/`. Exit or
+signals stop the finite battery sampler; existing logs are never overwritten.
+Install the backup 0.1.138 for the old phase and return to 0.1.139 afterward;
+respring ends AOD, so the user must re-establish it and allow thermal settling
+before each phase. Do not start a sampler while waiting for user confirmation.
+
+```sh
+python research/tools/analyze_aod_versions.py OLD-samples.jsonl OLD-checks.jsonl NEW-samples.jsonl NEW-checks.jsonl
+python research/tools/test_aod_versions.py
+```
+
+Eight tests verify a matched descriptive comparison, rejection of version/PID/
+AOD/cover/ticket state mismatches, charging/unknown state, stale gauge updates,
+condition gaps, short captures, nonfinite values, warmup exclusion, cross-phase
+mismatches and within-phase thermal drift. Conditions are rejected if brightness
+varies more than 2 nits, temperature varies more than 1 C within a phase, mean
+brightness differs more than 2 nits or mean temperature differs more than 1 C
+between phases. Require >=60 usable polls, >=10 distinct gauge update times and
+>=600 seconds of sampled span after warmup. Any rejected post-warmup interval
+invalidates the overall comparison instead of selectively claiming a saving.
+
+Matched phases yield only an observed difference, not a causal savings percentage.
+Human confirmation is still needed for audio/playlist/network interruptions;
+short changes between ten-second condition checks can be missed. Repeated
+alternating old/new phases are necessary before claiming a reproducible benefit.
+Current authoritative state remains 0.1.139 installed, no active AOD and no
+controlled baseline/new-version battery comparison completed.
