@@ -232,3 +232,46 @@ SpringBoard. SHA-256:
 `e23eb3d05ed0f031c52c8764cedbf29db78d205a2c27f9c87d8afc4516174972`.
 Device confirms early HID and application event hooks installed. Physical tap
 coordinates, successful region match and real ticket image display remain pending.
+
+## 0.1.133 verified event source
+
+After 0.1.132 the user reports no reaction; no UIKit early-contact fields appeared.
+A finite standalone monitor, signed only with the HID event-monitor entitlement,
+received real digitizer contacts while the user pressed the AOD entry. Coordinates
+`{0.8578033,0.8593140}` project to `{321.676,697.763}` inside its screen rectangle.
+Both down/up transitions and finger child nodes were present. The first timed
+capture missed the user; the second capture supplied this evidence.
+
+0.1.133 adds an AOD-scoped event monitor using that verified source. It reacts to
+contact transitions only, routes a press/release with under 18 points displacement,
+and unregisters/unschedules/releases the client when the entry becomes ineligible.
+The user confirmed the button now opens the ticket. Actions `37401355040` passed
+both builds, source `5fb4c41a98dcac1b985748f1febf8d2e402fd4b9`; installed SHA-256
+`296d9c5745b489f8f3554d36e21567661c47239e980b52c9de0ea8ba5688c887`.
+Later diagnostic read showed session available and last action close, supporting
+the user's successful interaction report; image availability had reset on close.
+
+## 0.1.134 countdown, verification and gesture wake wallpaper
+
+Show monotonic renewal (60 seconds after successful fetch) and panel-close
+(90 seconds after opening) countdowns. A single 1-second timer runs only for the
+open panel and is invalidated on close/blanking/exit. Renewal is not labeled QR
+expiration because the service has not supplied a verified QR-validity deadline.
+
+Decode each freshly returned image once off the main thread with Core Image.
+Accept a decoded QR string or binary error-corrected payload as structural QR
+readability; log only the boolean, never payloads. This establishes readable QR
+structure, not issuer signature validity or station acceptance. Real gate scanning
+still needs user validation. Dynamic official-app/plugin codes may differ between
+separate requests, so visual equality is not a validation rule.
+
+Installed MeN Go's MQRCode template labels an expired ticket as exit/alight-only
+and still shows the issued QR. Match that behavior with a warning rather than
+rejecting an exit-capable image. Tests cover the warning and preserved image.
+
+The user also reports a black wallpaper after gesture wake. Wake cleanup now
+recognizes an active AOD even when the older suppressed-blank pending flag has
+already cleared. Clear the plugin window/root background and remove the CoverSheet
+masks; black dedicated presentation applies only to actual AOD. Existing notification
+and charging wake guards execute before this cleanup path. A C policy test covers
+pending-free AOD wake, inactive/unlocked exclusions and covered-screen exclusions.
