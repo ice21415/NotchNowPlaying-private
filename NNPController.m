@@ -727,9 +727,23 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     return self.preferences.mengoEnabled && [self shouldPresentInsideCoverSheet] &&
         !self.coverSheetBlackoutRevealed && ![self pocketSuspended] && self.view.playbackVisible;
 }
+- (void)captureMengoWakeTouches:(id)touches gesture:(id)gesture {
+    if (![self shouldHandleMengoWakeTap] || ![touches isKindOfClass:NSSet.class] || [touches count] != 1) return;
+    UITouch *touch = [touches anyObject];
+    if (![touch isKindOfClass:UITouch.class] || touch.type != UITouchTypeDirect || !touch.window) return;
+    CGPoint windowPoint = [touch locationInView:touch.window];
+    CGPoint screenPoint = [touch.window convertPoint:windowPoint toWindow:nil];
+    NNPDiagnosticSetString(@"MengoUIKitWakeTouchPoint", NSStringFromCGPoint(screenPoint));
+    CGRect bounds = UIScreen.mainScreen.bounds;
+    CGFloat width = CGRectGetWidth(bounds), height = CGRectGetHeight(bounds);
+    if (width <= 0 || height <= 0) return;
+    NNPMengoRememberUIKitWakePoint(gesture, CGPointMake(screenPoint.x / width, screenPoint.y / height));
+}
 - (BOOL)handleMengoWakeGesture:(id)gesture {
     if (![self shouldHandleMengoWakeTap] || ![gesture isKindOfClass:UIGestureRecognizer.class]) return NO;
     UIView *host = self.coverSheetHostView;
+    NNPDiagnosticSetString(@"MengoWakeRecognizerBounds", NSStringFromCGRect([gesture view].bounds));
+    NNPDiagnosticSetString(@"MengoWakeRecognizerWindowBounds", NSStringFromCGRect([gesture view].window.bounds));
     CGPoint normalized, point;
     BOOL raw = NNPMengoWakeNormalizedPoint(gesture, &normalized);
     NNPDiagnosticSetBool(@"MengoWakeTapCoordinateAvailable", raw);

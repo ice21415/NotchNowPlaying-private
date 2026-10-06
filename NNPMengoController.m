@@ -111,6 +111,12 @@ static NSDictionary *NNPMengoSession(void) {
     [host bringSubviewToFront:self.overlay];
     NNPDiagnosticSetBool(@"MengoEntryAttachedToAOD", self.overlay.superview == host);
     NNPDiagnosticSetString(@"MengoEntryFrame", NSStringFromCGRect(self.entry.frame));
+    CGRect inWindow = [self.entry convertRect:self.entry.bounds toView:self.entry.window];
+    NNPDiagnosticSetString(@"MengoEntryScreenFrame", NSStringFromCGRect([self.entry.window convertRect:inWindow toWindow:nil]));
+    NNPDiagnosticSetString(@"MengoHostBounds", NSStringFromCGRect(host.bounds));
+    NNPDiagnosticSetString(@"MengoScreenBounds", NSStringFromCGRect(UIScreen.mainScreen.bounds));
+    NNPDiagnosticSetString(@"MengoNativeScreenBounds", NSStringFromCGRect(UIScreen.mainScreen.nativeBounds));
+    NNPDiagnosticSetDouble(@"MengoScreenScale", UIScreen.mainScreen.scale);
 }
 - (void)open {
     if (!self.active || self.overlay.ticketOpen) return;

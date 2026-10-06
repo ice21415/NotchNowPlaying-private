@@ -8,4 +8,5 @@
 - (BOOL)showNotificationSnakeAnimation;
 - (BOOL)shouldHandleMengoWakeTap;
 - (BOOL)handleMengoWakeGesture:(id)gesture;
+- (void)captureMengoWakeTouches:(id)touches gesture:(id)gesture;
 @end

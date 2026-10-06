@@ -7,8 +7,25 @@
 #include <math.h>
 
 static char NNPMengoWakePointKey;
+static char NNPMengoWakeTouchScopeKey;
 static void (*NNPOriginalWakeRecognition)(id, SEL, id);
 static void (*NNPOriginalRawRecognition)(id, SEL, CFTypeRef);
+static void (*NNPOriginalWakeTouchesEnded)(id, SEL, id, id);
+
+void NNPMengoRememberUIKitWakePoint(id gesture, CGPoint normalized) {
+    if (!NNPMengoWakePositionValid(normalized.x, normalized.y)) return;
+    objc_setAssociatedObject(gesture, &NNPMengoWakePointKey,
+        @{@"point": [NSValue valueWithCGPoint:normalized], @"time": @(NSProcessInfo.processInfo.systemUptime), @"UIKit": @YES},
+        OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NNPDiagnosticSetString(@"MengoWakeCoordinateSource", @"UIKit touch");
+}
+static void NNPMengoWakeTouchesEnded(id gesture, SEL selector, id touches, id event) {
+    objc_setAssociatedObject(gesture, &NNPMengoWakePointKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (NSThread.isMainThread) [[NNPController sharedController] captureMengoWakeTouches:touches gesture:gesture];
+    objc_setAssociatedObject(gesture, &NNPMengoWakeTouchScopeKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (NNPOriginalWakeTouchesEnded) NNPOriginalWakeTouchesEnded(gesture, selector, touches, event);
+    objc_setAssociatedObject(gesture, &NNPMengoWakeTouchScopeKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
 
 BOOL NNPMengoWakeNormalizedPoint(id gesture, CGPoint *point) {
     NSDictionary *sample = objc_getAssociatedObject(gesture, &NNPMengoWakePointKey);
@@ -18,12 +35,16 @@ BOOL NNPMengoWakeNormalizedPoint(id gesture, CGPoint *point) {
     return YES;
 }
 static void NNPMengoRawRecognition(id gesture, SEL selector, CFTypeRef event) {
-    objc_setAssociatedObject(gesture, &NNPMengoWakePointKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NSDictionary *sample = objc_getAssociatedObject(gesture, &NNPMengoWakePointKey);
+    BOOL hasUIKitPoint = objc_getAssociatedObject(gesture, &NNPMengoWakeTouchScopeKey) &&
+        [sample[@"UIKit"] boolValue] && NNPMengoWakeSampleFresh([sample[@"time"] doubleValue], NSProcessInfo.processInfo.systemUptime);
+    if (!hasUIKitPoint) objc_setAssociatedObject(gesture, &NNPMengoWakePointKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (event && NSThread.isMainThread && [[NNPController sharedController] shouldHandleMengoWakeTap]) {
         static CFTypeRef (*getEvent)(CFTypeRef, uint32_t, uint32_t);
         static double (*getFloat)(CFTypeRef, uint32_t);
         static uint32_t (*getType)(CFTypeRef);
         static CFArrayRef (*getChildren)(CFTypeRef);
+        static CFIndex (*getInteger)(CFTypeRef, uint32_t);
         static dispatch_once_t once;
         dispatch_once(&once, ^{
             void *handle = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_LAZY | RTLD_LOCAL);
@@ -31,6 +52,7 @@ static void NNPMengoRawRecognition(id gesture, SEL selector, CFTypeRef event) {
             getFloat = dlsym(handle, "IOHIDEventGetFloatValue");
             getType = dlsym(handle, "IOHIDEventGetType");
             getChildren = dlsym(handle, "IOHIDEventGetChildren");
+            getInteger = dlsym(handle, "IOHIDEventGetIntegerValue");
         });
         CFTypeRef digitizer = getEvent ? getEvent(event, 11, 0) : NULL;
         if (getType) {
@@ -49,10 +71,21 @@ static void NNPMengoRawRecognition(id gesture, SEL selector, CFTypeRef event) {
                     double x = getFloat(current, 11u << 16), y = getFloat(current, (11u << 16) | 1);
                     if (isfinite(x)) NNPDiagnosticSetDouble(@"MengoWakeRawX", x);
                     if (isfinite(y)) NNPDiagnosticSetDouble(@"MengoWakeRawY", y);
-                    if (NNPMengoWakePositionValid(x, y)) {
+                    BOOL pixels = getInteger && getInteger(current, 2) != 0;
+                    NNPDiagnosticSetBool(@"MengoWakeRawPixelUnits", pixels);
+                    CGRect bounds = UIScreen.mainScreen.bounds;
+                    double nx, ny;
+                    CFArrayRef children = getChildren ? getChildren(current) : NULL;
+                    BOOL collection = getInteger && getInteger(current, 1) != 0;
+                    BOOL containerWithChildren = collection && children && CFArrayGetCount(children) > 0;
+                    if (!containerWithChildren && NNPMengoWakeConvertPosition(x, y, pixels, CGRectGetWidth(bounds), CGRectGetHeight(bounds),
+                        UIScreen.mainScreen.scale, &nx, &ny)) {
+                        if (!hasUIKitPoint) {
                         objc_setAssociatedObject(gesture, &NNPMengoWakePointKey,
-                            @{@"point": [NSValue valueWithCGPoint:CGPointMake(x, y)], @"time": @(NSProcessInfo.processInfo.systemUptime)},
+                            @{@"point": [NSValue valueWithCGPoint:CGPointMake(nx, ny)], @"time": @(NSProcessInfo.processInfo.systemUptime)},
                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                        NNPDiagnosticSetString(@"MengoWakeCoordinateSource", pixels ? @"HID render pixels" : @"HID normalized or screen points");
+                        }
                         break;
                     }
                 }
@@ -83,9 +116,19 @@ void NNPMengoInstallWakeGestureHook(void) {
         Method raw = NNPMengoRecognitionMethod(NSClassFromString(@"SBFTapToWakeGestureRecognizer"),
             "_succesfullyRecognizeFromEvent:", '^');
         if (raw) NNPOriginalRawRecognition = (void (*)(id, SEL, CFTypeRef))method_setImplementation(raw, (IMP)NNPMengoRawRecognition);
+        Method ended = class_getInstanceMethod(NSClassFromString(@"SBFTapToWakeGestureRecognizer"), @selector(touchesEnded:withEvent:));
+        if (ended && method_getNumberOfArguments(ended) == 4) {
+            char result[16] = {0}, first[16] = {0}, second[16] = {0};
+            method_getReturnType(ended, result, sizeof(result));
+            method_getArgumentType(ended, 2, first, sizeof(first));
+            method_getArgumentType(ended, 3, second, sizeof(second));
+            if (result[0] == 'v' && first[0] == '@' && second[0] == '@')
+                NNPOriginalWakeTouchesEnded = (void (*)(id, SEL, id, id))method_setImplementation(ended, (IMP)NNPMengoWakeTouchesEnded);
+        }
         Method wake = NNPMengoRecognitionMethod(NSClassFromString(@"SBTapToWakeController"), "tapToWakeDidRecognize:", '@');
         if (wake) NNPOriginalWakeRecognition = (void (*)(id, SEL, id))method_setImplementation(wake, (IMP)NNPMengoWakeRecognition);
         NNPDiagnosticSetBool(@"MengoNativeWakeGestureHookInstalled", NNPOriginalWakeRecognition != NULL);
         NNPDiagnosticSetBool(@"MengoNativeWakeCoordinateHookInstalled", NNPOriginalRawRecognition != NULL);
+        NNPDiagnosticSetBool(@"MengoUIKitWakeCoordinateHookInstalled", NNPOriginalWakeTouchesEnded != NULL);
     });
 }
