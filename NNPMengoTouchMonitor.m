@@ -73,7 +73,14 @@ static void NNPMonitorEvent(void *target, void *refcon, void *sender, CFTypeRef 
                 _lastDown = down;
                 NNPDiagnosticSetString(@"MengoMonitorPoint", NSStringFromCGPoint(CGPointMake(x, y)));
                 NNPDiagnosticSetBool(@"MengoMonitorContactDown", down);
-                if (self.contact) self.contact(CGPointMake(x, y), down);
+                CGPoint point = CGPointMake(x, y);
+                NSUInteger current = self.generation;
+                __weak typeof(self) weakSelf = self;
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    NNPMengoTouchMonitor *owner = weakSelf;
+                    if (!owner.active || owner.generation != current) return;
+                    if (owner.contact) owner.contact(point, down);
+                });
             }
             return;
         }

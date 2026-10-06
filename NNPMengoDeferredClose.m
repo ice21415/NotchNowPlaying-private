@@ -5,9 +5,10 @@ void NNPMengoDeferredClose(CFTypeRef client, id owner,
     // Transfer the caller's +1 CF ownership to this block. Keep callback target
     // alive until registration is removed, after IOKit's current callback returns.
     dispatch_async(dispatch_get_main_queue(), ^{
+        __attribute__((objc_precise_lifetime)) id callbackTarget = owner;
         unschedule(client, CFRunLoopGetMain(), kCFRunLoopCommonModes);
         unregister(client);
         CFRelease(client);
-        (void)owner;
+        (void)callbackTarget;
     });
 }
