@@ -489,7 +489,7 @@ static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
     }
     if (!blanked) {
         atomic_store_explicit(&gNNPPhase7BlankRequestSuppressed, false, memory_order_release);
-        bool pending = atomic_exchange_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_acq_rel);
+        bool pending = fromBacklightServicesHost && atomic_exchange_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_acq_rel);
         bool shouldReveal = fromBacklightServicesHost && NNPDisplayWakeShouldReveal(
             atomic_load_explicit(&gNNPPhase7Armed, memory_order_acquire),
             atomic_load_explicit(&gNNPPhase7DeviceLocked, memory_order_acquire),

@@ -280,8 +280,9 @@ static NSDictionary *NNPMengoSession(void) {
         if (image && bytes) {
             CIDetector *detector = [CIDetector detectorOfType:CIDetectorTypeQRCode context:nil options:@{CIDetectorAccuracy: CIDetectorAccuracyHigh}];
             CIImage *qr = [CIImage imageWithData:bytes];
-            for (CIQRCodeFeature *feature in [detector featuresInImage:qr]) {
-                if ([feature isKindOfClass:CIQRCodeFeature.class] && feature.messageString.length) { readable = YES; break; }
+            for (CIQRCodeFeature *feature in (qr ? [detector featuresInImage:qr] : @[])) {
+                if ([feature isKindOfClass:CIQRCodeFeature.class] &&
+                    (feature.messageString.length || feature.symbolDescriptor.errorCorrectedPayload.length)) { readable = YES; break; }
             }
         }
         dispatch_async(dispatch_get_main_queue(), ^{
