@@ -97,9 +97,9 @@ jobs:
           xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
             research/tools/mengo_ticket_test.m NNPMengoTicket.m -o mengo-ticket-test
           ./mengo-ticket-test
-          xcrun clang -fobjc-arc -Wall -Wextra -Werror -Wno-unused-parameter -framework Foundation \
-            research/tools/aod_touch_assertion_test.m NNPAODTouchAssertion.m -o aod-touch-assertion-test
-          ./aod-touch-assertion-test
+          xcrun clang -std=c11 -Wall -Wextra -Werror \
+            research/tools/mengo_wake_policy_test.c -o mengo-wake-policy-test
+          ./mengo-wake-policy-test
           python3 research/tools/mengo_bridge_test.py
           for verbose in 0 1; do
             xcrun --sdk iphoneos clang -fsyntax-only -arch arm64e -miphoneos-version-min=15.0 \

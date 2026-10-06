@@ -1,6 +1,7 @@
 #import "NNPMengoWakeGesture.h"
 #import "NNPController.h"
 #import "NNPDiagnostics.h"
+#import "NNPMengoWakePolicy.h"
 #import <objc/runtime.h>
 #import <dlfcn.h>
 #include <math.h>
@@ -12,8 +13,7 @@ static void (*NNPOriginalRawRecognition)(id, SEL, CFTypeRef);
 BOOL NNPMengoWakeNormalizedPoint(id gesture, CGPoint *point) {
     NSDictionary *sample = objc_getAssociatedObject(gesture, &NNPMengoWakePointKey);
     if (!sample) return NO;
-    double age = NSProcessInfo.processInfo.systemUptime - [sample[@"time"] doubleValue];
-    if (age < 0 || age > 0.5) return NO;
+    if (!NNPMengoWakeSampleFresh([sample[@"time"] doubleValue], NSProcessInfo.processInfo.systemUptime)) return NO;
     if (point) *point = [sample[@"point"] CGPointValue];
     return YES;
 }
@@ -31,7 +31,7 @@ static void NNPMengoRawRecognition(id gesture, SEL selector, CFTypeRef event) {
         CFTypeRef digitizer = getEvent ? getEvent(event, 11, 0) : NULL;
         if (digitizer && getFloat) {
             double x = getFloat(digitizer, 11u << 16), y = getFloat(digitizer, (11u << 16) | 1);
-            if (isfinite(x) && isfinite(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1 && (x > 0 || y > 0)) {
+            if (NNPMengoWakePositionValid(x, y)) {
                 objc_setAssociatedObject(gesture, &NNPMengoWakePointKey,
                     @{@"point": [NSValue valueWithCGPoint:CGPointMake(x, y)], @"time": @(NSProcessInfo.processInfo.systemUptime)},
                     OBJC_ASSOCIATION_RETAIN_NONATOMIC);
