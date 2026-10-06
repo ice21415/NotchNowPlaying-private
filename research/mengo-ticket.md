@@ -302,3 +302,43 @@ Post-install read retained QR readability true and exit-only false from the prio
 successful fetch. The phone was outside AOD at that read, so no new overlay pixel
 shift/rest sample was available. Current-build outside wake, wallpaper and pixel
 behavior await the user's regression test.
+
+## 0.1.136 crash recovery and client lifetime
+
+0.1.135 caused Safe Mode. Immediately rolled back to the user's working 0.1.133
+package and reloaded SpringBoard. Found the real system crash directory under
+`/rootfs/var/mobile/Library/Logs/CrashReporter`. Kept the raw IPS only in ignored
+local build-packages; no personal report contents were committed.
+
+SpringBoard report 2026-10-06 13:37 shows EXC_BREAKPOINT/SIGTRAP and
+`BUG IN CLIENT OF LIBPLATFORM: os_unfair_lock is corrupt`, with
+`__IOHIDEventSystemClientGetService` under `__IOHIDEventSystemClientQueueCallback`.
+Outside-tap wake synchronously ended AOD and released the monitor client inside
+its event callback. IOKit then continued processing the retired client.
+
+Move contact actions to main-queue blocks after callback return. On stop, mark
+inactive and advance generation immediately, detach the CF client, then defer
+unschedule/unregister/release. Retain the callback target precisely through that
+teardown. Old-generation callbacks cannot affect a restarted session. Host tests
+verify no teardown inside callback, target lifetime through unregister, single
+cleanup and null-client handling.
+
+Actions `37420279451` passed source
+`9e45801ff2ff284a831c281148e4687c58889376`. Installed 0.1.136, SHA-256
+`3328bcd11ec11eec24e867b62769f96de9ff6a3561972f0645d0ae6c6ff6d877`.
+The user confirmed outside-tap wake no longer enters Safe Mode. Wallpaper still
+remained black despite visible native Lock Screen UI.
+
+## 0.1.137 complete native tap wake flow
+
+During the user's black-wallpaper state, diagnostics report player hidden,
+AOD presentation inactive, CoverSheet/status masks inactive, dedicated plugin
+background clear, ticket closed and sensor override inactive. The masks have
+therefore been removed. The direct backlight wake alone has not restored the
+complete native wallpaper presentation.
+
+Use the runtime-verified `SBLockScreenManager _wakeScreenForTapToWake` instead of
+calling the backlight controller directly with source 13. This follows the native
+Lock Screen tap wake flow and avoids hardcoding its backlight source. Retain
+AOD cleanup and the deferred monitor lifetime fix. Physical wallpaper restoration
+and side-key/ticket regression still require device testing.
