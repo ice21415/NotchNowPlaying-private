@@ -1,5 +1,6 @@
 #import "NNPMengoController.h"
 #import "NNPMengoTicket.h"
+#import "NNPMengoSensorMode.h"
 #import "NNPDiagnostics.h"
 #import "NNPAODPresentation.h"
 #import <ImageIO/ImageIO.h>
@@ -47,11 +48,14 @@ static NSDictionary *NNPMengoSession(void) {
 @property(nonatomic, strong) NSTimer *closeTimer;
 @property(nonatomic) NSUInteger generation;
 @property(nonatomic) BOOL active;
+@property(nonatomic, strong) NNPMengoSensorMode *sensorMode;
 @end
 @implementation NNPMengoController
 - (void)setHostView:(UIView *)host active:(BOOL)active {
     active = active && host.window != nil;
     self.active = active;
+    if (active && !self.sensorMode) self.sensorMode = [NNPMengoSensorMode new];
+    [self.sensorMode setActive:active];
     NNPDiagnosticSetBool(@"MengoFullTouchAssertionActive", NO);
     NNPDiagnosticSetBool(@"MengoEntryVisible", active);
     if (!active) NNPDiagnosticSetBool(@"MengoEntryAttachedToAOD", NO);
@@ -233,6 +237,7 @@ static NSDictionary *NNPMengoSession(void) {
     [self.task resume];
 }
 - (void)dealloc {
+    [_sensorMode setActive:NO];
     [self.task cancel]; [self.session invalidateAndCancel];
     [self.refreshTimer invalidate]; [self.closeTimer invalidate];
     [self.overlay removeFromSuperview];
