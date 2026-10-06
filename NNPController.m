@@ -440,7 +440,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 #endif
 }
 - (BOOL)handleEarlyMengoTouchEvent:(id)candidate {
-    if (![candidate isKindOfClass:UIEvent.class] || [candidate type] != UIEventTypeTouches || !NSThread.isMainThread) return NO;
+    if (![candidate isKindOfClass:UIEvent.class] || [(UIEvent *)candidate type] != UIEventTypeTouches || !NSThread.isMainThread) return NO;
     if (![self shouldHandleMengoWakeTap]) { self.mengoOwnedTouch = nil; return NO; }
     UIEvent *event = candidate;
     for (UITouch *touch in event.allTouches) {
