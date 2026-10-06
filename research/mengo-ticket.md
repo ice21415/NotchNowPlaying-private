@@ -173,3 +173,18 @@ device testing must establish whether this native event contains usable position
 Diagnostics: `MengoNativeWakeGestureHookInstalled`,
 `MengoNativeWakeCoordinateHookInstalled`, `MengoWakeTapCoordinateAvailable`,
 `MengoWakeTapPoint`, `MengoWakeTapConsumed`, and existing ticket-action fields.
+
+Read at most 16 event nodes, including finger children when the digitizer parent
+has no usable coordinate. Record the raw event type and last examined X/Y to
+distinguish missing positions from hit-test conversion problems. Timer tests now
+wait against monotonic uptime and verify the repeated-sample deadline directly;
+post-deadline checks allow host scheduling jitter without permitting a reset timer
+to masquerade as a preserved deadline. No production cover/lock timing changed.
+
+Actions `37394813505` passed normal and AOD builds for source
+`e9aa39164faadabfd8672c3f04847b97d2f4b609`. Installed 0.1.129 and reloaded
+SpringBoard. SHA-256:
+`0286b134311226a1d9699fe255a2134273963e3cabf1701684d38a72b6fa368c`.
+Post-install device read confirmed both native wake/coordinate hooks installed,
+the ineffective full-touch assertion inactive, and SpringBoard PID 26386.
+Physical coordinate delivery and button handling still await the user's test.
