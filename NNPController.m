@@ -381,6 +381,10 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         if (!controller) return;
         controller.mengoOpen = open;
         NNPDiagnosticSetBool(@"MengoCoverBlankSuppressed", open);
+        if (open) {
+            [controller.screenCoverObserver setActive:NO];
+            [controller.pocketObserver setActive:NO];
+        }
         controller.charging.aodPresentationActive = !open && [controller shouldPresentInsideCoverSheet] && ![controller pocketSuspended];
         controller.display.automaticBrightnessNits = open ? 180 : controller.ambientBrightnessTargetNits;
         if (open) {
@@ -1202,8 +1206,10 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 #endif
         BOOL activeAOD = self.locked && self.display.aodPresentationActive &&
             self.display.lifecycleState == NNPDisplayLifecycleStateActive;
-        [self.pocketObserver setActive:activeAOD && self.preferences.aodPocketModeEnabled];
-        [self.screenCoverObserver setActive:activeAOD && self.preferences.aodPocketModeEnabled];
+        BOOL coverDetectionActive = activeAOD && self.preferences.aodPocketModeEnabled && !self.mengoOpen;
+        [self.pocketObserver setActive:coverDetectionActive];
+        [self.screenCoverObserver setActive:coverDetectionActive];
+        NNPDiagnosticSetBool(@"AODCoverDetectionActive", coverDetectionActive);
         BOOL pocket = [self pocketSuspended];
         NNPDiagnosticSetBool(@"CoverNativeBlankAvailable", NNPPhase7SetScreenCovered(pocket));
         NNPDiagnosticSetBool(@"PocketUISuspended", pocket);
