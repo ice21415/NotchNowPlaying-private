@@ -9,6 +9,7 @@
 #import <stdatomic.h>
 #import <stdint.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
 #import <math.h>
 #import <string.h>
 #import <dlfcn.h>
@@ -446,6 +447,30 @@ BOOL NNPPhase7SetScreenCovered(BOOL covered) {
     return YES;
 }
 
+BOOL NNPPhase7RestoreWakeBrightness(void) {
+    if (!NSThread.isMainThread || !gNNPOriginalBacklightFactorFunction) return NO;
+    Class cls = NSClassFromString(@"SBBacklightController");
+    SEL shared = NSSelectorFromString(@"sharedInstance");
+    if (![cls respondsToSelector:shared]) return NO;
+    id controller = ((id (*)(id, SEL))objc_msgSend)(cls, shared);
+    SEL selector = NSSelectorFromString(@"backlightState");
+    Method method = class_getInstanceMethod([controller class], selector);
+    char type[16] = {0};
+    if (!method || method_getNumberOfArguments(method) != 2) return NO;
+    method_getReturnType(method, type, sizeof(type));
+    if (type[0] != 'q') return NO;
+    long long state = ((long long (*)(id, SEL))objc_msgSend)(controller, selector);
+    NNPDiagnosticSetInteger(@"AODTouchWakeBacklightState", state);
+    if (!NNPDisplayWakeCanRestoreBrightness(state,
+        atomic_load_explicit(&gNNPPhase7AODPresentationActive, memory_order_acquire),
+        atomic_load_explicit(&gNNPPhase7ScreenCovered, memory_order_acquire))) return NO;
+    // Native provider state 1 uses factor 1.0 (see phase4b boundary trace).
+    // Release the residual AOD dim multiplier, preserving user brightness prefs.
+    gNNPOriginalBacklightFactorFunction(1, 1.0f, 0.2f);
+    NNPDiagnosticSetDouble(@"AODTouchWakeBrightnessRestoreTimestamp", NSDate.date.timeIntervalSince1970);
+    return YES;
+}
+
 static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
     NNPSetScreenBlankedFunction original = gNNPOriginalSetScreenBlanked;
     if (!original) return;
@@ -623,4 +648,5 @@ static void NNPPhase7ProviderTransitionReplacement(id self, SEL _cmd, long long 
 }
 #else
 BOOL NNPPhase7EnsureBacklightFactorHook(void) { return NO; }
+BOOL NNPPhase7RestoreWakeBrightness(void) { return NO; }
 #endif

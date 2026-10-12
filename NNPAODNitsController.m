@@ -168,8 +168,16 @@ void NNPAODNitsSetTargetNits(NSString *sessionID, float nits) {
 }
 
 void NNPAODNitsEndSession(void) {
-    atomic_fetch_add_explicit(&gNNPAODNitsGeneration, 1, memory_order_acq_rel);
+    NNPAODNitsEndSessionWithCompletion(nil);
+}
+
+void NNPAODNitsEndSessionWithCompletion(dispatch_block_t completion) {
+    uint64_t generation = atomic_fetch_add_explicit(&gNNPAODNitsGeneration, 1, memory_order_acq_rel) + 1;
     dispatch_async(NNPAODNitsQueue(), ^{
+        if (generation != atomic_load_explicit(&gNNPAODNitsGeneration, memory_order_acquire)) return;
         NNPAODClearBacklightFeatures();
+        if (completion && !gNNPAODFeatureActive) dispatch_async(dispatch_get_main_queue(), ^{
+            if (generation == atomic_load_explicit(&gNNPAODNitsGeneration, memory_order_acquire)) completion();
+        });
     });
 }

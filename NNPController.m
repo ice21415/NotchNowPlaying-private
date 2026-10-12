@@ -1,6 +1,7 @@
 #import "NNPAODAmbientLight.h"
 #import "NNPAODPixelPolicy.h"
 #import "NNPAODPowerPolicy.h"
+#import "NNPAODNitsController.h"
 #import "NNPAODPresentation.h"
 #import "NNPController.h"
 #import "NNPChargingController.h"
@@ -803,6 +804,11 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     NNPDiagnosticSetBool(@"MengoOutsideTouchWakeRequested", YES);
     NNPDiagnosticSetString(@"MengoOutsideTouchWakePath", @"native Lock Screen tap wake");
     ((void (*)(id, SEL))objc_msgSend)(manager, wake);
+#if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
+    NNPAODNitsEndSessionWithCompletion(^{
+        NNPDiagnosticSetBool(@"AODTouchWakeBrightnessRestored", NNPPhase7RestoreWakeBrightness());
+    });
+#endif
 }
 - (BOOL)shouldHandleMengoWakeTap {
     return self.preferences.mengoEnabled && [self shouldPresentInsideCoverSheet] &&

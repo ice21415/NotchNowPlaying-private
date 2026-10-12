@@ -32,6 +32,7 @@ FOUNDATION_EXPORT void NNPPhase7SetSessionID(NSString *sessionID);
 FOUNDATION_EXPORT void NNPPhase7SetAODBrightnessMultiplier(float multiplier);
 FOUNDATION_EXPORT void NNPPhase7NotifyBacklightFactorSubstitution(float originalFactor, float dimmedFactor);
 FOUNDATION_EXPORT void NNPPhase7NotifyDisplayWake(void);
+FOUNDATION_EXPORT BOOL NNPPhase7RestoreWakeBrightness(void);
 FOUNDATION_EXPORT BOOL NNPPhase7PresentNotificationSnakeAnimation(void);
 FOUNDATION_EXPORT void NNPPhase7StartIncidentDiagnostics(void);
 FOUNDATION_EXPORT BOOL NNPPhase7EnsureBacklightFactorHook(void);

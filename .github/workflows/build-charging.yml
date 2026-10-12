@@ -75,6 +75,9 @@ jobs:
             research/tools/display_wake_policy_test.c -o display-wake-policy-test
           ./display-wake-policy-test
           xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
+            research/tools/nits_restore_test.m -o nits-restore-test
+          ./nits-restore-test
+          xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
             research/tools/diagnostics_batch_test.m -o diagnostics-batch-test
           ./diagnostics-batch-test
           xcrun clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation \

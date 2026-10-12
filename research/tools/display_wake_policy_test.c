@@ -2,6 +2,12 @@
 #include <assert.h>
 #include <stdio.h>
 int main(void) {
+    for (long state = -1; state <= 5; state++) {
+        for (unsigned flags = 0; flags < 4; flags++) {
+            bool aod = flags & 1, covered = flags & 2;
+            assert(NNPDisplayWakeCanRestoreBrightness(state, aod, covered) == (state == 1 && !aod && !covered));
+        }
+    }
     assert(NNPDisplayWakeShouldReveal(true, true, true, false, false));
     assert(NNPDisplayWakeShouldReveal(true, true, false, true, false));
     assert(!NNPDisplayWakeShouldReveal(true, true, false, false, false));

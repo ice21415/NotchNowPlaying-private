@@ -26,6 +26,7 @@ void NNPPhase7SetSessionID(__unused NSString *sessionID) {}
 void NNPPhase7SetAODBrightnessMultiplier(__unused float multiplier) {}
 void NNPPhase7NotifyBacklightFactorSubstitution(__unused float originalFactor, __unused float dimmedFactor) {}
 void NNPPhase7NotifyDisplayWake(void) {}
+BOOL NNPPhase7RestoreWakeBrightness(void) { return NO; }
 BOOL NNPPhase7PresentNotificationSnakeAnimation(void) { return NO; }
 void NNPPhase7StartIncidentDiagnostics(void) {}
 BOOL NNPPhase7EnsureBacklightFactorHook(void) { return NO; }
