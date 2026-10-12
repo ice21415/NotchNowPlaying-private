@@ -5,6 +5,15 @@
 #include <stdio.h>
 
 int main(void) {
+    for (unsigned flags = 0; flags < 64; flags++) {
+        bool enabled = flags & 1, locked = flags & 2, active = flags & 4;
+        bool ticket = flags & 8, covered = flags & 16, pocket = flags & 32;
+        bool expected = enabled && locked && active && !ticket && (covered || pocket);
+        assert(NNPAODCoverShouldSuspend(enabled, locked, active, ticket, covered, pocket) == expected);
+    }
+    assert(!NNPAODCoverShouldSuspend(true, true, true, true, true, true));
+    assert(NNPAODCoverShouldSuspend(true, true, true, false, true, false));
+    assert(NNPAODCoverShouldSuspend(true, true, true, false, false, true));
     assert(!NNPAODBrightnessNeedsUpdate(0, 0));
     assert(NNPAODBrightnessNeedsUpdate(0, 6));
     assert(NNPAODBrightnessNeedsUpdate(90, 0));

@@ -2,6 +2,11 @@
 #include "NNPAODPixelPolicy.h"
 #include <stdbool.h>
 
+static inline bool NNPAODCoverShouldSuspend(bool enabled, bool locked, bool activeAOD,
+                                           bool ticketOpen, bool covered, bool inPocket) {
+    return enabled && locked && activeAOD && !ticketOpen && (covered || inPocket);
+}
+
 typedef struct {
     float anchorNits;
     unsigned stableSamples;

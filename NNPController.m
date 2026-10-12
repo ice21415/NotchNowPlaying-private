@@ -1,5 +1,6 @@
 #import "NNPAODAmbientLight.h"
 #import "NNPAODPixelPolicy.h"
+#import "NNPAODPowerPolicy.h"
 #import "NNPAODPresentation.h"
 #import "NNPController.h"
 #import "NNPChargingController.h"
@@ -379,6 +380,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         NNPController *controller = weakSelf;
         if (!controller) return;
         controller.mengoOpen = open;
+        NNPDiagnosticSetBool(@"MengoCoverBlankSuppressed", open);
         controller.charging.aodPresentationActive = !open && [controller shouldPresentInsideCoverSheet] && ![controller pocketSuspended];
         controller.display.automaticBrightnessNits = open ? 180 : controller.ambientBrightnessTargetNits;
         if (open) {
@@ -387,7 +389,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
             [controller.statusBarPlayerView stopContentAnimation];
             [controller.nextArtwork setURL:@"" active:NO onChange:nil];
             [controller updateNotchGestureWindow];
-        } else if ([controller shouldShow]) { [controller reconcile]; }
+        } else { [controller reconcile]; }
     };
     self.screenCoverObserver = [NNPScreenCoverObserver new];
     self.screenCoverObserver.stateChanged = ^(__unused BOOL covered) { [weakSelf reconcile]; };
@@ -541,8 +543,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 }
 - (BOOL)isAllowedMedia:(NNPState *)state { if (!state.bundleIdentifier.length) return NO; return !self.preferences.spotifyOnly || [state.bundleIdentifier isEqualToString:NNPSpotify]; }
 - (BOOL)pocketSuspended {
-    return self.preferences.aodPocketModeEnabled && self.locked &&
-        self.display.aodPresentationActive && (self.screenCoverObserver.covered || self.pocketObserver.inPocket);
+    return NNPAODCoverShouldSuspend(self.preferences.aodPocketModeEnabled, self.locked,
+        self.display.aodPresentationActive, self.mengoOpen,
+        self.screenCoverObserver.covered, self.pocketObserver.inPocket);
 }
 - (void)aodOrientationChanged:(__unused NSNotification *)note {
     if (!self.orientationMonitoring) return;
@@ -1207,7 +1210,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         [self setAODOrientationMonitoring:activeAOD && self.preferences.aodLandscapeEnabled && !pocket];
         BOOL ambientActive = self.preferences.aodAutomaticBrightnessEnabled && [self shouldPresentInsideCoverSheet] && !pocket;
         [self.ambientLight setActive:ambientActive];
-        if (!ambientActive && !pocket) {
+        if (!ambientActive && !pocket && !self.mengoOpen) {
             self.ambientBrightnessTargetNits = 0;
             self.display.automaticBrightnessNits = 0;
         }
