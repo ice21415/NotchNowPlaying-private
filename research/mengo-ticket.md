@@ -444,3 +444,40 @@ QR are inactive, and AODCoverDetectionActive/PocketUISuspended are both zero.
 MengoCoverBlankSuppressed is not yet emitted until the first panel transition;
 no physical scanning test result has been received. User was asked to verify
 covered/proximity behavior with QR open, then normal cover blanking after close.
+
+The user confirmed 0.1.140 fixes scanner proximity blanking.
+
+## 0.1.141 touch wake leaves the Lock Screen dim
+
+User clarified that the native Lock Screen appears after an AOD outside tap,
+but remains dim until a side-key off/on cycle. This is not a missing wallpaper
+report. Current diagnostics show native tap wake path, AOD presentation inactive
+and fixed-nits override inactive; clearing the override alone does not prove the
+native backlight factor has returned to its awake multiplier.
+
+Keep the complete native Lock Screen tap wake entry. After it, end the nits
+session with a completion: cancel queued ramps, clear the override on the serial
+nits queue, then invoke main only if the session generation still matches. A new
+session cancels stale cleanup/completion. Before restoring brightness, verify
+native backlightState == 1, AOD inactive and screen uncovered. Restore the awake
+factor 1.0 with a 0.2-second fade through the already-resolved original HID setter;
+this matches provider state-1 behavior established in
+`research/phase4b-display-boundary-trace.md`, section "ABI and value provenance".
+No UIScreen brightness preference or system auto-brightness setting is written.
+There is no repeated polling or persistent wake timer.
+
+Foundation tests mock the existing backlight API to verify clear-before-main
+completion, cancellation before cleanup, cancellation after cleanup/before-main
+and normal nil-completion cleanup. Shared C tests reject off/dim states, covered
+screens and a restarted AOD session. Physical restored brightness needs user
+verification. The 0.1.140 package remains available for rollback.
+
+Actions `38192866148` passed both normal and AOD variants for source
+`7d05e47c976511ca531ed40fc4cd6499eb907226`, including the new cleanup-order test.
+AOD 0.1.141 package SHA-256:
+`fe4e1fa3504052cedcab87893bc9a77feeb7e2369ea3ebe0c2dfb2522ef8d812`.
+
+Installed 0.1.141; dpkg version and SpringBoard/DiagnosticFlushPID 45206 match.
+User was asked to compare outside-tap wake against side-key brightness both
+before and after using the QR panel. Actual visual brightness restoration is
+pending the physical test; the successful build is not proof of restored luminance.
