@@ -405,3 +405,42 @@ Device confirms version 0.1.138, new SpringBoard PID 27967 and automatic preflig
 caption "login valid" with the device check time 14:29. Physical caption layout
 still requires user confirmation; invalid-login/network states were fixture-tested,
 not induced on the live account.
+
+## 0.1.140 scanner proximity must not blank an open QR panel
+
+The user reported the screen blanking when bringing the displayed QR near a
+reader. Pocket suspension previously applied to all AOD, including the ticket
+panel, so cover/proximity detection could blank the screen and close that panel.
+
+- An open ticket panel bypasses both cover and pocket suspension.
+- On opening, stop the screen-cover and pocket observers, releasing plugin-owned
+  proximity monitoring and native proximity assertion. Reconcile cannot reactivate
+  those observers while the panel is open. This also stops cover accelerometer
+  sampling during scanning; do not merely ignore a still-active sensor callback.
+- On every panel close (including timeout), reconcile unconditionally so detection
+  resumes even when shouldShow is false because the phone is currently covered.
+- Preserve the panel's brightness boost during reconcile when automatic AOD
+  brightness is disabled. QR lifetime/renewal, touch routing, side-key wake and
+  pixel shifting remain unchanged.
+- The shared C policy tests cover all 64 enable/lock/AOD/panel/cover/pocket states
+  and explicitly check suppression while scanning and restoration after close.
+
+Per the user's instruction, repository visibility was changed from PRIVATE to
+PUBLIC before Actions compilation and then verified PUBLIC. Backup 0.1.139:
+`backups/NotchNowPlaying-0.1.139-before-qr-cover-20261012` (bundle, source archive,
+AOD package and saved preferences). Final code source
+`8d2e0ecfc079892aedc5b78e061159a53430bf9d`; Actions run `38191188725`.
+The earlier run `38191130160` was superseded and cancelled before deployment.
+Physical scanner/covered-panel behavior and cover-mode restoration await testing.
+
+Both Actions variants passed; the AOD job passed after rerunning the known
+lock-observer timing assertion at line 48. AOD package SHA-256:
+`939da30c264a69370ef2bf1a7007e7ce8c7b65ac19986ef35cc096b32f06c70b`.
+
+Installed 0.1.140. The respring interrupted the SSH transport; reconnecting
+confirmed dpkg version 0.1.140 and SpringBoard PID 45098. DiagnosticFlushPID is
+also 45098, confirming the tweak loaded in that process. At inspection AOD and
+QR are inactive, and AODCoverDetectionActive/PocketUISuspended are both zero.
+MengoCoverBlankSuppressed is not yet emitted until the first panel transition;
+no physical scanning test result has been received. User was asked to verify
+covered/proximity behavior with QR open, then normal cover blanking after close.
