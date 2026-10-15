@@ -490,7 +490,10 @@ BOOL NNPPhase7PrepareNativeTapWake(void) {
     long long state = ((long long (*)(id, SEL))objc_msgSend)(controller, stateSelector);
     if (state != 1) return NO;
     NNPDiagnosticLogTransition(@"PHASE7 proximity left SpringBoard backlight on during AOD; cycling to state 3 before native tap wake");
+    // Run unarmed so this transition is not read as a new AOD session that re-covers the Lock Screen.
+    bool wasArmed = atomic_exchange_explicit(&gNNPPhase7Armed, false, memory_order_acq_rel);
     gNNPOriginalBacklightState(controller, NSSelectorFromString(@"setBacklightState:source:animated:completion:"), 3, 3, NO, nil);
+    atomic_store_explicit(&gNNPPhase7Armed, wasArmed, memory_order_release);
     return YES;
 }
 
