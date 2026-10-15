@@ -5,3 +5,4 @@ FOUNDATION_EXPORT void NNPNotificationDiagnosticsSetDisplayState(BOOL locked, BO
 FOUNDATION_EXPORT BOOL NNPNotificationDiagnosticsIsNotificationBacklightSource(NSInteger source);
 FOUNDATION_EXPORT BOOL NNPNotificationDiagnosticsConsumeWakeForSnakeAnimation(NSInteger state, NSInteger source);
 FOUNDATION_EXPORT NSDictionary *NNPNotificationDiagnosticsConsumePendingPresentationPayload(void);
+FOUNDATION_EXPORT void NNPNotificationDiagnosticsNoteSnakeDuration(NSTimeInterval seconds);

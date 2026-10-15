@@ -477,6 +477,16 @@ BOOL NNPPhase7RestoreWakeBrightness(void) {
     return YES;
 }
 
+BOOL NNPPhase7ExtendNotificationWakeSuppressionIfActive(void) {
+    uint64_t deadline = atomic_load_explicit(&gNNPPhase7NotificationWakeSuppressionDeadlineTicks, memory_order_acquire);
+    uint64_t now = mach_absolute_time();
+    if (!deadline || now > deadline) return NO;
+    uint64_t graceTicks = NNPPhase7TicksForSeconds(NNPPhase7NotificationWakeSuppressionSeconds);
+    if (!graceTicks) return NO;
+    atomic_store_explicit(&gNNPPhase7NotificationWakeSuppressionDeadlineTicks, now + graceTicks, memory_order_release);
+    return YES;
+}
+
 BOOL NNPPhase7PrepareNativeTapWake(void) {
     if (!NSThread.isMainThread || !gNNPOriginalBacklightState) return NO;
     if (!atomic_exchange_explicit(&gNNPPhase7ProximitySeenDuringAOD, false, memory_order_acq_rel)) return NO;
@@ -686,4 +696,5 @@ static void NNPPhase7ProviderTransitionReplacement(id self, SEL _cmd, long long 
 BOOL NNPPhase7EnsureBacklightFactorHook(void) { return NO; }
 BOOL NNPPhase7RestoreWakeBrightness(void) { return NO; }
 BOOL NNPPhase7PrepareNativeTapWake(void) { return NO; }
+BOOL NNPPhase7ExtendNotificationWakeSuppressionIfActive(void) { return NO; }
 #endif

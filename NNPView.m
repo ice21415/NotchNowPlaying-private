@@ -1,3 +1,4 @@
+#import "NNPNotificationDiagnostics.h"
 #import "NNPAODPresentation.h"
 #import "NNPView.h"
 #import "NNPState.h"
@@ -31,6 +32,28 @@
 
 static NSString *const NNPTitleMarqueeAnimationKey = @"nnp.titleMarquee";
 static const CGFloat NNPNotificationSnakeLineWidth = 6.5;
+static const NSTimeInterval NNPNotificationCardHoldAfterLight = 3.5;
+
+static UIColor *NNPNotificationLightColor(UIColor *color, CGFloat whiteMix) {
+    CGFloat red = 0.9, green = 0.9, blue = 0.9, alpha = 1.0, white = 0.9;
+    if (![color getRed:&red green:&green blue:&blue alpha:&alpha]) {
+        if ([color getWhite:&white alpha:&alpha]) { red = green = blue = white; }
+        else { red = green = blue = 0.9; }
+    }
+    return [UIColor colorWithRed:red + (1.0 - red) * whiteMix
+                           green:green + (1.0 - green) * whiteMix
+                            blue:blue + (1.0 - blue) * whiteMix alpha:1.0];
+}
+
+static CAShapeLayer *NNPNotificationLightLayer(CALayer *host) {
+    CAShapeLayer *layer = [CAShapeLayer layer];
+    layer.fillColor = UIColor.clearColor.CGColor;
+    layer.lineCap = kCALineCapRound;
+    layer.lineJoin = kCALineJoinRound;
+    layer.contentsScale = MAX(UIScreen.mainScreen.scale, 1.0);
+    [host addSublayer:layer];
+    return layer;
+}
 
 static void NNPAddPlaybackTrackSegments(UIBezierPath *path, CGRect notch, BOOL reversed, BOOL connectToCurrentPoint) {
     CGFloat pathLeft = CGRectGetMinX(notch) - 4.5;
@@ -205,6 +228,9 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 @property(nonatomic, copy) NSString *endingTrackKey;
 @property(nonatomic, strong) CAShapeLayer *notificationSnakeLayer;
 @property(nonatomic, strong) CAShapeLayer *notificationSnakeFinishLayer;
+@property(nonatomic, strong) CAShapeLayer *notificationSnakeMidLayer;
+@property(nonatomic, strong) CAShapeLayer *notificationSnakeTailLayer;
+@property(nonatomic, strong) CAShapeLayer *notificationSnakeBreathLayer;
 @property(nonatomic, strong) UIView *notificationCard;
 @property(nonatomic, strong) UIImageView *notificationCardIcon;
 @property(nonatomic, strong) UILabel *notificationCardAppName;
@@ -664,8 +690,15 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     self.fill.lineWidth = MAX(1.5, progressHeight * 0.78);
     self.fill.strokeEnd = self.fraction;
     if (self.notificationSnakeLayer) {
-        self.notificationSnakeLayer.frame = self.bounds;
-        self.notificationSnakeLayer.path = [self notificationSnakePath].CGPath;
+        CGPathRef perimeter = [self notificationSnakePath].CGPath;
+        NSMutableArray<CAShapeLayer *> *lightLayers = [NSMutableArray arrayWithObject:self.notificationSnakeLayer];
+        if (self.notificationSnakeMidLayer) [lightLayers addObject:self.notificationSnakeMidLayer];
+        if (self.notificationSnakeTailLayer) [lightLayers addObject:self.notificationSnakeTailLayer];
+        if (self.notificationSnakeBreathLayer) [lightLayers addObject:self.notificationSnakeBreathLayer];
+        for (CAShapeLayer *lightLayer in lightLayers) {
+            lightLayer.frame = self.bounds;
+            lightLayer.path = perimeter;
+        }
         [self updateNotificationSnakeCounterTransform];
     }
     if (self.notificationSnakeFinishLayer) {
@@ -777,10 +810,14 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 }
 
 - (BOOL)playNotificationSnakeAnimation {
-    return [self playNotificationSnakeAnimationWithPayload:nil];
+    return [self playNotificationSnakeAnimationWithPayload:nil burstCount:1];
 }
 
 - (BOOL)playNotificationSnakeAnimationWithPayload:(NSDictionary *)payload {
+    return [self playNotificationSnakeAnimationWithPayload:payload burstCount:1];
+}
+
+- (BOOL)playNotificationSnakeAnimationWithPayload:(NSDictionary *)payload burstCount:(NSUInteger)burstCount {
     if (![NSThread isMainThread] || !self.window || CGRectIsEmpty(self.bounds)) return NO;
     if (!self.track.path) [self layoutIfNeeded];
     if (!self.track.path) return NO;
@@ -903,15 +940,67 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     [self presentNotificationCardWithPayload:payload generation:generation];
 
     BOOL reduceMotion = UIAccessibilityIsReduceMotionEnabled();
-    NSTimeInterval duration = 2.2;
-    NSTimeInterval finishDuration = 1.0;
+    NSUInteger laps = MIN((NSUInteger)3, MAX((NSUInteger)1, burstCount));
+    static const NSTimeInterval lapDurations[] = {3.0, 2.6, 2.2};
+    NSTimeInterval lapDuration = lapDurations[laps - 1];
+    NSTimeInterval flowDuration = lapDuration * (NSTimeInterval)laps;
+    NSTimeInterval finishDuration = 1.2;
     NSTimeInterval handoffFadeDuration = 0.14;
+    NSTimeInterval lightDuration = reduceMotion ? 2.2 : flowDuration + handoffFadeDuration + finishDuration;
+    NSTimeInterval cleanupDelay = lightDuration + 0.15;
+    NNPNotificationDiagnosticsNoteSnakeDuration(cleanupDelay + NNPNotificationCardHoldAfterLight + 0.2);
+
+    UIColor *accent = self.accentColor;
+    UIColor *headColor = NNPNotificationLightColor(accent, 0.5);
+    CAShapeLayer *mid = self.notificationSnakeMidLayer;
+    CAShapeLayer *tail = self.notificationSnakeTailLayer;
+    CAShapeLayer *breath = self.notificationSnakeBreathLayer;
+    if (!mid) { mid = self.notificationSnakeMidLayer = NNPNotificationLightLayer(self.layer); }
+    if (!tail) { tail = self.notificationSnakeTailLayer = NNPNotificationLightLayer(self.layer); }
+    if (!breath) { breath = self.notificationSnakeBreathLayer = NNPNotificationLightLayer(self.layer); }
+    CGPathRef perimeter = [self notificationSnakePath].CGPath;
+    NSArray<CAShapeLayer *> *comets = @[tail, mid, snake];
+    const CGFloat cometLengths[] = {0.26, 0.15, 0.06};
+    const CGFloat cometWidths[] = {3.0, 4.8, NNPNotificationSnakeLineWidth};
+    const CGFloat cometShadowRadius[] = {9.0, 13.0, 18.0};
+    const CGFloat cometShadowOpacity[] = {0.45, 0.8, 1.0};
+    const CGFloat cometZ[] = {998.0, 999.0, 1000.0};
+    for (NSUInteger index = 0; index < comets.count; index++) {
+        CAShapeLayer *layer = comets[index];
+        [layer removeAllAnimations];
+        layer.frame = self.bounds;
+        layer.path = perimeter;
+        layer.zPosition = cometZ[index];
+        layer.lineWidth = cometWidths[index];
+        UIColor *color = index == 2 ? headColor : accent;
+        layer.strokeColor = color.CGColor;
+        layer.shadowColor = color.CGColor;
+        layer.shadowOpacity = (float)cometShadowOpacity[index];
+        layer.shadowRadius = cometShadowRadius[index];
+        layer.shadowOffset = CGSizeZero;
+        layer.strokeStart = 0.0;
+        layer.strokeEnd = 0.0;
+        layer.opacity = 1.0;
+        layer.hidden = reduceMotion;
+    }
+    [breath removeAllAnimations];
+    breath.frame = self.bounds;
+    breath.path = perimeter;
+    breath.zPosition = 997.0;
+    breath.lineWidth = 3.2;
+    breath.strokeColor = accent.CGColor;
+    breath.shadowColor = accent.CGColor;
+    breath.shadowOpacity = 0.9f;
+    breath.shadowRadius = 20.0;
+    breath.shadowOffset = CGSizeZero;
+    breath.strokeStart = 0.0;
+    breath.strokeEnd = 1.0;
+    breath.opacity = 0.0;
+    breath.hidden = reduceMotion;
+
     if (reduceMotion) {
-        snake.hidden = YES;
         finish.strokeEnd = 1.0;
         finish.opacity = 0.94;
-        snake.strokeStart = 0.0;
-        snake.strokeEnd = 1.0;
         CABasicAnimation *pulse = [CABasicAnimation animationWithKeyPath:@"opacity"];
         pulse.fromValue = @0.45;
         pulse.toValue = @0.94;
@@ -922,37 +1011,68 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         pulse.fillMode = kCAFillModeForwards;
         [finish addAnimation:pulse forKey:@"nnp.notificationSnakeFinishPulse"];
     } else {
-        snake.hidden = NO;
-        finish.hidden = NO;
-        snake.strokeStart = 0.0;
-        snake.strokeEnd = 0.10;
-        CABasicAnimation *tail = [CABasicAnimation animationWithKeyPath:@"strokeStart"];
-        tail.fromValue = @0.0;
-        tail.toValue = @0.90;
-        tail.duration = duration;
-        tail.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
-        CABasicAnimation *head = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
-        head.fromValue = @0.10;
-        head.toValue = @1.0;
-        head.duration = duration;
-        head.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
-        CAAnimationGroup *laps = [CAAnimationGroup animation];
-        laps.animations = @[tail, head];
-        laps.duration = duration;
-        laps.repeatCount = 2.0;
-        laps.removedOnCompletion = NO;
-        laps.fillMode = kCAFillModeForwards;
-        [snake addAnimation:laps forKey:@"nnp.notificationSnakeLaps"];
+        CFTimeInterval begin = CACurrentMediaTime();
+        for (NSUInteger index = 0; index < comets.count; index++) {
+            CAShapeLayer *layer = comets[index];
+            CGFloat length = cometLengths[index];
+            CABasicAnimation *headMove = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
+            headMove.fromValue = @0.0;
+            headMove.toValue = @1.0;
+            headMove.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
+            CAKeyframeAnimation *tailMove = [CAKeyframeAnimation animationWithKeyPath:@"strokeStart"];
+            tailMove.values = @[@0.0, @0.0, @(1.0 - length)];
+            tailMove.keyTimes = @[@0.0, @(length), @1.0];
+            tailMove.calculationMode = kCAAnimationLinear;
+            CAAnimationGroup *lap = [CAAnimationGroup animation];
+            lap.animations = @[headMove, tailMove];
+            lap.duration = lapDuration;
+            lap.repeatCount = (float)laps;
+            lap.removedOnCompletion = NO;
+            lap.fillMode = kCAFillModeForwards;
+            [layer addAnimation:lap forKey:@"nnp.notificationLightLap"];
+
+            CABasicAnimation *edgeFade = [CABasicAnimation animationWithKeyPath:@"opacity"];
+            edgeFade.fromValue = @1.0;
+            edgeFade.toValue = @0.0;
+            edgeFade.duration = handoffFadeDuration;
+            edgeFade.beginTime = begin + flowDuration;
+            edgeFade.removedOnCompletion = NO;
+            edgeFade.fillMode = kCAFillModeBoth;
+            [layer addAnimation:edgeFade forKey:@"nnp.notificationLightFade"];
+        }
 
         CABasicAnimation *glowPulse = [CABasicAnimation animationWithKeyPath:@"shadowOpacity"];
-        glowPulse.fromValue = @0.58;
+        glowPulse.fromValue = @0.6;
         glowPulse.toValue = @1.0;
-        glowPulse.duration = 0.55;
+        glowPulse.duration = 0.5;
         glowPulse.autoreverses = YES;
-        glowPulse.repeatCount = 4.0;
+        glowPulse.repeatCount = (float)flowDuration;
         glowPulse.removedOnCompletion = NO;
         glowPulse.fillMode = kCAFillModeForwards;
         [snake addAnimation:glowPulse forKey:@"nnp.notificationSnakeGlowPulse"];
+
+        // Slow breathing glow around the whole perimeter for the full light sequence.
+        const NSTimeInterval breathPeriod = 1.8;
+        const NSTimeInterval fadeIn = 0.8;
+        const NSTimeInterval fadeOut = 0.5;
+        const NSUInteger samples = (NSUInteger)ceil(lightDuration * 30.0);
+        NSMutableArray<NSNumber *> *breathValues = [NSMutableArray arrayWithCapacity:samples + 1];
+        NSMutableArray<NSNumber *> *breathTimes = [NSMutableArray arrayWithCapacity:samples + 1];
+        for (NSUInteger sample = 0; sample <= samples; sample++) {
+            NSTimeInterval t = lightDuration * (NSTimeInterval)sample / (NSTimeInterval)samples;
+            double wave = 0.30 + 0.32 * (1.0 - cos(2.0 * M_PI * t / breathPeriod)) * 0.5;
+            double envelope = MIN(1.0, t / fadeIn) * MIN(1.0, MAX(0.0, (lightDuration - t) / fadeOut));
+            [breathValues addObject:@(wave * envelope)];
+            [breathTimes addObject:@((double)sample / (double)samples)];
+        }
+        CAKeyframeAnimation *breathing = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
+        breathing.values = breathValues;
+        breathing.keyTimes = breathTimes;
+        breathing.calculationMode = kCAAnimationLinear;
+        breathing.duration = lightDuration;
+        breathing.removedOnCompletion = NO;
+        breathing.fillMode = kCAFillModeBoth;
+        [breath addAnimation:breathing forKey:@"nnp.notificationBreath"];
 
         CABasicAnimation *notchTrace = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
         notchTrace.fromValue = @0.0;
@@ -968,38 +1088,24 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         CAAnimationGroup *notchFinish = [CAAnimationGroup animation];
         notchFinish.animations = @[notchTrace, finishGlow];
         notchFinish.duration = finishDuration;
-        notchFinish.beginTime = CACurrentMediaTime() + duration * 2.0 + handoffFadeDuration;
+        notchFinish.beginTime = begin + flowDuration + handoffFadeDuration;
         notchFinish.removedOnCompletion = NO;
         notchFinish.fillMode = kCAFillModeBoth;
         [finish addAnimation:notchFinish forKey:@"nnp.notificationSnakeNotchFinish"];
-
-        CABasicAnimation *edgeFade = [CABasicAnimation animationWithKeyPath:@"opacity"];
-        edgeFade.fromValue = @1.0;
-        edgeFade.toValue = @0.0;
-        edgeFade.duration = handoffFadeDuration;
-        edgeFade.beginTime = CACurrentMediaTime() + duration * 2.0;
-        edgeFade.removedOnCompletion = NO;
-        edgeFade.fillMode = kCAFillModeBoth;
-        [snake addAnimation:edgeFade forKey:@"nnp.notificationSnakeEdgeFade"];
     }
 
-    NSTimeInterval cleanupDelay = duration * (reduceMotion ? 1.0 : 2.0) +
-        (reduceMotion ? 0.15 : handoffFadeDuration + finishDuration + 0.15);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(cleanupDelay * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         if (generation != self.notificationSnakeGeneration) return;
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
-        snake.hidden = YES;
-        finish.hidden = YES;
-        [snake removeAllAnimations];
-        [finish removeAllAnimations];
-        snake.opacity = 0.0;
-        snake.strokeStart = 0.0;
-        snake.strokeEnd = 0.0;
-        finish.opacity = 0.0;
-        finish.strokeStart = 0.0;
-        finish.strokeEnd = 0.0;
+        for (CAShapeLayer *layer in @[snake, mid, tail, breath, finish]) {
+            layer.hidden = YES;
+            [layer removeAllAnimations];
+            layer.opacity = 0.0;
+            layer.strokeStart = 0.0;
+            layer.strokeEnd = 0.0;
+        }
 #if NNP_NOTIFICATION_SNAKE_GEOMETRY_DIAGNOSTICS
         self.notificationSnakeDebugGuideLayer.hidden = YES;
         self.notificationSnakeDebugGuideLayer.opacity = 0.0;
@@ -1007,6 +1113,12 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         self.notificationSnakeDebugMarkersLayer.opacity = 0.0;
 #endif
         [CATransaction commit];
+    });
+    // Keep the notification card readable after the light has finished.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                 (int64_t)((cleanupDelay + NNPNotificationCardHoldAfterLight) * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (generation != self.notificationSnakeGeneration) return;
         [self finishNotificationCardForGeneration:generation];
     });
     return YES;
@@ -1215,12 +1327,19 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     self.notificationSnakeGeneration++;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    [self.notificationSnakeLayer removeAllAnimations];
-    [self.notificationSnakeFinishLayer removeAllAnimations];
-    self.notificationSnakeLayer.hidden = YES;
-    self.notificationSnakeFinishLayer.hidden = YES;
-    self.notificationSnakeLayer.opacity = 0.0;
-    self.notificationSnakeFinishLayer.opacity = 0.0;
+    NSMutableArray<CAShapeLayer *> *lightLayers = [NSMutableArray array];
+    for (CAShapeLayer *candidate in @[self.notificationSnakeLayer ?: [CAShapeLayer layer],
+                                      self.notificationSnakeFinishLayer ?: [CAShapeLayer layer],
+                                      self.notificationSnakeMidLayer ?: [CAShapeLayer layer],
+                                      self.notificationSnakeTailLayer ?: [CAShapeLayer layer],
+                                      self.notificationSnakeBreathLayer ?: [CAShapeLayer layer]]) {
+        [lightLayers addObject:candidate];
+    }
+    for (CAShapeLayer *lightLayer in lightLayers) {
+        [lightLayer removeAllAnimations];
+        lightLayer.hidden = YES;
+        lightLayer.opacity = 0.0;
+    }
 #if NNP_NOTIFICATION_SNAKE_GEOMETRY_DIAGNOSTICS
     [self.notificationSnakeDebugGuideLayer removeAllAnimations];
     [self.notificationSnakeDebugMarkersLayer removeAllAnimations];

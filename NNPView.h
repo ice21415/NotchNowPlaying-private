@@ -22,6 +22,7 @@
 - (void)stopContentAnimation;
 - (BOOL)playNotificationSnakeAnimation;
 - (BOOL)playNotificationSnakeAnimationWithPayload:(NSDictionary *)payload;
+- (BOOL)playNotificationSnakeAnimationWithPayload:(NSDictionary *)payload burstCount:(NSUInteger)burstCount;
 - (void)cancelNotificationSnakeAnimation;
 - (void)clearNotificationIndicators;
 @end

@@ -914,7 +914,10 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         return NO;
     }
     NSDictionary *notificationPayload = NNPResolvedNotificationPresentationPayload(pendingNotificationPayload);
-    BOOL mainViewPresented = [self.view playNotificationSnakeAnimationWithPayload:notificationPayload];
+    id burstValue = notificationPayload[@"burstCount"];
+    NSUInteger burstCount = [burstValue respondsToSelector:@selector(unsignedIntegerValue)]
+        ? MAX((NSUInteger)1, [burstValue unsignedIntegerValue]) : 1;
+    BOOL mainViewPresented = [self.view playNotificationSnakeAnimationWithPayload:notificationPayload burstCount:burstCount];
     BOOL statusBarMirrorPresented = NO;
     UIView *statusBarContainer = self.statusBarPlayerContainer;
     NNPView *statusBarMirror = self.statusBarPlayerView;
@@ -922,7 +925,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         statusBarContainer && statusBarContainer.window && !statusBarContainer.hidden &&
         statusBarContainer.alpha > 0.01;
     if (statusBarMirrorVisible && statusBarMirror != self.view) {
-        statusBarMirrorPresented = [statusBarMirror playNotificationSnakeAnimation];
+        statusBarMirrorPresented = [statusBarMirror playNotificationSnakeAnimationWithPayload:nil burstCount:burstCount];
     }
     BOOL presented = mainViewPresented || statusBarMirrorPresented;
     if (presented) {

@@ -1,6 +1,7 @@
 #import "NNPNotificationDiagnostics.h"
 #import "NNPDiagnostics.h"
 #import "NNPPreferences.h"
+#import "NNPDisplayController.h"
 #import <CoreFoundation/CoreFoundation.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
@@ -23,6 +24,10 @@ static _Atomic(bool) gNNPNotificationSnakeWakeEnabled = false;
 static _Atomic(bool) gNNPNotificationTraceLocked = false;
 static _Atomic(bool) gNNPNotificationTraceAODActive = false;
 static _Atomic(uint64_t) gNNPLastAODNotificationDispatchTicks = 0;
+static _Atomic(unsigned int) gNNPNotificationBurstCount = 0;
+static _Atomic(uint64_t) gNNPNotificationBurstLastTicks = 0;
+static _Atomic(uint64_t) gNNPNotificationSnakeActiveUntilTicks = 0;
+static const double NNPNotificationBurstWindowSeconds = 6.0;
 static os_unfair_lock gNNPPendingNotificationPayloadLock = OS_UNFAIR_LOCK_INIT;
 static NSDictionary *gNNPPendingNotificationPayload;
 static _Atomic(unsigned int) gNNPNotificationTraceNotificationCount = 0;
@@ -129,7 +134,28 @@ static void NNPNotificationDispatchReplacement(id self, SEL selector, id request
         atomic_load_explicit(&gNNPNotificationTraceAODActive, memory_order_acquire)) {
         uint64_t dispatchTicks = mach_absolute_time();
         atomic_store_explicit(&gNNPLastAODNotificationDispatchTicks, dispatchTicks, memory_order_release);
-        NNPNotificationSetPendingPresentationPayload(NNPNotificationPayloadFromRequest(request));
+        uint64_t previousTicks = atomic_exchange_explicit(&gNNPNotificationBurstLastTicks, dispatchTicks, memory_order_acq_rel);
+        uint64_t activeUntil = atomic_load_explicit(&gNNPNotificationSnakeActiveUntilTicks, memory_order_acquire);
+        BOOL animationRunning = activeUntil && dispatchTicks <= activeUntil;
+        uint64_t burstWindow = NNPNotificationTicksForSeconds(NNPNotificationBurstWindowSeconds);
+        BOOL continuingBurst = animationRunning ||
+            (previousTicks && burstWindow && dispatchTicks >= previousTicks && dispatchTicks - previousTicks <= burstWindow);
+        unsigned int burstCount = 1;
+        if (continuingBurst) {
+            burstCount = atomic_load_explicit(&gNNPNotificationBurstCount, memory_order_acquire) + 1;
+            if (burstCount > 9) burstCount = 9;
+        }
+        atomic_store_explicit(&gNNPNotificationBurstCount, burstCount, memory_order_release);
+        NSMutableDictionary *burstPayload = [NNPNotificationPayloadFromRequest(request) mutableCopy] ?: [NSMutableDictionary dictionary];
+        burstPayload[@"burstCount"] = @(burstCount);
+        NNPNotificationSetPendingPresentationPayload(burstPayload);
+        if (animationRunning) {
+            // While the previous animation still suppresses follow-on wake requests, present this
+            // notification directly and let it restart with more laps. Later ones use the wake path.
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (NNPPhase7ExtendNotificationWakeSuppressionIfActive()) NNPPhase7PresentNotificationSnakeAnimation();
+            });
+        }
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.2 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
             if (atomic_load_explicit(&gNNPLastAODNotificationDispatchTicks, memory_order_acquire) == dispatchTicks) {
@@ -315,4 +341,10 @@ NSDictionary *NNPNotificationDiagnosticsConsumePendingPresentationPayload(void) 
     gNNPPendingNotificationPayload = nil;
     os_unfair_lock_unlock(&gNNPPendingNotificationPayloadLock);
     return payload;
+}
+
+void NNPNotificationDiagnosticsNoteSnakeDuration(NSTimeInterval seconds) {
+    uint64_t ticks = NNPNotificationTicksForSeconds(seconds);
+    if (!ticks) return;
+    atomic_store_explicit(&gNNPNotificationSnakeActiveUntilTicks, mach_absolute_time() + ticks, memory_order_release);
 }

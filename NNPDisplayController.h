@@ -34,6 +34,7 @@ FOUNDATION_EXPORT void NNPPhase7NotifyBacklightFactorSubstitution(float original
 FOUNDATION_EXPORT void NNPPhase7NotifyDisplayWake(void);
 FOUNDATION_EXPORT BOOL NNPPhase7RestoreWakeBrightness(void);
 FOUNDATION_EXPORT BOOL NNPPhase7PrepareNativeTapWake(void);
+FOUNDATION_EXPORT BOOL NNPPhase7ExtendNotificationWakeSuppressionIfActive(void);
 FOUNDATION_EXPORT BOOL NNPPhase7PresentNotificationSnakeAnimation(void);
 FOUNDATION_EXPORT void NNPPhase7StartIncidentDiagnostics(void);
 FOUNDATION_EXPORT BOOL NNPPhase7EnsureBacklightFactorHook(void);
