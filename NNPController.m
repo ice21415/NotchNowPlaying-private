@@ -265,6 +265,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)applyRandomAODPixelShift;
 - (float)effectiveAODBrightnessMultiplier;
 - (void)updateUnlimitedMediaPauseWithEligibleMedia:(BOOL)mediaEligible activeSession:(BOOL)activeSession;
+- (BOOL)mediaShouldShow;
+- (BOOL)idleShouldShow;
+- (BOOL)idleModeActive;
 - (void)updateNotchGestureWindow;
 - (void)requestAODTouchWake;
 - (void)removeNotchGestureWindow;
@@ -576,7 +579,23 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     NNPDiagnosticSetBool(@"AODOrientationMonitoring", active);
 }
 
+- (BOOL)idleShouldShow {
+#if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
+    if (self.mengoOpen || [self pocketSuspended]) return NO;
+    return self.preferences.aodIdleDisplayEnabled && self.preferences.experimentalLockedVisible &&
+        self.preferences.enabled && self.preferences.showOnLockScreen && self.locked &&
+        self.display.aodPresentationActive && self.display.lifecycleState == NNPDisplayLifecycleStateActive;
+#else
+    return NO;
+#endif
+}
+- (BOOL)idleModeActive {
+    return ![self mediaShouldShow] && [self idleShouldShow];
+}
 - (BOOL)shouldShow {
+    return [self mediaShouldShow] || [self idleShouldShow];
+}
+- (BOOL)mediaShouldShow {
     if (self.mengoOpen || [self pocketSuspended]) return NO;
     NNPState *state = self.state;
     if (!self.preferences.enabled || !state.hasTrack || ![self isAllowedMedia:state]) return NO;
@@ -1143,7 +1162,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [self.view updateLyricsText:currentLine nextLine:nextLine];
 }
 - (void)updateUnlimitedMediaPauseWithEligibleMedia:(BOOL)mediaEligible activeSession:(BOOL)activeSession {
-    BOOL shouldWait = self.preferences.experimentalUnlimitedDuration && activeSession && !mediaEligible;
+    BOOL shouldWait = self.preferences.experimentalUnlimitedDuration && activeSession && !mediaEligible &&
+        !self.preferences.aodIdleDisplayEnabled;
     if (!shouldWait) {
         if (self.unlimitedMediaPausePending) {
             self.unlimitedMediaPausePending = NO;
@@ -1191,7 +1211,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
             self.display.lifecycleState == NNPDisplayLifecycleStateActive;
         [self updateUnlimitedMediaPauseWithEligibleMedia:mediaEligible activeSession:activeSession];
         experimentEligible = self.preferences.experimentalLockedVisible && self.preferences.enabled &&
-            self.preferences.showOnLockScreen && (mediaEligible || activeSession);
+            self.preferences.showOnLockScreen && (mediaEligible || activeSession || self.preferences.aodIdleDisplayEnabled);
         BOOL mediaSwitchAODState = activeSession && !mediaEligible && experimentEligible;
         if (!self.didRecordMediaSwitchAODState || self.recordedMediaSwitchAODState != mediaSwitchAODState) {
             self.didRecordMediaSwitchAODState = YES;
@@ -1249,6 +1269,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
             NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER reconcile locked=%@ show=%@ experimentEligible=%@ lifecycle=%ld", self.locked ? @"YES" : @"NO", show ? @"YES" : @"NO", experimentEligible ? @"YES" : @"NO", (long)lifecycle]);
         }
         if (!show) { [self hide]; return; }
+        BOOL idleMode = [self idleModeActive];
+        self.view.idleMode = idleMode;
+        self.statusBarPlayerView.idleMode = idleMode;
         [self makeWindow];
         BOOL becomingVisible = self.window.hidden;
         if (becomingVisible) {
@@ -1374,7 +1397,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         [self.view stopContentAnimation]; [self.statusBarPlayerView stopContentAnimation];
         return;
     }
-    NSTimeInterval interval = self.preferences.progressUpdateInterval;
+    NSTimeInterval interval = [self idleModeActive] ? 15.0 : self.preferences.progressUpdateInterval;
     if (self.progressTimer && fabs(self.progressTimerInterval - interval) < 0.01) return;
     [self.progressTimer invalidate];
     self.progressTimer = nil;
@@ -1387,7 +1410,13 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [[NSRunLoop mainRunLoop] addTimer:self.progressTimer forMode:NSRunLoopCommonModes];
 }
 - (void)updateProgress {
-    if (!self.state || !self.window || self.window.hidden || self.mengoOpen) return;
+    if (!self.window || self.window.hidden || self.mengoOpen) return;
+    if ([self idleModeActive]) {
+        [self.view refreshClock];
+        [self.statusBarPlayerView refreshClock];
+        return;
+    }
+    if (!self.state) return;
     [self.preferences reloadSpotifyLyricsSnapshot];
     [self applyLyricsPreferences];
     NSTimeInterval elapsed = self.state.elapsed;

@@ -20,6 +20,8 @@
 - (void)updateElapsed:(NSTimeInterval)elapsed duration:(NSTimeInterval)duration playing:(BOOL)playing;
 - (void)updateLyricsText:(NSString *)currentLine nextLine:(NSString *)nextLine;
 - (void)stopContentAnimation;
+@property(nonatomic) BOOL idleMode;
+- (void)refreshClock;
 - (BOOL)playNotificationSnakeAnimation;
 - (BOOL)playNotificationSnakeAnimationWithPayload:(NSDictionary *)payload;
 - (BOOL)playNotificationSnakeAnimationWithPayload:(NSDictionary *)payload burstCount:(NSUInteger)burstCount;

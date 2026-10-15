@@ -237,6 +237,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 @property(nonatomic, strong) UILabel *titleDuplicate;
 @property(nonatomic, strong) UILabel *artist;
 @property(nonatomic, strong) UILabel *clockLabel;
+@property(nonatomic, strong) UILabel *dateLabel;
 @property(nonatomic, copy) NSString *lastClockDisplay;
 @property(nonatomic) NSInteger lastClockMinute;
 @property(nonatomic, strong) UIView *batteryStatus;
@@ -420,6 +421,11 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     _clockLabel.font = [UIFont monospacedDigitSystemFontOfSize:10.0 weight:UIFontWeightMedium];
     _clockLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.72];
     _clockLabel.hidden = YES;
+    _dateLabel = [UILabel new];
+    _dateLabel.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightMedium];
+    _dateLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.62];
+    _dateLabel.hidden = YES;
+    _dateLabel.accessibilityTraits = UIAccessibilityTraitStaticText;
     _clockLabel.accessibilityTraits = UIAccessibilityTraitStaticText;
 
     _batteryStatus = [UIView new];
@@ -536,6 +542,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     [_contentContainer addSubview:_titleViewport];
     [_contentContainer addSubview:_artist];
     [_contentContainer addSubview:_clockLabel];
+    [_contentContainer addSubview:_dateLabel];
     [_contentContainer addSubview:_batteryStatus];
     [_contentContainer addSubview:_playbackTime];
     [_contentContainer addSubview:_lyricsLabel];
@@ -709,6 +716,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     self.batteryIcon.frame = CGRectMake(0.0, 1.0, 14.0, 12.0);
     self.batteryPercentage.frame = CGRectMake(17.0, 0.0, 29.0, 14.0);
     self.batteryChargingIcon.frame = CGRectMake(47.0, 1.0, 9.0, 12.0);
+    [self applyIdleLayoutWithTextX:textX textWidth:textWidth top:top];
 
     CGFloat progressHeight = MAX(2.0, self.progressHeight);
     CGFloat pathLeft = notchLeft - 4.5;
@@ -805,6 +813,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     self.batteryStatus.frame = CGRectMake(textX + (self.showClock ? 88.0 : 0), infoY, 58.0, 14.0);
     self.notificationIndicatorStrip.frame = CGRectMake(side, top + artSize + 5,
         CGRectGetWidth(self.notificationIndicatorStrip.frame), 12);
+    [self applyIdleLayoutWithTextX:side textWidth:MAX(1.0, width - side * 2.0) top:top];
     CGFloat progressY = MAX(top + artSize + 24.0, infoY + 35.0);
     UIBezierPath *path = [UIBezierPath bezierPath];
     [path moveToPoint:CGPointMake(side, progressY)];
@@ -1763,7 +1772,60 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         self.clockLabel.accessibilityLabel = [NSString stringWithFormat:@"目前時間 %@", display];
         self.lastClockDisplay = display;
     }
+    static NSDateFormatter *dateFormatter;
+    static dispatch_once_t dateOnceToken;
+    dispatch_once(&dateOnceToken, ^{
+        dateFormatter = [NSDateFormatter new];
+        dateFormatter.locale = NSLocale.currentLocale;
+        dateFormatter.timeZone = NSTimeZone.localTimeZone;
+        [dateFormatter setLocalizedDateFormatFromTemplate:@"MMMdEEE"];
+    });
+    NSString *dateDisplay = [dateFormatter stringFromDate:now];
+    if (![self.dateLabel.text isEqualToString:dateDisplay]) {
+        self.dateLabel.text = dateDisplay;
+        self.dateLabel.accessibilityLabel = [NSString stringWithFormat:@"\u4eca\u5929\u65e5\u671f %@", dateDisplay];
+    }
     self.lastClockMinute = minute;
+}
+
+- (void)refreshClock {
+    [self updateClock];
+}
+
+- (void)setIdleMode:(BOOL)idleMode {
+    if (_idleMode == idleMode) return;
+    _idleMode = idleMode;
+    [self updateClock];
+    [self setNeedsLayout];
+}
+
+- (void)applyIdleLayoutWithTextX:(CGFloat)textX textWidth:(CGFloat)textWidth top:(CGFloat)top {
+    if (!self.idleMode) {
+        self.clockLabel.font = [UIFont monospacedDigitSystemFontOfSize:10.0 weight:UIFontWeightMedium];
+        self.clockLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.72];
+        self.titleViewport.hidden = NO;
+        self.dateLabel.hidden = YES;
+        return;
+    }
+    self.art.hidden = YES;
+    self.titleViewport.hidden = YES;
+    self.artist.hidden = YES;
+    self.playbackTime.hidden = YES;
+    self.lyricsLabel.hidden = YES;
+    self.track.hidden = YES;
+    self.fill.hidden = YES;
+    self.clockLabel.font = [UIFont monospacedDigitSystemFontOfSize:20.0 weight:UIFontWeightSemibold];
+    self.clockLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.90];
+    self.clockLabel.frame = CGRectMake(textX, top, textWidth, 24.0);
+    self.clockLabel.hidden = !self.playbackVisible;
+    self.dateLabel.frame = CGRectMake(textX, CGRectGetMaxY(self.clockLabel.frame) + 1.0, textWidth, 15.0);
+    self.dateLabel.hidden = !self.playbackVisible;
+    self.batteryStatus.frame = CGRectMake(textX, CGRectGetMaxY(self.dateLabel.frame) + 3.0, 58.0, 14.0);
+    self.batteryStatus.hidden = !self.batteryStatusAvailable || !self.playbackVisible;
+    CGRect strip = self.notificationIndicatorStrip.frame;
+    strip.origin.y = top;
+    self.notificationIndicatorStrip.frame = strip;
+    self.notificationIndicatorStrip.hidden = self.notificationIndicatorCount == 0 || !self.playbackVisible;
 }
 
 - (void)updateLyricsText:(NSString *)currentLine nextLine:(NSString *)nextLine {

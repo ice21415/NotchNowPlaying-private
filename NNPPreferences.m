@@ -68,6 +68,7 @@ static CGFloat NNPFloat(NSString *key, CGFloat fallback) {
 @property(nonatomic) BOOL showNextTrack;
 @property(nonatomic) BOOL aodLandscapeEnabled;
 @property(nonatomic) BOOL aodPocketModeEnabled;
+@property(nonatomic) BOOL aodIdleDisplayEnabled;
 @property(nonatomic) BOOL mengoEnabled;
 @property(nonatomic) CGFloat lyricsSyncOffsetMilliseconds;
 @property(nonatomic, copy) NSString *spotifyLyricsText;
@@ -114,6 +115,7 @@ static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observe
     self.showNextTrack = NNPBool(@"ShowNextTrack", YES);
     self.aodLandscapeEnabled = NNPBool(@"AODLandscapeEnabled", YES);
     self.aodPocketModeEnabled = NNPBool(@"AODPocketModeEnabled", YES);
+    self.aodIdleDisplayEnabled = NNPBool(@"AODIdleDisplayEnabled", YES);
     self.mengoEnabled = NNPBool(@"MengoEnabled", YES);
     self.lyricsSyncOffsetMilliseconds = MAX(-500.0, MIN(500.0, NNPFloat(@"LyricsSyncOffsetMilliseconds", 100.0)));
     [self reloadSpotifyLyricsSnapshot];
