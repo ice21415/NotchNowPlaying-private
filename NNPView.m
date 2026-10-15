@@ -45,6 +45,54 @@ static UIColor *NNPNotificationLightColor(UIColor *color, CGFloat whiteMix) {
                             blue:blue + (1.0 - blue) * whiteMix alpha:1.0];
 }
 
+static UIView *NNPNotificationStackedCardView(void) {
+    UIView *card = [UIView new];
+    card.backgroundColor = [UIColor colorWithWhite:0.055 alpha:0.96];
+    card.layer.cornerRadius = 22.0;
+    card.layer.cornerCurve = kCACornerCurveContinuous;
+    card.layer.borderWidth = 1.0 / MAX(UIScreen.mainScreen.scale, 1.0);
+    card.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.16].CGColor;
+    card.layer.shadowColor = UIColor.blackColor.CGColor;
+    card.layer.shadowOpacity = 0.42;
+    card.layer.shadowRadius = 18.0;
+    card.layer.shadowOffset = CGSizeMake(0.0, 7.0);
+    card.layer.zPosition = 1004.0;
+    card.userInteractionEnabled = NO;
+
+    UIImageView *iconView = [UIImageView new];
+    iconView.tag = 1;
+    iconView.contentMode = UIViewContentModeScaleAspectFill;
+    iconView.clipsToBounds = YES;
+    iconView.layer.cornerRadius = 12.0;
+    iconView.layer.cornerCurve = kCACornerCurveContinuous;
+    iconView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.10];
+
+    UILabel *appLabel = [UILabel new];
+    appLabel.tag = 2;
+    appLabel.font = [UIFont systemFontOfSize:10.5 weight:UIFontWeightSemibold];
+    appLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.62];
+    appLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+
+    UILabel *titleLabel = [UILabel new];
+    titleLabel.tag = 3;
+    titleLabel.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightSemibold];
+    titleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.96];
+    titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+
+    UILabel *messageLabel = [UILabel new];
+    messageLabel.tag = 4;
+    messageLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightMedium];
+    messageLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.76];
+    messageLabel.numberOfLines = 2;
+    messageLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+
+    [card addSubview:iconView];
+    [card addSubview:appLabel];
+    [card addSubview:titleLabel];
+    [card addSubview:messageLabel];
+    return card;
+}
+
 static CAShapeLayer *NNPNotificationLightLayer(CALayer *host) {
     CAShapeLayer *layer = [CAShapeLayer layer];
     layer.fillColor = UIColor.clearColor.CGColor;
@@ -231,6 +279,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 @property(nonatomic, strong) CAShapeLayer *notificationSnakeMidLayer;
 @property(nonatomic, strong) CAShapeLayer *notificationSnakeTailLayer;
 @property(nonatomic, strong) CAShapeLayer *notificationSnakeBreathLayer;
+@property(nonatomic, strong) NSMutableArray<UIView *> *notificationStackCards;
 @property(nonatomic, strong) UIView *notificationCard;
 @property(nonatomic, strong) UIImageView *notificationCardIcon;
 @property(nonatomic, strong) UILabel *notificationCardAppName;
@@ -258,6 +307,9 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 - (void)updateNotificationSnakeCounterTransform;
 - (BOOL)presentNotificationCardWithPayload:(NSDictionary *)payload generation:(NSUInteger)generation;
 - (void)finishNotificationCardForGeneration:(NSUInteger)generation;
+- (void)appendStackedNotificationCardWithPayload:(NSDictionary *)payload generation:(NSUInteger)generation;
+- (void)layoutStackedNotificationCards;
+- (void)removeStackedNotificationCards;
 - (void)recordNotificationIndicatorForPayload:(NSDictionary *)payload;
 - (void)batteryStatusDidChange:(NSNotification *)notification;
 - (void)updateBatteryStatus;
@@ -718,6 +770,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         self.notificationCardAppName.frame = CGRectMake(68.0, 9.0, textWidth, 14.0);
         self.notificationCardTitle.frame = CGRectMake(68.0, 25.0, textWidth, 19.0);
         self.notificationCardMessage.frame = CGRectMake(68.0, 45.0, textWidth, 38.0);
+        [self layoutStackedNotificationCards];
     }
 #if NNP_NOTIFICATION_SNAKE_GEOMETRY_DIAGNOSTICS
     if (self.notificationSnakeDebugGuideLayer) {
@@ -767,6 +820,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         self.notificationCard.frame = CGRectMake(side, MAX(15.0, height - 108.0), contentWidth, 90);
         self.notificationCardTitle.frame = CGRectMake(68, 25, MAX(1.0, contentWidth - 80), 19);
         self.notificationCardMessage.frame = CGRectMake(68, 45, MAX(1.0, contentWidth - 80), 38);
+        [self layoutStackedNotificationCards];
     }
 }
 
@@ -859,11 +913,15 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 
     CAShapeLayer *snake = self.notificationSnakeLayer;
     CAShapeLayer *finish = self.notificationSnakeFinishLayer;
+    BOOL stackOntoActiveCard = burstCount > 1 && self.notificationCardActive && self.notificationCard &&
+        !self.notificationCard.hidden && [payload isKindOfClass:NSDictionary.class];
     NSUInteger generation = ++self.notificationSnakeGeneration;
     [snake removeAllAnimations];
     [finish removeAllAnimations];
-    [self.notificationCard.layer removeAllAnimations];
-    [self.contentContainer.layer removeAllAnimations];
+    if (!stackOntoActiveCard) {
+        [self.notificationCard.layer removeAllAnimations];
+        [self.contentContainer.layer removeAllAnimations];
+    }
     snake.frame = self.bounds;
     snake.path = [self notificationSnakePath].CGPath;
     snake.lineWidth = NNPNotificationSnakeLineWidth;
@@ -874,11 +932,14 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     snake.shadowRadius = 16.0;
     snake.shadowOffset = CGSizeZero;
     snake.opacity = 1.0;
-    self.notificationCardActive = NO;
-    self.contentContainer.alpha = self.contentOpacity;
-    self.notificationCard.hidden = YES;
-    self.notificationCard.alpha = 0.0;
-    self.notificationCard.transform = CGAffineTransformIdentity;
+    if (!stackOntoActiveCard) {
+        self.notificationCardActive = NO;
+        self.contentContainer.alpha = self.contentOpacity;
+        self.notificationCard.hidden = YES;
+        self.notificationCard.alpha = 0.0;
+        self.notificationCard.transform = CGAffineTransformIdentity;
+        [self removeStackedNotificationCards];
+    }
     finish.frame = self.bounds;
     // The closed perimeter ends at the track's left endpoint, so trace the U
     // from left to right as a visible, continuous final phase.
@@ -937,7 +998,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 #endif
     [self updateNotificationSnakeCounterTransform];
 
-    [self presentNotificationCardWithPayload:payload generation:generation];
+    if (stackOntoActiveCard) [self appendStackedNotificationCardWithPayload:payload generation:generation];
+    else [self presentNotificationCardWithPayload:payload generation:generation];
 
     BOOL reduceMotion = UIAccessibilityIsReduceMotionEnabled();
     NSUInteger laps = MIN((NSUInteger)3, MAX((NSUInteger)1, burstCount));
@@ -1301,6 +1363,82 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     return YES;
 }
 
+- (void)removeStackedNotificationCards {
+    for (UIView *stackedCard in self.notificationStackCards) [stackedCard removeFromSuperview];
+    [self.notificationStackCards removeAllObjects];
+}
+
+- (void)layoutStackedNotificationCards {
+    if (!self.notificationCard || !self.notificationStackCards.count) return;
+    CGRect base = self.notificationCard.frame;
+    CGFloat step = CGRectGetHeight(base) + 8.0;
+    BOOL upward = CGRectGetMaxY(base) + step * (CGFloat)self.notificationStackCards.count > CGRectGetHeight(self.bounds) - 12.0;
+    CGFloat textWidth = MAX(1.0, CGRectGetWidth(base) - 80.0);
+    NSUInteger index = 1;
+    for (UIView *stackedCard in self.notificationStackCards) {
+        CGRect frame = base;
+        frame.origin.y += (upward ? -step : step) * (CGFloat)index;
+        stackedCard.bounds = CGRectMake(0.0, 0.0, CGRectGetWidth(frame), CGRectGetHeight(frame));
+        stackedCard.center = CGPointMake(CGRectGetMidX(frame), CGRectGetMidY(frame));
+        [stackedCard viewWithTag:1].frame = CGRectMake(12.0, 24.0, 44.0, 44.0);
+        [stackedCard viewWithTag:2].frame = CGRectMake(68.0, 9.0, textWidth, 14.0);
+        [stackedCard viewWithTag:3].frame = CGRectMake(68.0, 25.0, textWidth, 19.0);
+        [stackedCard viewWithTag:4].frame = CGRectMake(68.0, 45.0, textWidth, 38.0);
+        index++;
+    }
+}
+
+- (void)appendStackedNotificationCardWithPayload:(NSDictionary *)payload generation:(NSUInteger)generation {
+    NSString *appName = [payload[@"appName"] isKindOfClass:NSString.class] ? payload[@"appName"] : @"";
+    NSString *title = [payload[@"title"] isKindOfClass:NSString.class] ? payload[@"title"] : @"";
+    NSString *subtitle = [payload[@"subtitle"] isKindOfClass:NSString.class] ? payload[@"subtitle"] : @"";
+    NSString *message = [payload[@"message"] isKindOfClass:NSString.class] ? payload[@"message"] : @"";
+    NSString *primaryText = title.length ? title : (subtitle.length ? subtitle : message);
+    NSString *secondaryText = @"";
+    if (title.length) {
+        if (subtitle.length && message.length) secondaryText = [NSString stringWithFormat:@"%@ \u00b7 %@", subtitle, message];
+        else secondaryText = subtitle.length ? subtitle : message;
+    }
+    if (!primaryText.length && !secondaryText.length) primaryText = @"\u6709\u65b0\u901a\u77e5";
+    UIImage *icon = [payload[@"icon"] isKindOfClass:UIImage.class] ? payload[@"icon"] : nil;
+
+    if (!self.notificationStackCards) self.notificationStackCards = [NSMutableArray array];
+    UIView *card = nil;
+    BOOL reused = NO;
+    if (self.notificationStackCards.count >= 2) {
+        card = self.notificationStackCards.lastObject;
+        reused = YES;
+    } else {
+        card = NNPNotificationStackedCardView();
+        [self.notificationStackCards addObject:card];
+        [self addSubview:card];
+    }
+    ((UIImageView *)[card viewWithTag:1]).image = icon ?: [UIImage systemImageNamed:@"app.fill"];
+    ((UILabel *)[card viewWithTag:2]).text = appName;
+    UILabel *titleLabel = (UILabel *)[card viewWithTag:3];
+    titleLabel.text = primaryText;
+    titleLabel.hidden = !primaryText.length;
+    UILabel *messageLabel = (UILabel *)[card viewWithTag:4];
+    messageLabel.text = secondaryText;
+    messageLabel.hidden = !secondaryText.length;
+    card.accessibilityLabel = [@[appName ?: @"", primaryText ?: @"", secondaryText ?: @""] componentsJoinedByString:@", "];
+    if (!reused) {
+        card.alpha = 0.0;
+        card.transform = CGAffineTransformScale(CGAffineTransformMakeTranslation(0.0, -12.0), 0.94, 0.94);
+    }
+    [self setNeedsLayout];
+    [self layoutIfNeeded];
+
+    BOOL reduceMotion = UIAccessibilityIsReduceMotionEnabled();
+    [UIView animateWithDuration:reduceMotion ? 0.18 : 0.38 delay:reduceMotion ? 0.05 : 0.18
+                        options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState
+                     animations:^{
+        if (generation != self.notificationSnakeGeneration) return;
+        card.alpha = 1.0;
+        card.transform = CGAffineTransformIdentity;
+    } completion:nil];
+}
+
 - (void)finishNotificationCardForGeneration:(NSUInteger)generation {
     if (!self.notificationCardActive || generation != self.notificationSnakeGeneration) return;
     NSTimeInterval duration = UIAccessibilityIsReduceMotionEnabled() ? 0.10 : 0.18;
@@ -1308,9 +1446,11 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
                         options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState
                      animations:^{
         self.notificationCard.alpha = 0.0;
+        for (UIView *stackedCard in self.notificationStackCards) stackedCard.alpha = 0.0;
         self.contentContainer.alpha = self.contentOpacity;
     } completion:^(__unused BOOL finished) {
         if (generation != self.notificationSnakeGeneration) return;
+        [self removeStackedNotificationCards];
         self.notificationCard.hidden = YES;
         self.notificationCard.transform = CGAffineTransformIdentity;
         self.notificationCardActive = NO;
@@ -1349,6 +1489,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     [CATransaction commit];
     [self.notificationCard.layer removeAllAnimations];
     [self.contentContainer.layer removeAllAnimations];
+    [self removeStackedNotificationCards];
     self.notificationCard.hidden = YES;
     self.notificationCard.alpha = 0.0;
     self.notificationCard.transform = CGAffineTransformIdentity;
