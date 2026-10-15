@@ -1338,8 +1338,11 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     self.display.aodBrightnessMultiplier = [self effectiveAODBrightnessMultiplier];
     NNPAODPixelOffset offset = NNPAODOffsetForStep(self.pixelShiftStep++);
     CGPoint pixels = CGPointMake(offset.x, offset.y);
-    NNPAODRestPixels(self.view.layer);
-    NNPAODRestPixels(self.statusBarPlayerView.layer);
+    // The idle clock has no large solid shapes, so shifting alone is enough and avoids a visible flash.
+    if (![self idleModeActive]) {
+        NNPAODRestPixels(self.view.layer);
+        NNPAODRestPixels(self.statusBarPlayerView.layer);
+    }
     [self.charging restPixels];
     self.view.pixelShiftPixels = pixels;
     self.statusBarPlayerView.pixelShiftPixels = pixels;
@@ -1370,7 +1373,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     if (self.pixelShiftTimer) return;
     [self applyRandomAODPixelShift];
     __weak typeof(self) weakSelf = self;
-    self.pixelShiftTimer = [NSTimer timerWithTimeInterval:30.0 repeats:YES block:^(__unused NSTimer *timer) {
+    self.pixelShiftTimer = [NSTimer timerWithTimeInterval:[self idleModeActive] ? 60.0 : 30.0 repeats:YES block:^(__unused NSTimer *timer) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf) return;
         if (![strongSelf shouldPresentInsideCoverSheet]) {
