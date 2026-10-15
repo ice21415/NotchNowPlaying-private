@@ -599,6 +599,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     if (self.mengoOpen || [self pocketSuspended]) return NO;
     NNPState *state = self.state;
     if (!self.preferences.enabled || !state.hasTrack || ![self isAllowedMedia:state]) return NO;
+    // Leftover now-playing data without a title would render as "Not Playing"; use the idle display instead.
+    if (self.preferences.aodIdleDisplayEnabled && !state.title.length) return NO;
     if (self.locked && !self.preferences.showOnLockScreen) return NO;
     if (!self.locked && !self.preferences.showWhileUnlocked) return NO;
     if (!state.playing && self.preferences.hideWhenPaused) return NO;
