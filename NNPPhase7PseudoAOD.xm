@@ -35,6 +35,7 @@ static _Atomic(float) gNNPPhase7LastFactorOutput = 0.0f;
 static _Atomic(bool) gNNPPhase7LastFactorHadProvider = false;
 static _Atomic(bool) gNNPPhase7BlankRequestSuppressed = false;
 static _Atomic(bool) gNNPPhase7RevealOnWakePending = false;
+static _Atomic(bool) gNNPPhase7InBacklightStateTransition = false;
 static _Atomic(uint64_t) gNNPPhase7NotificationWakeSuppressionDeadlineTicks = 0;
 static _Atomic(uint64_t) gNNPPhase7NotificationUnblankSuppressionDeadlineTicks = 0;
 static const double NNPPhase7NotificationWakeSuppressionSeconds = 6.0;
@@ -367,15 +368,19 @@ static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
         }
     }
 
-    BOOL suppress = blanked && fromBacklightServicesHost &&
+    // Suppress autonomous blank requests (idle timer, proximity sensor) when armed.
+    // Blanks that arrive while we are inside a setBacklightState:0: call are
+    // explicitly requested by the user (side-button press) and must pass through.
+    bool inStateTransition = atomic_load_explicit(&gNNPPhase7InBacklightStateTransition, memory_order_acquire);
+    BOOL suppress = blanked && !inStateTransition &&
         atomic_load_explicit(&gNNPPhase7Armed, memory_order_relaxed);
     if (suppress) {
         atomic_store_explicit(&gNNPPhase7BlankRequestSuppressed, true, memory_order_release);
         atomic_store_explicit(&gNNPPhase7RevealOnWakePending, true, memory_order_release);
         uintptr_t callerOffset = callerInfo.dli_fbase
             ? (uintptr_t)caller - (uintptr_t)callerInfo.dli_fbase : 0;
-        NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 suppressed BKS screen blank request caller=%s+0x%llx; BLS state and display mode unchanged session=%@",
-                                    callerInfo.dli_fname,
+        NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 suppressed BKS screen blank request caller=%s+0x%llx inStateTransition=NO; BLS state and display mode unchanged session=%@",
+                                    callerInfo.dli_fname ?: "unknown",
                                     (unsigned long long)callerOffset,
                                     gNNPPhase7SessionID ?: @"none"]);
         return;
@@ -457,7 +462,12 @@ static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger stat
                                    (long)state, (long)source]);
         NNPPhase7NotifyDisplayWake();
     }
+    // Mark that this blank originates from an explicit setBacklightState call
+    // (e.g. the side button), so SetScreenBlankedReplacement knows not to
+    // suppress it even when the experiment is armed.
+    if (state == 0) atomic_store_explicit(&gNNPPhase7InBacklightStateTransition, true, memory_order_release);
     original(self, _cmd, state, source, animated, completion);
+    if (state == 0) atomic_store_explicit(&gNNPPhase7InBacklightStateTransition, false, memory_order_release);
 }
 
 static void NNPPhase7ProviderTransitionReplacement(id self, SEL _cmd, long long mode, double duration) {
