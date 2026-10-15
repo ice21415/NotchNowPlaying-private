@@ -800,6 +800,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     if (result[0] != 'v') return;
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
     NNPPhase7NotifyDisplayWake();
+    NNPDiagnosticSetBool(@"MengoWakeBacklightCycled", NNPPhase7PrepareNativeTapWake());
 #endif
     NNPDiagnosticSetBool(@"MengoOutsideTouchWakeRequested", YES);
     NNPDiagnosticSetString(@"MengoOutsideTouchWakePath", @"native Lock Screen tap wake");

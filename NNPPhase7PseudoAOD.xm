@@ -40,6 +40,7 @@ static _Atomic(float) gNNPPhase7LastFactorInput = 0.0f;
 static _Atomic(float) gNNPPhase7LastFactorOutput = 0.0f;
 static _Atomic(bool) gNNPPhase7LastFactorHadProvider = false;
 static _Atomic(bool) gNNPPhase7BlankRequestSuppressed = false;
+static _Atomic(bool) gNNPPhase7ProximitySeenDuringAOD = false;
 static _Atomic(bool) gNNPPhase7RevealOnWakePending = false;
 static _Atomic(uint64_t) gNNPPhase7NotificationWakeSuppressionDeadlineTicks = 0;
 static _Atomic(uint64_t) gNNPPhase7NotificationUnblankSuppressionDeadlineTicks = 0;
@@ -265,6 +266,7 @@ void NNPPhase7UpdateForensicsState(NSInteger lifecycleState, BOOL deviceLocked, 
     atomic_store_explicit(&gNNPPhase7ModeSubstitutionObserved, modeSubstitutionObserved, memory_order_relaxed);
     atomic_store_explicit(&gNNPPhase7TimerActive, timerActive, memory_order_relaxed);
     if (!deviceLocked) {
+        atomic_store_explicit(&gNNPPhase7ProximitySeenDuringAOD, false, memory_order_release);
         atomic_store_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_release);
         atomic_store_explicit(&gNNPPhase7NotificationWakeSuppressionDeadlineTicks, 0, memory_order_release);
         atomic_store_explicit(&gNNPPhase7NotificationUnblankSuppressionDeadlineTicks, 0, memory_order_release);
@@ -341,6 +343,7 @@ void NNPPhase7SetExperimentArmed(BOOL armed) {
         }
     }
     if (!armed) {
+        atomic_store_explicit(&gNNPPhase7ProximitySeenDuringAOD, false, memory_order_release);
         atomic_store_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_release);
         atomic_store_explicit(&gNNPPhase7NotificationWakeSuppressionDeadlineTicks, 0, memory_order_release);
         atomic_store_explicit(&gNNPPhase7NotificationUnblankSuppressionDeadlineTicks, 0, memory_order_release);
@@ -471,6 +474,26 @@ BOOL NNPPhase7RestoreWakeBrightness(void) {
     return YES;
 }
 
+BOOL NNPPhase7PrepareNativeTapWake(void) {
+    if (!NSThread.isMainThread || !gNNPOriginalBacklightState) return NO;
+    if (!atomic_exchange_explicit(&gNNPPhase7ProximitySeenDuringAOD, false, memory_order_acq_rel)) return NO;
+    Class cls = NSClassFromString(@"SBBacklightController");
+    SEL shared = NSSelectorFromString(@"sharedInstance");
+    if (![cls respondsToSelector:shared]) return NO;
+    id controller = ((id (*)(id, SEL))objc_msgSend)(cls, shared);
+    SEL stateSelector = NSSelectorFromString(@"backlightState");
+    Method method = class_getInstanceMethod([controller class], stateSelector);
+    char type[16] = {0};
+    if (!method || method_getNumberOfArguments(method) != 2) return NO;
+    method_getReturnType(method, type, sizeof(type));
+    if (type[0] != 'q') return NO;
+    long long state = ((long long (*)(id, SEL))objc_msgSend)(controller, stateSelector);
+    if (state != 1) return NO;
+    NNPDiagnosticLogTransition(@"PHASE7 proximity left SpringBoard backlight on during AOD; cycling to state 3 before native tap wake");
+    gNNPOriginalBacklightState(controller, NSSelectorFromString(@"setBacklightState:source:animated:completion:"), 3, 3, NO, nil);
+    return YES;
+}
+
 static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
     NNPSetScreenBlankedFunction original = gNNPOriginalSetScreenBlanked;
     if (!original) return;
@@ -537,14 +560,11 @@ static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger stat
     bool activeAOD = atomic_load_explicit(&gNNPPhase7Lifecycle, memory_order_acquire) == NNPDisplayLifecycleStateActive &&
         atomic_load_explicit(&gNNPPhase7ModeSubstitutionObserved, memory_order_acquire);
 
-    // Proximity "far" (source 13, state 1) during AOD would leave SpringBoard in backlight-on
-    // without waking the Lock Screen, so the later tap wake becomes a no-op and the Lock Screen
-    // stays dimmed. Return to the AOD off state instead. Tap wake clears the AOD flag before it
-    // requests state 1, so it is not affected.
-    if (source == 13 && state == 1 && armed && locked &&
+    // Proximity transitions (source 13, states 4/1) during AOD can leave SpringBoard
+    // backlight-on while the Lock Screen is still dimmed; a later tap wake would then be a no-op.
+    if (source == 13 && (state == 4 || state == 1) && armed && locked &&
         atomic_load_explicit(&gNNPPhase7AODPresentationActive, memory_order_acquire)) {
-        NNPDiagnosticLogTransition(@"PHASE7 proximity far during AOD; requesting backlight state 3 instead of 1");
-        state = 3;
+        atomic_store_explicit(&gNNPPhase7ProximitySeenDuringAOD, true, memory_order_release);
     }
 
     // A single notification can produce a second state=1 request after its
@@ -659,4 +679,5 @@ static void NNPPhase7ProviderTransitionReplacement(id self, SEL _cmd, long long 
 #else
 BOOL NNPPhase7EnsureBacklightFactorHook(void) { return NO; }
 BOOL NNPPhase7RestoreWakeBrightness(void) { return NO; }
+BOOL NNPPhase7PrepareNativeTapWake(void) { return NO; }
 #endif
