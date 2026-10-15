@@ -895,29 +895,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)revealCoverSheetControls {
     [self revealCoverSheetControlsWithReason:@"bottom-center-unlock-gesture"];
 }
-- (void)recordWakeProbe:(NSString *)tag {
-    NSMutableArray<NSString *> *windows = [NSMutableArray array];
-    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-        if (![scene isKindOfClass:UIWindowScene.class]) continue;
-        for (UIWindow *w in ((UIWindowScene *)scene).windows) {
-            [windows addObject:[NSString stringWithFormat:@"%@(L%.0f h=%d a=%.2f)", NSStringFromClass(w.class), w.windowLevel, w.hidden, w.alpha]];
-        }
-    }
-    long long backlight = -1;
-    Class cls = NSClassFromString(@"SBBacklightController");
-    id shared = [cls respondsToSelector:NSSelectorFromString(@"sharedInstance")] ? ((id (*)(id, SEL))objc_msgSend)(cls, NSSelectorFromString(@"sharedInstance")) : nil;
-    if (shared && [shared respondsToSelector:NSSelectorFromString(@"backlightState")]) backlight = ((long long (*)(id, SEL))objc_msgSend)(shared, NSSelectorFromString(@"backlightState"));
-    NNPDiagnosticLogTransition([NSString stringWithFormat:@"WAKE_PROBE %@ sbBacklightState=%lld brightness=%.3f covered=%d pocketSuspended=%d windows=[%@]",
-        tag, backlight, UIScreen.mainScreen.brightness, self.screenCoverObserver.covered, [self pocketSuspended], [windows componentsJoinedByString:@" "]]);
-    [self recordPresentationDiagnostics:[@"wake-probe-" stringByAppendingString:tag]];
-}
 - (void)revealCoverSheetControlsForWake {
-    __weak typeof(self) weakProbeSelf = self;
-    for (NSNumber *delay in @[@0.3, @1.5, @4.0]) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [weakProbeSelf recordWakeProbe:[NSString stringWithFormat:@"+%.1fs", delay.doubleValue]];
-        });
-    }
     [self clearLockedPresentationBackgroundForUnlock];
     if (!self.locked || !self.coverSheetHostView || !self.coverSheetBlackoutView) return;
     [self revealCoverSheetControlsWithReason:@"side-button-wake"];
