@@ -268,6 +268,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (BOOL)mediaShouldShow;
 - (BOOL)idleShouldShow;
 - (BOOL)idleModeActive;
+- (BOOL)idleBrightnessIntent;
 - (void)updateNotchGestureWindow;
 - (void)requestAODTouchWake;
 - (void)removeNotchGestureWindow;
@@ -1241,6 +1242,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
             self.display.lifecycleState == NNPDisplayLifecycleStateActive;
         BOOL coverDetectionActive = activeAOD && self.preferences.aodPocketModeEnabled && !self.mengoOpen;
         [self.pocketObserver setActive:coverDetectionActive];
+        self.screenCoverObserver.lowPower = [self idleBrightnessIntent];
         [self.screenCoverObserver setActive:coverDetectionActive];
         NNPDiagnosticSetBool(@"AODCoverDetectionActive", coverDetectionActive);
         BOOL pocket = [self pocketSuspended];
@@ -1327,9 +1329,17 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     if (!self.window.hidden) { self.window.hidden = YES; NSLog(@"%@ overlay hidden", NNPLog); NNPDiagnosticLogTransition(@"CONTROLLER window visible=NO cleanup"); }
     [self.progressTimer invalidate]; self.progressTimer = nil;
 }
+- (BOOL)idleBrightnessIntent {
+    NNPState *state = self.state;
+    BOOL mediaWouldShow = state.hasTrack && state.title.length && [self isAllowedMedia:state] &&
+        (state.playing || !self.preferences.hideWhenPaused);
+    return self.preferences.aodIdleDisplayEnabled && !mediaWouldShow;
+}
 - (float)effectiveAODBrightnessMultiplier {
     BOOL automatic = self.preferences.aodAutomaticBrightnessEnabled;
     float multiplier = automatic ? 1 : self.preferences.aodBrightnessMultiplier;
+    // The small idle clock does not need the player's brightness; about 40% is still clearly readable.
+    if (!automatic && [self idleBrightnessIntent]) multiplier = MAX(1.2f, multiplier * 0.4f);
     NNPDiagnosticSetBool(@"AODAutomaticBrightnessEnabled", automatic);
     NNPDiagnosticSetDouble(@"AODAutomaticBrightnessEffectiveMultiplier", multiplier);
     return multiplier;
@@ -1403,7 +1413,26 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         [self.view stopContentAnimation]; [self.statusBarPlayerView stopContentAnimation];
         return;
     }
-    NSTimeInterval interval = [self idleModeActive] ? 15.0 : self.preferences.progressUpdateInterval;
+    if ([self idleModeActive]) {
+        // The idle clock only changes once a minute, so wake exactly at each minute boundary.
+        if (self.progressTimer && self.progressTimerInterval < 0.0) return;
+        [self.progressTimer invalidate];
+        self.progressTimer = nil;
+        self.progressTimerInterval = -1.0;
+        NSTimeInterval delay = 60.0 - fmod(NSDate.date.timeIntervalSince1970, 60.0) + 0.2;
+        __weak typeof(self) weakIdleSelf = self;
+        self.progressTimer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(__unused NSTimer *timer) {
+            __strong typeof(weakIdleSelf) strongSelf = weakIdleSelf;
+            if (!strongSelf) return;
+            strongSelf.progressTimer = nil;
+            [strongSelf updateProgress];
+            [strongSelf startProgressTimer];
+        }];
+        self.progressTimer.tolerance = 1.0;
+        [[NSRunLoop mainRunLoop] addTimer:self.progressTimer forMode:NSRunLoopCommonModes];
+        return;
+    }
+    NSTimeInterval interval = self.preferences.progressUpdateInterval;
     if (self.progressTimer && fabs(self.progressTimerInterval - interval) < 0.01) return;
     [self.progressTimer invalidate];
     self.progressTimer = nil;

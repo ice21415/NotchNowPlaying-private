@@ -27,6 +27,11 @@ static BOOL NNPCoverSetter(id object, SEL selector, char argument) {
     NSUInteger _motionGeneration;
 }
 - (BOOL)covered { return _covered; }
+- (void)setLowPower:(BOOL)lowPower {
+    if (_lowPower == lowPower) return;
+    _lowPower = lowPower;
+    _motion.accelerometerUpdateInterval = lowPower ? 2.0 : 0.5;
+}
 - (BOOL)readCovered {
     UIDevice *device = UIDevice.currentDevice;
     BOOL near = _nativeNear && _proximityAssertion ? _nativeNear() :
@@ -114,7 +119,7 @@ static BOOL NNPCoverSetter(id object, SEL selector, char argument) {
     }
     [self startNativeProximity];
     _motion = [CMMotionManager new];
-    _motion.accelerometerUpdateInterval = 0.5;
+    _motion.accelerometerUpdateInterval = _lowPower ? 2.0 : 0.5;
     NNPDiagnosticSetBool(@"CoverMotionAvailable", _motion.accelerometerAvailable);
     __weak typeof(self) weakSelf = self;
     [_motion startAccelerometerUpdatesToQueue:NSOperationQueue.mainQueue withHandler:^(CMAccelerometerData *data, NSError *error) {
