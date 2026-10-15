@@ -716,7 +716,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     self.batteryIcon.frame = CGRectMake(0.0, 1.0, 14.0, 12.0);
     self.batteryPercentage.frame = CGRectMake(17.0, 0.0, 29.0, 14.0);
     self.batteryChargingIcon.frame = CGRectMake(47.0, 1.0, 9.0, 12.0);
-    [self applyIdleLayoutWithTextX:textX textWidth:textWidth top:top];
+    [self applyIdleLayoutWithTextX:side textWidth:MAX(1.0, width - side * 2.0) top:CGRectGetMaxY(notch) + 12.0 centered:YES];
 
     CGFloat progressHeight = MAX(2.0, self.progressHeight);
     CGFloat pathLeft = notchLeft - 4.5;
@@ -813,7 +813,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     self.batteryStatus.frame = CGRectMake(textX + (self.showClock ? 88.0 : 0), infoY, 58.0, 14.0);
     self.notificationIndicatorStrip.frame = CGRectMake(side, top + artSize + 5,
         CGRectGetWidth(self.notificationIndicatorStrip.frame), 12);
-    [self applyIdleLayoutWithTextX:side textWidth:MAX(1.0, width - side * 2.0) top:top];
+    [self applyIdleLayoutWithTextX:side textWidth:MAX(1.0, width - side * 2.0) top:top centered:NO];
     CGFloat progressY = MAX(top + artSize + 24.0, infoY + 35.0);
     UIBezierPath *path = [UIBezierPath bezierPath];
     [path moveToPoint:CGPointMake(side, progressY)];
@@ -1799,10 +1799,12 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     [self setNeedsLayout];
 }
 
-- (void)applyIdleLayoutWithTextX:(CGFloat)textX textWidth:(CGFloat)textWidth top:(CGFloat)top {
+- (void)applyIdleLayoutWithTextX:(CGFloat)textX textWidth:(CGFloat)textWidth top:(CGFloat)top centered:(BOOL)centered {
     if (!self.idleMode) {
         self.clockLabel.font = [UIFont monospacedDigitSystemFontOfSize:10.0 weight:UIFontWeightMedium];
         self.clockLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.72];
+        self.clockLabel.textAlignment = NSTextAlignmentNatural;
+        self.dateLabel.textAlignment = NSTextAlignmentNatural;
         self.titleViewport.hidden = NO;
         self.dateLabel.hidden = YES;
         return;
@@ -1814,16 +1816,27 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     self.lyricsLabel.hidden = YES;
     self.track.hidden = YES;
     self.fill.hidden = YES;
-    self.clockLabel.font = [UIFont monospacedDigitSystemFontOfSize:20.0 weight:UIFontWeightSemibold];
+    CGFloat clockSize = centered ? 30.0 : 20.0;
+    CGFloat clockHeight = ceil(clockSize * 1.2);
+    self.clockLabel.font = [UIFont monospacedDigitSystemFontOfSize:clockSize weight:UIFontWeightSemibold];
     self.clockLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.90];
-    self.clockLabel.frame = CGRectMake(textX, top, textWidth, 24.0);
+    self.clockLabel.textAlignment = centered ? NSTextAlignmentCenter : NSTextAlignmentNatural;
+    self.dateLabel.textAlignment = centered ? NSTextAlignmentCenter : NSTextAlignmentNatural;
+    self.clockLabel.frame = CGRectMake(textX, top, textWidth, clockHeight);
     self.clockLabel.hidden = !self.playbackVisible;
-    self.dateLabel.frame = CGRectMake(textX, CGRectGetMaxY(self.clockLabel.frame) + 1.0, textWidth, 15.0);
+    self.dateLabel.frame = CGRectMake(textX, CGRectGetMaxY(self.clockLabel.frame) + 1.0, textWidth, 16.0);
     self.dateLabel.hidden = !self.playbackVisible;
-    self.batteryStatus.frame = CGRectMake(textX, CGRectGetMaxY(self.dateLabel.frame) + 3.0, 58.0, 14.0);
+    CGFloat batteryWidth = 58.0;
+    CGFloat batteryX = centered ? textX + (textWidth - batteryWidth) / 2.0 : textX;
+    self.batteryStatus.frame = CGRectMake(batteryX, CGRectGetMaxY(self.dateLabel.frame) + 4.0, batteryWidth, 14.0);
     self.batteryStatus.hidden = !self.batteryStatusAvailable || !self.playbackVisible;
     CGRect strip = self.notificationIndicatorStrip.frame;
-    strip.origin.y = top;
+    if (centered) {
+        strip.origin.x = textX + (textWidth - CGRectGetWidth(strip)) / 2.0;
+        strip.origin.y = CGRectGetMaxY(self.batteryStatus.frame) + 10.0;
+    } else {
+        strip.origin.y = CGRectGetMaxY(self.batteryStatus.frame) + 10.0;
+    }
     self.notificationIndicatorStrip.frame = strip;
     self.notificationIndicatorStrip.hidden = self.notificationIndicatorCount == 0 || !self.playbackVisible;
 }
