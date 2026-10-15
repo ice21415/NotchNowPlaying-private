@@ -498,7 +498,12 @@ static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
         }
     }
 
-    BOOL suppress = blanked &&
+    NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7_BLANKCALL blanked=%d fromBLS=%d armed=%d covered=%d caller=%s",
+                                (int)blanked, (int)fromBacklightServicesHost,
+                                (int)atomic_load_explicit(&gNNPPhase7Armed, memory_order_relaxed),
+                                (int)atomic_load_explicit(&gNNPPhase7ScreenCovered, memory_order_relaxed),
+                                callerInfo.dli_fname ?: "?"]);
+    BOOL suppress = blanked && fromBacklightServicesHost &&
         !atomic_load_explicit(&gNNPPhase7ScreenCovered, memory_order_acquire) &&
         atomic_load_explicit(&gNNPPhase7Armed, memory_order_relaxed);
     if (suppress) {
