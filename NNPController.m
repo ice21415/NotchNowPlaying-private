@@ -731,6 +731,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         self.statusBarPlayerView.cornerRadius = self.view.cornerRadius;
         self.statusBarPlayerView.textSize = self.view.textSize;
         self.statusBarPlayerView.progressHeight = self.view.progressHeight;
+        self.statusBarPlayerView.idleMode = self.view.idleMode;
         self.statusBarPlayerView.pixelShiftPixels = self.view.pixelShiftPixels;
         [self.statusBarPlayerView updateState:self.state];
         self.statusBarPlayerView.playbackVisible = self.view.playbackVisible;
