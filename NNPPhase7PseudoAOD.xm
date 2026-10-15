@@ -278,6 +278,9 @@ void NNPPhase7SetAODPresentationActive(BOOL active) {
 }
 
 void NNPPhase7StartIncidentDiagnostics(void) {
+#if !NNP_ENABLE_VERBOSE_DIAGNOSTICS
+    return;
+#endif
     dispatch_once(&gNNPPhase7HeartbeatOnce, ^{
         mach_timebase_info(&gNNPPhase7Timebase);
         atomic_store_explicit(&gNNPPhase7LastMainHeartbeatTicks, mach_absolute_time(), memory_order_relaxed);
