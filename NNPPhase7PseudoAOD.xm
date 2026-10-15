@@ -537,6 +537,18 @@ static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger stat
     bool activeAOD = atomic_load_explicit(&gNNPPhase7Lifecycle, memory_order_acquire) == NNPDisplayLifecycleStateActive &&
         atomic_load_explicit(&gNNPPhase7ModeSubstitutionObserved, memory_order_acquire);
 
+    // Proximity policy requests (source 13, states 4/1) during AOD flip SpringBoard to
+    // backlight-on without waking the Lock Screen, so the later tap wake becomes a
+    // no-op and the Lock Screen stays dimmed. Cover detection reads the sensor itself.
+    // Tap wake clears the AOD flag before it requests state 1, so it is not affected.
+    if (source == 13 && (state == 4 || state == 1) && armed && locked &&
+        atomic_load_explicit(&gNNPPhase7AODPresentationActive, memory_order_acquire)) {
+        NNPDiagnosticLogTransition([NSString stringWithFormat:
+            @"PHASE7 suppressed proximity backlight request state=%ld source=%ld during AOD",
+            (long)state, (long)source]);
+        return;
+    }
+
     // A single notification can produce a second state=1 request after its
     // first request was intercepted. Keep that follow-on request from waking
     // SpringBoard for the duration of the snake animation. Physical-button
