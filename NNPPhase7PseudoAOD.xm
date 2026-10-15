@@ -40,7 +40,6 @@ static _Atomic(float) gNNPPhase7LastFactorInput = 0.0f;
 static _Atomic(float) gNNPPhase7LastFactorOutput = 0.0f;
 static _Atomic(bool) gNNPPhase7LastFactorHadProvider = false;
 static _Atomic(bool) gNNPPhase7BlankRequestSuppressed = false;
-static _Atomic(bool) gNNPPhase7InBacklightStateTransition = false;
 static _Atomic(bool) gNNPPhase7RevealOnWakePending = false;
 static _Atomic(uint64_t) gNNPPhase7NotificationWakeSuppressionDeadlineTicks = 0;
 static _Atomic(uint64_t) gNNPPhase7NotificationUnblankSuppressionDeadlineTicks = 0;
@@ -499,8 +498,7 @@ static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
         }
     }
 
-    bool inStateTransition = atomic_load_explicit(&gNNPPhase7InBacklightStateTransition, memory_order_acquire);
-    BOOL suppress = blanked && !inStateTransition &&
+    BOOL suppress = blanked &&
         !atomic_load_explicit(&gNNPPhase7ScreenCovered, memory_order_acquire) &&
         atomic_load_explicit(&gNNPPhase7Armed, memory_order_relaxed);
     if (suppress) {
@@ -601,13 +599,7 @@ static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger stat
                                    (long)state, (long)source]);
         NNPPhase7NotifyDisplayWake();
     }
-    if (state == 0) {
-        atomic_store_explicit(&gNNPPhase7InBacklightStateTransition, true, memory_order_release);
-    }
     original(self, _cmd, state, source, animated, completion);
-    if (state == 0) {
-        atomic_store_explicit(&gNNPPhase7InBacklightStateTransition, false, memory_order_release);
-    }
 }
 
 static void NNPPhase7ProviderTransitionReplacement(id self, SEL _cmd, long long mode, double duration) {
