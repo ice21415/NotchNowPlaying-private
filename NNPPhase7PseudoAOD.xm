@@ -667,6 +667,14 @@ static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger stat
         NNPPhase7NotifyDisplayWake();
     }
     original(self, _cmd, state, source, animated, completion);
+    if (shouldReveal && NSThread.isMainThread) {
+        // The cover restore sets the AOD factor directly, so SpringBoard does not resend its normal
+        // factor on wake and the revealed Lock Screen would stay at AOD brightness.
+        NNPPhase7RestoreWakeBrightness();
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            NNPPhase7RestoreWakeBrightness();
+        });
+    }
 }
 
 static void NNPPhase7ProviderTransitionReplacement(id self, SEL _cmd, long long mode, double duration) {
