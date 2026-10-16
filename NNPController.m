@@ -12,6 +12,7 @@
 #import "NNPMengoController.h"
 #import "NNPMengoWakeGesture.h"
 #import "NNPView.h"
+#import "NNPPowerStats.h"
 #import "NNPPreferences.h"
 #import "NNPLockStateController.h"
 #import "NNPPocketObserver.h"
@@ -223,6 +224,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic, strong) NNPAODAmbientLight *ambientLight;
 @property(nonatomic) float ambientBrightnessTargetNits;
 @property(nonatomic) BOOL idleDeepActive;
+@property(nonatomic, strong) NSTimer *powerStatsTimer;
 @property(nonatomic, strong) NSTimer *idleDeepTimer;
 @property(nonatomic) NSTimeInterval progressTimerInterval;
 @property(nonatomic) BOOL reconcilePending;
@@ -273,6 +275,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (BOOL)idleBrightnessIntent;
 - (void)scheduleIdleDeepIfNeeded;
 - (void)cancelIdleDeep;
+- (void)updatePowerStatsTimer;
+- (void)stopPowerStatsTimer;
 - (void)updateNotchGestureWindow;
 - (void)requestAODTouchWake;
 - (void)removeNotchGestureWindow;
@@ -1317,7 +1321,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
                                  self.statusBarPlayerView.contentOpacity = 1.0;
                              } completion:nil];
         }
-        [self startProgressTimer]; [self startAODPixelShiftTimer]; [self updateProgress]; });
+        [self updatePowerStatsTimer]; [self startProgressTimer]; [self startAODPixelShiftTimer]; [self updateProgress]; });
 }
 - (void)scheduleIdleDeepIfNeeded {
     if (self.idleDeepActive || self.idleDeepTimer) return;
@@ -1337,7 +1341,30 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     self.idleDeepTimer = nil;
     self.idleDeepActive = NO;
 }
+- (void)samplePowerStats {
+    [[NNPPowerStats sharedStats] sampleWithMode:[self idleModeActive] ? NNPPowerStatsModeIdle : NNPPowerStatsModeMedia];
+}
+- (void)updatePowerStatsTimer {
+    BOOL active = self.display.aodPresentationActive && ![self pocketSuspended] && !self.mengoOpen &&
+        self.window && !self.window.hidden;
+    if (!active) { [self stopPowerStatsTimer]; return; }
+    if (self.powerStatsTimer) return;
+    [self samplePowerStats];
+    __weak typeof(self) weakSelf = self;
+    self.powerStatsTimer = [NSTimer timerWithTimeInterval:60.0 repeats:YES block:^(__unused NSTimer *timer) {
+        [weakSelf samplePowerStats];
+    }];
+    self.powerStatsTimer.tolerance = 10.0;
+    [[NSRunLoop mainRunLoop] addTimer:self.powerStatsTimer forMode:NSRunLoopCommonModes];
+}
+- (void)stopPowerStatsTimer {
+    if (!self.powerStatsTimer) return;
+    [self.powerStatsTimer invalidate];
+    self.powerStatsTimer = nil;
+    [[NNPPowerStats sharedStats] endRun];
+}
 - (void)hide {
+    [self stopPowerStatsTimer];
     [self cancelIdleDeep];
     [self.mengo setHostView:nil active:NO];
     [self.view cancelNotificationSnakeAnimation];

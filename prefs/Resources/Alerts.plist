@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>items</key>
+	<array>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>只在鎖定且 AOD 顯示時生效。通知到達時，光點沿螢幕邊緣繞行並短暫顯示 App 圖示與內容；通知仍保留在系統通知中心。減少動態效果開啟時改用靜態邊框。</string>
+			<key>label</key>
+			<string>AOD 通知提醒</string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.user.notchnowplaying.preferences.changed</string>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<false/>
+			<key>defaults</key>
+			<string>com.user.notchnowplaying</string>
+			<key>key</key>
+			<string>NotificationSnakeWakeEnabled</string>
+			<key>label</key>
+			<string>蛇形光效通知</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>充電時，流光從底部中央沿邊緣向上，充滿或停止充電時結束。AOD 顯示中會取代系統充電喚醒與畫面。不需播放音樂。</string>
+			<key>label</key>
+			<string>充電流光</string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.user.notchnowplaying.preferences.changed</string>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.user.notchnowplaying</string>
+			<key>key</key>
+			<string>ChargingAnimationEnabled</string>
+			<key>label</key>
+			<string>充電流光</string>
+		</dict>
+	</array>
+	<key>title</key>
+	<string>通知與充電提示</string>
+</dict>
+</plist>

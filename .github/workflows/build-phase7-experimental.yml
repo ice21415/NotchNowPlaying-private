@@ -79,8 +79,13 @@ jobs:
           preferences=$(find /tmp/notchnowplaying-phase7 -path '*/Library/PreferenceLoader/Preferences/NotchNowPlaying.plist' -print -quit)
           test -n "$preferences"
           plutil -lint "$preferences"
-          grep -q 'NotificationWakeTraceEnabled' "$preferences"
-          grep -q 'NotificationSnakeWakeEnabled' "$preferences"
+          bundle=$(find /tmp/notchnowplaying-phase7 -type d -name NotchNowPlayingPrefs.bundle -print -quit)
+          test -n "$bundle"
+          for p in "$bundle"/*.plist; do plutil -lint "$p"; done
+          lipo -archs "$bundle/NotchNowPlayingPrefs" | grep -q arm64e
+          grep -q 'ChargingAnimationEnabled' "$bundle/Alerts.plist"
+          grep -q 'NotificationSnakeWakeEnabled' "$bundle/Alerts.plist"
+          grep -q 'NotificationWakeTraceEnabled' "$bundle/Advanced.plist"
 
       - name: Upload experimental diagnostics
         if: always()

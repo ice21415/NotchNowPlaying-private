@@ -9,7 +9,7 @@ STRIP := 1
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME := NotchNowPlaying NNPSpotifyProbe NNPMengoBridge
-NotchNowPlaying_FILES := Tweak.xm NNPState.m NNPView.m NNPController.m NNPNextArtwork.m NNPChargingController.m NNPAODAmbientLight.m NNPDiagnostics.m NNPNotificationDiagnostics.m NNPPreferences.m NNPSnapshotCache.m NNPLockStateController.m NNPPocketObserver.m NNPScreenCoverObserver.m NNPCoverConfirmation.m NNPDisplayController.m NNPMengoController.m NNPMengoTicket.m NNPMengoWakeGesture.m NNPMengoSensorMode.m NNPMengoTouchMonitor.m NNPMengoDeferredClose.m
+NotchNowPlaying_FILES := Tweak.xm NNPState.m NNPView.m NNPController.m NNPNextArtwork.m NNPChargingController.m NNPAODAmbientLight.m NNPDiagnostics.m NNPNotificationDiagnostics.m NNPPreferences.m NNPSnapshotCache.m NNPLockStateController.m NNPPocketObserver.m NNPScreenCoverObserver.m NNPCoverConfirmation.m NNPDisplayController.m NNPMengoController.m NNPMengoTicket.m NNPMengoWakeGesture.m NNPMengoSensorMode.m NNPMengoTouchMonitor.m NNPMengoDeferredClose.m NNPPowerStats.m
 NNPMengoBridge_FILES := NNPMengoBridge.xm
 NNPMengoBridge_CFLAGS := -fobjc-arc -fvisibility=hidden -fno-ident
 NNPMengoBridge_FRAMEWORKS := Foundation UIKit WebKit
@@ -117,3 +117,6 @@ endif
 
 
 include $(THEOS_MAKE_PATH)/tweak.mk
+
+SUBPROJECTS += prefs
+include $(THEOS_MAKE_PATH)/aggregate.mk
