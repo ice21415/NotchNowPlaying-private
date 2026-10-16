@@ -25,6 +25,6 @@ FOUNDATION_EXPORT void NNPDiagnosticLogCallStack(NSString *event, NSUInteger max
 // is disabled. Keep the real symbols available for the implementation.
 #if !defined(NNP_DIAGNOSTICS_IMPLEMENTATION)
 #define NNPDiagnosticLog(...) do { if (NNP_ENABLE_VERBOSE_DIAGNOSTICS) NNPDiagnosticLog(__VA_ARGS__); } while (0)
-#define NNPDiagnosticLogTransition(...) do { if (NNP_ENABLE_VERBOSE_DIAGNOSTICS) NNPDiagnosticLogTransition(__VA_ARGS__); } while (0)
+// Transitions are rare, and the recent-transition ring is always kept, so this call is never compiled out.
 #define NNPDiagnosticLogCallStack(...) do { if (NNP_ENABLE_VERBOSE_DIAGNOSTICS) NNPDiagnosticLogCallStack(__VA_ARGS__); } while (0)
 #endif
