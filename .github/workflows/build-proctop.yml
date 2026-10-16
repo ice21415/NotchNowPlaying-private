@@ -6,6 +6,7 @@ on:
     branches: [codex/charging-flow-20261002]
     paths:
       - 'research/tools/nnp_proctop.c'
+      - 'research/tools/nnp_batt.c'
       - '.github/workflows/build-proctop.yml'
 
 permissions:
@@ -18,13 +19,15 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Build and sign nnp_proctop
+      - name: Build and sign research tools
         run: |
           set -euo pipefail
           brew install ldid
           mkdir -p out
           xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=15.0 -O2 -Wall -Wextra -Werror \
             research/tools/nnp_proctop.c -o out/nnp_proctop
+          xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=15.0 -O2 -Wall -Wextra -Werror \
+            -framework CoreFoundation -framework IOKit research/tools/nnp_batt.c -o out/nnp_batt
           cat > ent.plist <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -41,12 +44,12 @@ jobs:
           </plist>
           EOF
           ldid -Sent.plist out/nnp_proctop
-          file out/nnp_proctop
-          xcrun vtool -show-build out/nnp_proctop
+          ldid -Sent.plist out/nnp_batt
+          file out/nnp_proctop out/nnp_batt
 
-      - name: Upload tool
+      - name: Upload tools
         uses: actions/upload-artifact@v4
         with:
           name: nnp-proctop
-          path: out/nnp_proctop
+          path: out/*
           if-no-files-found: error
