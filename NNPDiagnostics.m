@@ -164,7 +164,29 @@ NSString *NNPDiagnosticBeginTransition(NSString *reason) {
     }
 }
 
+// Production builds keep the last transitions in a small ring published as RecentTransitions, so an
+// unexpected display state can be explained after the fact without enabling verbose logging.
+static NSMutableArray<NSString *> *NNPDiagnosticRecentTransitions;
+
+static void NNPDiagnosticRecordRecentTransition(NSString *event) {
+    static NSDateFormatter *formatter;
+    @synchronized ([NSProcessInfo processInfo]) {
+        if (!NNPDiagnosticRecentTransitions) NNPDiagnosticRecentTransitions = [NSMutableArray array];
+        if (!formatter) {
+            formatter = [NSDateFormatter new];
+            formatter.dateFormat = @"MM-dd HH:mm:ss.SSS";
+        }
+        NSString *text = event ?: @"event";
+        if (text.length > 150) text = [text substringToIndex:150];
+        [NNPDiagnosticRecentTransitions addObject:[NSString stringWithFormat:@"%@ %@", [formatter stringFromDate:NSDate.date], text]];
+        if (NNPDiagnosticRecentTransitions.count > 50)
+            [NNPDiagnosticRecentTransitions removeObjectsInRange:NSMakeRange(0, NNPDiagnosticRecentTransitions.count - 50)];
+        NNPDiagnosticSetValue(@"RecentTransitions", [NNPDiagnosticRecentTransitions copy]);
+    }
+}
+
 void NNPDiagnosticLogTransition(NSString *event) {
+    NNPDiagnosticRecordRecentTransition(event);
 #if !NNP_ENABLE_VERBOSE_DIAGNOSTICS
     return;
 #endif
