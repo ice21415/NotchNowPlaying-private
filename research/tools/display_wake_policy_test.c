@@ -14,5 +14,9 @@ int main(void) {
     assert(!NNPDisplayWakeShouldReveal(true, true, true, true, true));
     assert(!NNPDisplayWakeShouldReveal(false, true, true, true, false));
     assert(!NNPDisplayWakeShouldReveal(true, false, true, true, false));
+    assert(NNPDisplayWakeShouldRevealForSource(true, true, true, false, false, 3));
+    assert(!NNPDisplayWakeShouldRevealForSource(true, true, true, false, false, NNPBacklightSourceProximity));
+    assert(NNPDisplayWakeShouldRevealForSource(true, true, true, true, false, NNPBacklightSourceProximity));
+    assert(!NNPDisplayWakeShouldRevealForSource(true, true, false, false, false, NNPBacklightSourceProximity));
     puts("AOD wake cleanup without pending flag and covered/inactive exclusions passed");
 }

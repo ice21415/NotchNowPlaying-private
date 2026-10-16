@@ -636,9 +636,9 @@ static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger stat
     bool shouldReveal = false;
     if (state == 1) {
         bool pending = atomic_exchange_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_acq_rel);
-        shouldReveal = NNPDisplayWakeShouldReveal(armed, locked,
+        shouldReveal = NNPDisplayWakeShouldRevealForSource(armed, locked,
             atomic_load_explicit(&gNNPPhase7AODPresentationActive, memory_order_acquire), pending,
-            atomic_load_explicit(&gNNPPhase7ScreenCovered, memory_order_acquire));
+            atomic_load_explicit(&gNNPPhase7ScreenCovered, memory_order_acquire), (long)source);
     }
     if (shouldReveal) {
         NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 SpringBoard backlight state=%ld source=%ld; revealing native Lock Screen before wake transition",
