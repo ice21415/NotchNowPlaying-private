@@ -60,9 +60,11 @@ static const NSUInteger NNPCoverStillSamplesBeforeSlowing = 20;
     BOOL near = _lastNear;
     if (_sensing) { near = [self readProximityNear]; _lastNear = near; }
     BOOL down = _faceDown || device.orientation == UIDeviceOrientationFaceDown;
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
     NNPDiagnosticSetBool(@"CoverProximityNear", near);
     NNPDiagnosticSetBool(@"CoverFaceDown", down);
     NNPDiagnosticSetBool(@"CoverNativeProximityActive", _sensing);
+#endif
     return near || down;
 }
 - (void)publish:(BOOL)covered {
@@ -106,7 +108,9 @@ static const NSUInteger NNPCoverStillSamplesBeforeSlowing = 20;
     method_getReturnType(method, result, sizeof(result));
     if (result[0] != '@') return;
     _proximityAssertion = ((id (*)(id, SEL, id))objc_msgSend)(service, request, mode);
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
     NNPDiagnosticSetBool(@"CoverNativeProximityAssertion", _proximityAssertion != nil);
+#endif
 }
 - (void)stopNativeProximity {
     SEL invalidate = NSSelectorFromString(@"invalidate");
@@ -114,7 +118,9 @@ static const NSUInteger NNPCoverStillSamplesBeforeSlowing = 20;
     if (method && method_getNumberOfArguments(method) == 2)
         ((void (*)(id, SEL))objc_msgSend)(_proximityAssertion, invalidate);
     _proximityAssertion = nil;
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
     NNPDiagnosticSetBool(@"CoverNativeProximityAssertion", NO);
+#endif
 }
 - (void)beginSensing {
     if (_sensing || !_active) return;

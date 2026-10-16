@@ -21,6 +21,7 @@
 - (void)updateLyricsText:(NSString *)currentLine nextLine:(NSString *)nextLine;
 - (void)stopContentAnimation;
 @property(nonatomic) BOOL idleMode;
+@property(nonatomic) BOOL idleDeep;
 - (void)refreshClock;
 - (BOOL)playNotificationSnakeAnimation;
 - (BOOL)playNotificationSnakeAnimationWithPayload:(NSDictionary *)payload;

@@ -222,6 +222,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic) NSUInteger pixelShiftStep;
 @property(nonatomic, strong) NNPAODAmbientLight *ambientLight;
 @property(nonatomic) float ambientBrightnessTargetNits;
+@property(nonatomic) BOOL idleDeepActive;
+@property(nonatomic, strong) NSTimer *idleDeepTimer;
 @property(nonatomic) NSTimeInterval progressTimerInterval;
 @property(nonatomic) BOOL reconcilePending;
 @property(nonatomic) BOOL didRecordSpotifyLyricsTrackMatch;
@@ -269,6 +271,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (BOOL)idleShouldShow;
 - (BOOL)idleModeActive;
 - (BOOL)idleBrightnessIntent;
+- (void)scheduleIdleDeepIfNeeded;
+- (void)cancelIdleDeep;
 - (void)updateNotchGestureWindow;
 - (void)requestAODTouchWake;
 - (void)removeNotchGestureWindow;
@@ -411,8 +415,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     self.ambientLight = [NNPAODAmbientLight new];
     self.ambientLight.sampleHandler = ^(double lux, BOOL valid) {
         NNPController *controller = weakSelf;
-        if (!controller || !controller.preferences.aodAutomaticBrightnessEnabled ||
-            ![controller shouldPresentInsideCoverSheet]) return;
+        if (!controller || !(controller.preferences.aodAutomaticBrightnessEnabled || [controller idleBrightnessIntent]) ||
+            controller.idleDeepActive || ![controller shouldPresentInsideCoverSheet]) return;
         float target = valid ? NNPAODAmbientTargetNits(lux) : 0;
         if (fabsf(controller.ambientBrightnessTargetNits - target) >= 0.5f) {
             NNPDiagnosticLogTransition([NSString stringWithFormat:@"AOD_AMBIENT lux=%.1f valid=%@ targetNits=%.2f", lux, valid ? @"YES" : @"NO", target]);
@@ -926,6 +930,13 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (BOOL)showNotificationSnakeAnimation {
     if ([self pocketSuspended]) return NO;
     if (![NSThread isMainThread]) return NO;
+    if (self.idleDeepActive) {
+        // A notification is worth normal brightness and the full idle layout again.
+        [self cancelIdleDeep];
+        self.view.idleDeep = NO;
+        self.statusBarPlayerView.idleDeep = NO;
+        dispatch_async(dispatch_get_main_queue(), ^{ [self reconcile]; });
+    }
     NSDictionary *pendingNotificationPayload = NNPNotificationDiagnosticsConsumePendingPresentationPayload();
     UIWindow *presentationWindow = self.view.window;
     BOOL aodReady = self.locked && self.display.aodPresentationActive &&
@@ -1249,9 +1260,13 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         NNPDiagnosticSetBool(@"CoverNativeBlankAvailable", NNPPhase7SetScreenCovered(pocket));
         NNPDiagnosticSetBool(@"PocketUISuspended", pocket);
         [self setAODOrientationMonitoring:activeAOD && self.preferences.aodLandscapeEnabled && !pocket];
-        BOOL ambientActive = self.preferences.aodAutomaticBrightnessEnabled && [self shouldPresentInsideCoverSheet] && !pocket;
+        BOOL ambientActive = (self.preferences.aodAutomaticBrightnessEnabled || [self idleBrightnessIntent]) &&
+            [self shouldPresentInsideCoverSheet] && !pocket && !self.idleDeepActive;
         [self.ambientLight setActive:ambientActive];
-        if (!ambientActive && !pocket && !self.mengoOpen) {
+        if (self.idleDeepActive && [self idleModeActive]) {
+            self.ambientBrightnessTargetNits = 2.0f;
+            if (!self.mengoOpen) self.display.automaticBrightnessNits = 2.0f;
+        } else if (!ambientActive && !pocket && !self.mengoOpen) {
             self.ambientBrightnessTargetNits = 0;
             self.display.automaticBrightnessNits = 0;
         }
@@ -1275,8 +1290,11 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         }
         if (!show) { [self hide]; return; }
         BOOL idleMode = [self idleModeActive];
+        if (idleMode) [self scheduleIdleDeepIfNeeded]; else [self cancelIdleDeep];
         self.view.idleMode = idleMode;
         self.statusBarPlayerView.idleMode = idleMode;
+        self.view.idleDeep = idleMode && self.idleDeepActive;
+        self.statusBarPlayerView.idleDeep = idleMode && self.idleDeepActive;
         [self makeWindow];
         BOOL becomingVisible = self.window.hidden;
         if (becomingVisible) {
@@ -1301,7 +1319,26 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         }
         [self startProgressTimer]; [self startAODPixelShiftTimer]; [self updateProgress]; });
 }
+- (void)scheduleIdleDeepIfNeeded {
+    if (self.idleDeepActive || self.idleDeepTimer) return;
+    __weak typeof(self) weakSelf = self;
+    // After ten minutes of idle AOD, drop to the minimum level and keep only the clock.
+    self.idleDeepTimer = [NSTimer scheduledTimerWithTimeInterval:600.0 repeats:NO block:^(__unused NSTimer *timer) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        strongSelf.idleDeepTimer = nil;
+        strongSelf.idleDeepActive = YES;
+        [strongSelf reconcile];
+    }];
+    self.idleDeepTimer.tolerance = 30.0;
+}
+- (void)cancelIdleDeep {
+    [self.idleDeepTimer invalidate];
+    self.idleDeepTimer = nil;
+    self.idleDeepActive = NO;
+}
 - (void)hide {
+    [self cancelIdleDeep];
     [self.mengo setHostView:nil active:NO];
     [self.view cancelNotificationSnakeAnimation];
     [self.statusBarPlayerView cancelNotificationSnakeAnimation];
@@ -1336,10 +1373,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     return self.preferences.aodIdleDisplayEnabled && !mediaWouldShow;
 }
 - (float)effectiveAODBrightnessMultiplier {
-    BOOL automatic = self.preferences.aodAutomaticBrightnessEnabled;
+    // The idle clock always follows the ambient light curve so dark rooms get the system's 2-nit level.
+    BOOL automatic = self.preferences.aodAutomaticBrightnessEnabled || [self idleBrightnessIntent];
     float multiplier = automatic ? 1 : self.preferences.aodBrightnessMultiplier;
-    // The small idle clock does not need the player's brightness; about 40% is still clearly readable.
-    if (!automatic && [self idleBrightnessIntent]) multiplier = MAX(1.2f, multiplier * 0.4f);
     NNPDiagnosticSetBool(@"AODAutomaticBrightnessEnabled", automatic);
     NNPDiagnosticSetDouble(@"AODAutomaticBrightnessEffectiveMultiplier", multiplier);
     return multiplier;
@@ -1358,6 +1394,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     self.statusBarPlayerView.pixelShiftPixels = pixels;
     self.charging.pixelShiftPixels = pixels;
     [self.mengo restPixelsAtOffset:pixels];
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
     NNPDiagnosticSetString(@"AODPlayerLayerShift", NSStringFromCGAffineTransform(CATransform3DGetAffineTransform(self.view.layer.sublayerTransform)));
     NNPDiagnosticSetString(@"AODMirrorLayerShift", NSStringFromCGAffineTransform(CATransform3DGetAffineTransform(self.statusBarPlayerView.layer.sublayerTransform)));
     __weak typeof(self) weakController = self;
@@ -1373,6 +1410,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     NNPDiagnosticSetInteger(@"AODPixelShiftY", offset.y);
     NNPDiagnosticSetInteger(@"AODPixelShiftStep", self.pixelShiftStep);
     NNPDiagnosticSetBool(@"AODPixelShiftTimerActive", self.pixelShiftTimer != nil);
+#endif
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER AOD all-surface physical pixel shift x=%d y=%d step=%lu rest=0.21s", offset.x, offset.y, (unsigned long)self.pixelShiftStep]);
 }
 - (void)startAODPixelShiftTimer {
@@ -1383,7 +1421,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     if (self.pixelShiftTimer) return;
     [self applyRandomAODPixelShift];
     __weak typeof(self) weakSelf = self;
-    self.pixelShiftTimer = [NSTimer timerWithTimeInterval:[self idleModeActive] ? 60.0 : 30.0 repeats:YES block:^(__unused NSTimer *timer) {
+    self.pixelShiftTimer = [NSTimer timerWithTimeInterval:[self idleModeActive] ? 120.0 : 30.0 repeats:YES block:^(__unused NSTimer *timer) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf) return;
         if (![strongSelf shouldPresentInsideCoverSheet]) {

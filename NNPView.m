@@ -1792,6 +1792,12 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     [self updateClock];
 }
 
+- (void)setIdleDeep:(BOOL)idleDeep {
+    if (_idleDeep == idleDeep) return;
+    _idleDeep = idleDeep;
+    [self setNeedsLayout];
+}
+
 - (void)setIdleMode:(BOOL)idleMode {
     if (_idleMode == idleMode) return;
     _idleMode = idleMode;
@@ -1807,6 +1813,8 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         self.dateLabel.textAlignment = NSTextAlignmentNatural;
         self.titleViewport.hidden = NO;
         self.dateLabel.hidden = YES;
+        self.dateLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.62];
+        self.batteryStatus.alpha = 1.0;
         return;
     }
     self.art.hidden = YES;
@@ -1819,24 +1827,23 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
     CGFloat clockSize = centered ? 30.0 : 20.0;
     CGFloat clockHeight = ceil(clockSize * 1.2);
     self.clockLabel.font = [UIFont monospacedDigitSystemFontOfSize:clockSize weight:UIFontWeightSemibold];
-    self.clockLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.90];
+    self.clockLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.68];
+    self.dateLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.42];
+    self.batteryStatus.alpha = 0.7;
     self.clockLabel.textAlignment = centered ? NSTextAlignmentCenter : NSTextAlignmentNatural;
     self.dateLabel.textAlignment = centered ? NSTextAlignmentCenter : NSTextAlignmentNatural;
     self.clockLabel.frame = CGRectMake(textX, top, textWidth, clockHeight);
     self.clockLabel.hidden = !self.playbackVisible;
     self.dateLabel.frame = CGRectMake(textX, CGRectGetMaxY(self.clockLabel.frame) + 1.0, textWidth, 16.0);
-    self.dateLabel.hidden = !self.playbackVisible;
+    self.dateLabel.hidden = !self.playbackVisible || self.idleDeep;
     CGFloat batteryWidth = 58.0;
     CGFloat batteryX = centered ? textX + (textWidth - batteryWidth) / 2.0 : textX;
     self.batteryStatus.frame = CGRectMake(batteryX, CGRectGetMaxY(self.dateLabel.frame) + 4.0, batteryWidth, 14.0);
-    self.batteryStatus.hidden = !self.batteryStatusAvailable || !self.playbackVisible;
+    self.batteryStatus.hidden = !self.batteryStatusAvailable || !self.playbackVisible || self.idleDeep;
     CGRect strip = self.notificationIndicatorStrip.frame;
-    if (centered) {
-        strip.origin.x = textX + (textWidth - CGRectGetWidth(strip)) / 2.0;
-        strip.origin.y = CGRectGetMaxY(self.batteryStatus.frame) + 10.0;
-    } else {
-        strip.origin.y = CGRectGetMaxY(self.batteryStatus.frame) + 10.0;
-    }
+    CGFloat stripAnchor = self.idleDeep ? CGRectGetMaxY(self.clockLabel.frame) : CGRectGetMaxY(self.batteryStatus.frame);
+    if (centered) strip.origin.x = textX + (textWidth - CGRectGetWidth(strip)) / 2.0;
+    strip.origin.y = stripAnchor + 10.0;
     self.notificationIndicatorStrip.frame = strip;
     self.notificationIndicatorStrip.hidden = self.notificationIndicatorCount == 0 || !self.playbackVisible;
 }

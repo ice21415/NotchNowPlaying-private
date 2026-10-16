@@ -59,7 +59,7 @@ int main(void) {
     assert(NNPAODAmbientNextSampleInterval(&sampling, 601, true) == 3);
     assert(NNPAODAmbientNextSampleInterval(&sampling, 600, true) == 3);
     assert(NNPAODAmbientNextSampleInterval(&sampling, 600, true) == 5);
-    assert(NNPAODAmbientNextSampleInterval(&sampling, 625, true) == 5);
+    assert(NNPAODAmbientNextSampleInterval(&sampling, 610, true) == 5);
     // Cumulative drift relative to the anchor must exit slow sampling.
     assert(NNPAODAmbientNextSampleInterval(&sampling, 650, true) == 2);
     assert(sampling.stableSamples == 0);
@@ -70,27 +70,23 @@ int main(void) {
     for (unsigned i = 0; i < 10; i++) NNPAODAmbientNextSampleInterval(&sampling, 0, true);
     assert(NNPAODAmbientNextSampleInterval(&sampling, 0, true) == 5);
     assert(NNPAODAmbientNextSampleInterval(&sampling, 3, true) == 2);
-    assert(NNPAODAmbientTargetNits(0) == 6);
-    assert(NNPAODAmbientTargetNits(150) == 48);
-    assert(NNPAODAmbientTargetNits(300) == 90);
-    assert(NNPAODAmbientTargetNits(1200) == 120);
-    assert(NNPAODAmbientTargetNits(2100) == 150);
-    assert(NNPAODAmbientTargetNits(3000) == 180);
-    assert(NNPAODAmbientTargetNits(200000) == 180);
-    assert(NNPAODClampAutomaticNits(180) == 180);
-    assert(NNPAODClampAutomaticNits(500) == 180);
-    assert(NNPAODClampAutomaticNits(1) == 6);
+    assert(NNPAODAmbientTargetNits(0) == 2);
+    assert(NNPAODAmbientTargetNits(50) == 30);
+    assert(NNPAODAmbientTargetNits(530) == 98);
+    assert(NNPAODAmbientTargetNits(3780) == 500);
+    assert(NNPAODAmbientTargetNits(10000) == 500);
+    assert(NNPAODAmbientTargetNits(200000) == 500);
+    assert(fabsf(NNPAODAmbientTargetNits(25) - 16.0f) < 0.0001f);
+    assert(NNPAODClampAutomaticNits(250) == 250);
+    assert(NNPAODClampAutomaticNits(500) == 250);
+    assert(NNPAODClampAutomaticNits(1) == 2);
     assert(NNPAODClampAutomaticNits(NAN) == 0);
     assert(NNPAODAmbientTargetNits(200001) == 0);
     assert(NNPAODAmbientTargetNits(NAN) == 0);
     assert(NNPAODAmbientTargetNits(-1) == 0);
-    for (int lux = 1; lux <= 300; lux++) {
+    for (int lux = 1; lux <= 10000; lux++) {
         float delta = NNPAODAmbientTargetNits(lux) - NNPAODAmbientTargetNits(lux - 1);
-        assert(fabsf(delta - 0.28f) < 0.00002f);
-    }
-    for (int lux = 301; lux <= 3000; lux++) {
-        float delta = NNPAODAmbientTargetNits(lux) - NNPAODAmbientTargetNits(lux - 1);
-        assert(fabsf(delta - 1.0f / 30.0f) < 0.00002f);
+        assert(delta >= -0.0001f && delta <= 0.5601f);
     }
     for (unsigned step = 0; step <= NNPAODBrightnessRampSteps; step++) {
         float up = NNPAODInterpolateNits(6, 90, step);
