@@ -1,13 +1,18 @@
 // Samples per-process CPU time, wakeups and energy over an interval (a minimal "top" for jailbroken iOS).
 // Usage: nnp_proctop [seconds=30] [rows=25]
-#include <libproc.h>
 #include <mach/mach_time.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/proc_info.h>
+#include <sys/resource.h>
+#include <sys/types.h>
 #include <unistd.h>
+
+// The iOS SDK ships no libproc.h, but libSystem exports these.
+int proc_listallpids(void *buffer, int buffersize);
+int proc_pid_rusage(int pid, int flavor, rusage_info_t *buffer);
+int proc_name(int pid, void *buffer, uint32_t buffersize);
 
 #define MAX_PROCS 2048
 
