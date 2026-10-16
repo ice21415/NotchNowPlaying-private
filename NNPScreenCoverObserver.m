@@ -25,7 +25,7 @@ static BOOL NNPCoverSetter(id object, SEL selector, char argument) {
     NNPCoverConfirmation *_confirmation;
     NSUInteger _motionGeneration;
     NSUInteger _stillSamples;
-    NSTimer *_windowTimer, *_periodicTimer;
+    NSTimer *_windowTimer, *_periodicTimer, *_coveredTimer;
     NSTimeInterval _windowEnd;
     double _lastX, _lastY, _lastZ;
 }
@@ -35,6 +35,9 @@ static BOOL NNPCoverSetter(id object, SEL selector, char argument) {
 static const NSTimeInterval NNPCoverMotionWindow = 2.5;
 static const NSTimeInterval NNPCoverPeriodicWindow = 2.0;
 static const NSTimeInterval NNPCoverPeriodicInterval = 15.0;
+// While covered the screen is blank, so a quick uncover check matters more than the extra sensor time.
+static const NSTimeInterval NNPCoverCoveredInterval = 4.0;
+static const NSTimeInterval NNPCoverCoveredWindow = 1.5;
 static const double NNPCoverMotionThreshold = 0.12;
 static const NSUInteger NNPCoverStillSamplesBeforeSlowing = 20;
 
@@ -70,6 +73,14 @@ static const NSUInteger NNPCoverStillSamplesBeforeSlowing = 20;
 - (void)publish:(BOOL)covered {
     if (_covered == covered) return;
     _covered = covered;
+    [_coveredTimer invalidate]; _coveredTimer = nil;
+    if (covered && _active) {
+        __weak typeof(self) weakSelf = self;
+        _coveredTimer = [NSTimer scheduledTimerWithTimeInterval:NNPCoverCoveredInterval repeats:YES block:^(__unused NSTimer *timer) {
+            [weakSelf openSensingWindow:NNPCoverCoveredWindow];
+        }];
+        _coveredTimer.tolerance = 1.0;
+    }
     NNPDiagnosticSetBool(@"ScreenCoverDetected", covered);
     if (self.stateChanged) self.stateChanged(covered);
 }
@@ -158,6 +169,7 @@ static const NSUInteger NNPCoverStillSamplesBeforeSlowing = 20;
 - (void)teardownSensing {
     [_windowTimer invalidate]; _windowTimer = nil;
     [_periodicTimer invalidate]; _periodicTimer = nil;
+    [_coveredTimer invalidate]; _coveredTimer = nil;
     [self endSensingKeepingReading:NO];
 }
 - (void)setActive:(BOOL)active {

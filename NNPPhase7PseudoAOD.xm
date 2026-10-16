@@ -637,6 +637,16 @@ static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger stat
         atomic_store_explicit(&gNNPPhase7NotificationUnblankSuppressionDeadlineTicks, 0, memory_order_release);
     }
 
+    // A side-button or other user wake while the cover detection has the panel blanked must not wait
+    // for the next sensor window: drop the cover first so the wake reveals the Lock Screen right away.
+    if (state == 1 && armed && locked && source != NNPBacklightSourceProximity &&
+        !NNPNotificationDiagnosticsIsNotificationBacklightSource(source) && NSThread.isMainThread &&
+        atomic_load_explicit(&gNNPPhase7ScreenCovered, memory_order_acquire)) {
+        NNPDiagnosticTrace([NSString stringWithFormat:@"PHASE7 user wake source=%ld while covered; releasing cover", (long)source]);
+        NNPPhase7SetScreenCovered(NO);
+        atomic_store_explicit(&gNNPPhase7RevealOnWakePending, true, memory_order_release);
+    }
+
     bool shouldReveal = false;
     if (state == 1) {
         bool pending = atomic_exchange_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_acq_rel);
