@@ -14,6 +14,26 @@ int proc_listallpids(void *buffer, int buffersize);
 int proc_pid_rusage(int pid, int flavor, rusage_info_t *buffer);
 int proc_name(int pid, void *buffer, uint32_t buffersize);
 
+// Layout of XNU's rusage_info_v6 (flavor 6); the iOS SDK does not expose it.
+struct nnp_rusage_v6 {
+    uint8_t ri_uuid[16];
+    uint64_t ri_user_time, ri_system_time, ri_pkg_idle_wkups, ri_interrupt_wkups, ri_pageins;
+    uint64_t ri_wired_size, ri_resident_size, ri_phys_footprint, ri_proc_start_abstime, ri_proc_exit_abstime;
+    uint64_t ri_child_user_time, ri_child_system_time, ri_child_pkg_idle_wkups, ri_child_interrupt_wkups;
+    uint64_t ri_child_pageins, ri_child_elapsed_abstime;
+    uint64_t ri_diskio_bytesread, ri_diskio_byteswritten;
+    uint64_t ri_cpu_time_qos[7];
+    uint64_t ri_billed_system_time, ri_serviced_system_time, ri_logical_writes, ri_lifetime_max_phys_footprint;
+    uint64_t ri_instructions, ri_cycles, ri_billed_energy, ri_serviced_energy;
+    uint64_t ri_interval_max_phys_footprint, ri_runnable_time, ri_flags;
+    uint64_t ri_user_ptime, ri_system_ptime, ri_pinstructions, ri_pcycles;
+    uint64_t ri_energy_nj, ri_penergy_nj, ri_secure_time_in_system, ri_secure_ptime_in_system;
+    uint64_t ri_neural_footprint, ri_lifetime_max_neural_footprint, ri_interval_max_neural_footprint;
+    uint64_t ri_reserved[9];
+};
+_Static_assert(sizeof(struct nnp_rusage_v6) == 464, "rusage_info_v6 layout");
+#define NNP_RUSAGE_INFO_V6 6
+
 #define MAX_PROCS 2048
 
 typedef struct {
@@ -35,9 +55,9 @@ static int take(Snap *out) {
     int n = 0;
     for (int i = 0; i < count && n < MAX_PROCS; i++) {
         if (pids[i] <= 0) continue;
-        struct rusage_info_current ru;
+        struct nnp_rusage_v6 ru;
         memset(&ru, 0, sizeof(ru));
-        if (proc_pid_rusage(pids[i], RUSAGE_INFO_CURRENT, (rusage_info_t *)&ru) != 0) continue;
+        if (proc_pid_rusage(pids[i], NNP_RUSAGE_INFO_V6, (rusage_info_t *)&ru) != 0) continue;
         Snap *s = &out[n++];
         memset(s, 0, sizeof(*s));
         s->pid = pids[i];
