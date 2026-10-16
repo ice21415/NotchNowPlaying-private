@@ -495,6 +495,28 @@ BOOL NNPPhase7ExtendNotificationWakeSuppressionIfActive(void) {
     return YES;
 }
 
+// After the cover cycle SpringBoard can be left in a proximity "off" state (4) while the panel is blank, so a
+// wake that only restores the factor stays dark. Put the backlight state back to on without re-arming AOD.
+static void NNPPhase7EnsureBacklightOn(void) {
+    if (!NSThread.isMainThread || !gNNPOriginalBacklightState) return;
+    Class cls = NSClassFromString(@"SBBacklightController");
+    SEL shared = NSSelectorFromString(@"sharedInstance");
+    if (![cls respondsToSelector:shared]) return;
+    id controller = ((id (*)(id, SEL))objc_msgSend)(cls, shared);
+    SEL stateSelector = NSSelectorFromString(@"backlightState");
+    Method method = class_getInstanceMethod([controller class], stateSelector);
+    char type[16] = {0};
+    if (!method || method_getNumberOfArguments(method) != 2) return;
+    method_getReturnType(method, type, sizeof(type));
+    if (type[0] != 'q') return;
+    long long state = ((long long (*)(id, SEL))objc_msgSend)(controller, stateSelector);
+    NNPDiagnosticTrace([NSString stringWithFormat:@"PHASE7 wake after cover release sees SpringBoard backlight state=%lld", state]);
+    if (state == 1) return;
+    bool wasArmed = atomic_exchange_explicit(&gNNPPhase7Armed, false, memory_order_acq_rel);
+    gNNPOriginalBacklightState(controller, NSSelectorFromString(@"setBacklightState:source:animated:completion:"), 1, 3, YES, nil);
+    atomic_store_explicit(&gNNPPhase7Armed, wasArmed, memory_order_release);
+}
+
 BOOL NNPPhase7PrepareNativeTapWake(void) {
     if (!NSThread.isMainThread || !gNNPOriginalBacklightState) return NO;
     if (!atomic_exchange_explicit(&gNNPPhase7ProximitySeenDuringAOD, false, memory_order_acq_rel)) return NO;
@@ -559,7 +581,8 @@ static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
             atomic_store_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_release);
             dispatch_async(dispatch_get_main_queue(), ^{
                 NNPPhase7NotifyDisplayWake();
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                NNPPhase7EnsureBacklightOn();
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                     NNPPhase7RestoreWakeBrightness();
                 });
             });
