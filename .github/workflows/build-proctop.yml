@@ -1,0 +1,47 @@
+name: Build process sampler tool
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Build and sign nnp_proctop
+        run: |
+          set -euo pipefail
+          brew install ldid
+          mkdir -p out
+          xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=15.0 -O2 -Wall -Wextra -Werror \
+            research/tools/nnp_proctop.c -o out/nnp_proctop
+          cat > ent.plist <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>platform-application</key><true/>
+              <key>com.apple.private.security.no-container</key><true/>
+              <key>com.apple.private.security.no-sandbox</key><true/>
+              <key>com.apple.system-task-ports</key><true/>
+              <key>task_for_pid-allow</key><true/>
+              <key>com.apple.private.proc_pid_rusage</key><true/>
+              <key>com.apple.private.kernel.override-cpumon</key><true/>
+          </dict>
+          </plist>
+          EOF
+          ldid -Sent.plist out/nnp_proctop
+          file out/nnp_proctop
+          xcrun vtool -show-build out/nnp_proctop
+
+      - name: Upload tool
+        uses: actions/upload-artifact@v4
+        with:
+          name: nnp-proctop
+          path: out/nnp_proctop
+          if-no-files-found: error
