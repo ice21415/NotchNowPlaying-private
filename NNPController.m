@@ -1266,6 +1266,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         [self setAODOrientationMonitoring:activeAOD && self.preferences.aodLandscapeEnabled && !pocket];
         BOOL ambientActive = (self.preferences.aodAutomaticBrightnessEnabled || [self idleBrightnessIntent]) &&
             [self shouldPresentInsideCoverSheet] && !pocket && !self.idleDeepActive;
+        self.ambientLight.relaxedSampling = [self idleModeActive];
         [self.ambientLight setActive:ambientActive];
         if (self.idleDeepActive && [self idleModeActive]) {
             self.ambientBrightnessTargetNits = 2.0f;
@@ -1354,7 +1355,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     self.powerStatsTimer = [NSTimer timerWithTimeInterval:60.0 repeats:YES block:^(__unused NSTimer *timer) {
         [weakSelf samplePowerStats];
     }];
-    self.powerStatsTimer.tolerance = 10.0;
+    self.powerStatsTimer.tolerance = 30.0;
     [[NSRunLoop mainRunLoop] addTimer:self.powerStatsTimer forMode:NSRunLoopCommonModes];
 }
 - (void)stopPowerStatsTimer {

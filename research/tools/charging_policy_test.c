@@ -64,6 +64,16 @@ int main(void) {
     assert(NNPAODAmbientNextSampleInterval(&sampling, 650, true) == 2);
     assert(sampling.stableSamples == 0);
     assert(NNPAODAmbientNextSampleInterval(&sampling, 0, false) == 2);
+    {
+        NNPAODAmbientSamplingPolicy relaxed = {0};
+        double last = 0;
+        for (int i = 0; i < 12; i++) last = NNPAODAmbientNextSampleIntervalRelaxed(&relaxed, 300, true, true);
+        assert(last == 20);
+        assert(NNPAODAmbientNextSampleIntervalRelaxed(&relaxed, 900, true, true) == 2);
+        assert(relaxed.stableSamples == 0);
+        for (int i = 0; i < 12; i++) last = NNPAODAmbientNextSampleIntervalRelaxed(&relaxed, 900, true, false);
+        assert(last == 5);
+    }
     assert(!sampling.hasAnchor);
     assert(NNPAODAmbientNextSampleInterval(&sampling, NAN, true) == 2);
     assert(NNPAODAmbientNextSampleInterval(&sampling, 0, true) == 2);

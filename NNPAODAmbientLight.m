@@ -113,7 +113,7 @@ typedef uint64_t (*NNPHIDTimestamp)(CFTypeRef);
 #endif
             if (self.sampleHandler) self.sampleHandler(lux, valid);
             if (self->_active && generation == self->_generation) {
-                [self scheduleNextSampleAfter:NNPAODAmbientNextSampleInterval(&self->_samplingPolicy, lux, valid)];
+                [self scheduleNextSampleAfter:NNPAODAmbientNextSampleIntervalRelaxed(&self->_samplingPolicy, lux, valid, self.relaxedSampling)];
             }
         });
     });

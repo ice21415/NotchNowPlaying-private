@@ -20,7 +20,9 @@ static inline bool NNPAODBrightnessNeedsUpdate(float current, float target) {
     return fabsf(current - target) >= tolerance;
 }
 
-static inline double NNPAODAmbientNextSampleInterval(NNPAODAmbientSamplingPolicy *policy, double lux, bool valid) {
+// `relaxed` is for the idle clock, whose brightness only needs to follow slow lighting changes:
+// the interval grows to 10 s after 5 stable samples and 20 s after 10. Any change resets it.
+static inline double NNPAODAmbientNextSampleIntervalRelaxed(NNPAODAmbientSamplingPolicy *policy, double lux, bool valid, bool relaxed) {
     float target = valid ? NNPAODAmbientTargetNits(lux) : 0;
     if (target <= 0) {
         *policy = (NNPAODAmbientSamplingPolicy){0};
@@ -31,8 +33,15 @@ static inline double NNPAODAmbientNextSampleInterval(NNPAODAmbientSamplingPolicy
         *policy = (NNPAODAmbientSamplingPolicy){target, 0, true};
         return 2;
     }
-    if (policy->stableSamples < 5) policy->stableSamples++;
+    unsigned cap = relaxed ? 10 : 5;
+    if (policy->stableSamples < cap) policy->stableSamples++;
+    if (relaxed && policy->stableSamples >= 10) return 20;
+    if (relaxed && policy->stableSamples >= 5) return 10;
     return policy->stableSamples >= 5 ? 5 : policy->stableSamples >= 3 ? 3 : 2;
+}
+
+static inline double NNPAODAmbientNextSampleInterval(NNPAODAmbientSamplingPolicy *policy, double lux, bool valid) {
+    return NNPAODAmbientNextSampleIntervalRelaxed(policy, lux, valid, false);
 }
 
 #define NNPTitleMarqueeInitialPause 1.4
