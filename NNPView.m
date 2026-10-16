@@ -32,7 +32,7 @@
 
 static NSString *const NNPTitleMarqueeAnimationKey = @"nnp.titleMarquee";
 static const CGFloat NNPNotificationSnakeLineWidth = 6.5;
-static const NSTimeInterval NNPNotificationCardHoldAfterLight = 3.5;
+static const NSTimeInterval NNPNotificationCardHoldAfterLight = 6.0;
 
 static UIColor *NNPNotificationLightColor(UIColor *color, CGFloat whiteMix) {
     CGFloat red = 0.9, green = 0.9, blue = 0.9, alpha = 1.0, white = 0.9;
@@ -1012,10 +1012,10 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
 
     BOOL reduceMotion = UIAccessibilityIsReduceMotionEnabled();
     NSUInteger laps = MIN((NSUInteger)3, MAX((NSUInteger)1, burstCount));
-    static const NSTimeInterval lapDurations[] = {3.0, 2.6, 2.2};
+    static const NSTimeInterval lapDurations[] = {4.6, 3.9, 3.3};
     NSTimeInterval lapDuration = lapDurations[laps - 1];
     NSTimeInterval flowDuration = lapDuration * (NSTimeInterval)laps;
-    NSTimeInterval finishDuration = 1.2;
+    NSTimeInterval finishDuration = 1.8;
     NSTimeInterval handoffFadeDuration = 0.14;
     NSTimeInterval lightDuration = reduceMotion ? 2.2 : flowDuration + handoffFadeDuration + finishDuration;
     NSTimeInterval cleanupDelay = lightDuration + 0.15;
@@ -1123,7 +1123,7 @@ static UIColor *NNPAccentColorForArtwork(UIImage *artwork) {
         [snake addAnimation:glowPulse forKey:@"nnp.notificationSnakeGlowPulse"];
 
         // Slow breathing glow around the whole perimeter for the full light sequence.
-        const NSTimeInterval breathPeriod = 1.8;
+        const NSTimeInterval breathPeriod = 2.6;
         const NSTimeInterval fadeIn = 0.8;
         const NSTimeInterval fadeOut = 0.5;
         const NSUInteger samples = (NSUInteger)ceil(lightDuration * 30.0);
