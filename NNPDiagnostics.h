@@ -20,11 +20,13 @@ FOUNDATION_EXPORT BOOL NNPDiagnosticConsumeArm(void);
 FOUNDATION_EXPORT NSString *NNPDiagnosticBeginTransition(NSString *reason);
 FOUNDATION_EXPORT void NNPDiagnosticLogTransition(NSString *event);
 FOUNDATION_EXPORT void NNPDiagnosticLogCallStack(NSString *event, NSUInteger maximumFrames);
+// Always recorded in the RecentTransitions ring (and in the log when verbose). Only for rare display-state events.
+FOUNDATION_EXPORT void NNPDiagnosticTrace(NSString *event);
 
 // Avoid constructing messages and collecting arguments when detailed logging
 // is disabled. Keep the real symbols available for the implementation.
 #if !defined(NNP_DIAGNOSTICS_IMPLEMENTATION)
 #define NNPDiagnosticLog(...) do { if (NNP_ENABLE_VERBOSE_DIAGNOSTICS) NNPDiagnosticLog(__VA_ARGS__); } while (0)
-// Transitions are rare, and the recent-transition ring is always kept, so this call is never compiled out.
+#define NNPDiagnosticLogTransition(...) do { if (NNP_ENABLE_VERBOSE_DIAGNOSTICS) NNPDiagnosticLogTransition(__VA_ARGS__); } while (0)
 #define NNPDiagnosticLogCallStack(...) do { if (NNP_ENABLE_VERBOSE_DIAGNOSTICS) NNPDiagnosticLogCallStack(__VA_ARGS__); } while (0)
 #endif

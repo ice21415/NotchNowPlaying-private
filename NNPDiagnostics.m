@@ -185,8 +185,14 @@ static void NNPDiagnosticRecordRecentTransition(NSString *event) {
     }
 }
 
-void NNPDiagnosticLogTransition(NSString *event) {
+void NNPDiagnosticTrace(NSString *event) {
     NNPDiagnosticRecordRecentTransition(event);
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
+    NNPDiagnosticLogTransition(event);
+#endif
+}
+
+void NNPDiagnosticLogTransition(NSString *event) {
 #if !NNP_ENABLE_VERBOSE_DIAGNOSTICS
     return;
 #endif

@@ -119,7 +119,7 @@ static void NNPPhase7PowerWakeReplacement(id self, SEL _cmd, int unlockSource) {
     if (NNPPhase7ChargingReplacementEligible(unlockSource)) {
         // Suppress only the wake step; battery updates and charging remain native.
         NNPDiagnosticSetInteger(@"ChargingAODWakeSuppressedCount", ++gNNPChargingWakeSuppressedCount);
-        NNPDiagnosticLogTransition([NSString stringWithFormat:
+        NNPDiagnosticTrace([NSString stringWithFormat:
             @"CHARGING kept AOD active; suppressed AC-power wake unlockSource=%ld", (long)unlockSource]);
         return;
     }
@@ -129,7 +129,7 @@ static void NNPPhase7PowerWakeReplacement(id self, SEL _cmd, int unlockSource) {
 static void NNPPhase7ChargingPresentationReplacement(id self, SEL _cmd, BOOL animated) {
     if (NNPPhase7ChargingReplacementEligible(21)) {
         NNPDiagnosticSetInteger(@"ChargingAODPresentationSuppressedCount", ++gNNPChargingPresentationSuppressedCount);
-        NNPDiagnosticLogTransition(@"CHARGING suppressed native battery presentation while AOD is active");
+        NNPDiagnosticTrace(@"CHARGING suppressed native battery presentation while AOD is active");
         return;
     }
     if (gNNPOriginalChargingPresentation) gNNPOriginalChargingPresentation(self, _cmd, animated);
@@ -340,7 +340,7 @@ void NNPPhase7SetExperimentArmed(BOOL armed) {
         atomic_load_explicit(&gNNPPhase7DeviceLocked, memory_order_relaxed)) {
         NNPSetScreenBlankedFunction original = gNNPOriginalSetScreenBlanked;
         if (original) {
-            NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 experiment ended while locked; restoring BKS blank overlay session=%@",
+            NNPDiagnosticTrace([NSString stringWithFormat:@"PHASE7 experiment ended while locked; restoring BKS blank overlay session=%@",
                                         gNNPPhase7SessionID ?: @"none"]);
             original(YES);
         }
@@ -353,7 +353,7 @@ void NNPPhase7SetExperimentArmed(BOOL armed) {
     }
 #endif
     NNPDiagnosticSetBool(@"Phase7ExperimentArmed", armed);
-    NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 armed=%@ session=%@", armed ? @"YES" : @"NO", gNNPPhase7SessionID ?: @"none"]);
+    NNPDiagnosticTrace([NSString stringWithFormat:@"PHASE7 armed=%@ session=%@", armed ? @"YES" : @"NO", gNNPPhase7SessionID ?: @"none"]);
 }
 
 void NNPPhase7SetSessionID(NSString *sessionID) {
@@ -449,7 +449,7 @@ BOOL NNPPhase7SetScreenCovered(BOOL covered) {
         gNNPOriginalBacklightFactorFunction(1, factor, 0.2f);
     }
     NNPDiagnosticSetBool(@"CoverNativeBlankRequested", covered);
-    NNPDiagnosticLogTransition(covered ? @"COVER native display blank and zero backlight" : @"COVER native display restored");
+    NNPDiagnosticTrace(covered ? @"COVER native display blank and zero backlight" : @"COVER native display restored");
     return YES;
 }
 
@@ -502,7 +502,7 @@ BOOL NNPPhase7PrepareNativeTapWake(void) {
     if (type[0] != 'q') return NO;
     long long state = ((long long (*)(id, SEL))objc_msgSend)(controller, stateSelector);
     if (state != 1) return NO;
-    NNPDiagnosticLogTransition(@"PHASE7 proximity left SpringBoard backlight on during AOD; cycling to state 3 before native tap wake");
+    NNPDiagnosticTrace(@"PHASE7 proximity left SpringBoard backlight on during AOD; cycling to state 3 before native tap wake");
     // Run unarmed so this transition is not read as a new AOD session that re-covers the Lock Screen.
     bool wasArmed = atomic_exchange_explicit(&gNNPPhase7Armed, false, memory_order_acq_rel);
     gNNPOriginalBacklightState(controller, NSSelectorFromString(@"setBacklightState:source:animated:completion:"), 3, 3, NO, nil);
@@ -528,7 +528,7 @@ static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
         if (deadline && now <= deadline &&
             atomic_load_explicit(&gNNPPhase7Armed, memory_order_acquire) &&
             atomic_load_explicit(&gNNPPhase7DeviceLocked, memory_order_acquire)) {
-            NNPDiagnosticLogTransition(@"PHASE7 suppressed paired BKS unblank after notification wake replacement");
+            NNPDiagnosticTrace(@"PHASE7 suppressed paired BKS unblank after notification wake replacement");
             return;
         }
         if (deadline) {
@@ -545,7 +545,7 @@ static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
         atomic_store_explicit(&gNNPPhase7RevealOnWakePending, true, memory_order_release);
         uintptr_t callerOffset = callerInfo.dli_fbase
             ? (uintptr_t)caller - (uintptr_t)callerInfo.dli_fbase : 0;
-        NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 suppressed BKS screen blank request caller=%s+0x%llx; BLS state and display mode unchanged session=%@",
+        NNPDiagnosticTrace([NSString stringWithFormat:@"PHASE7 suppressed BKS screen blank request caller=%s+0x%llx; BLS state and display mode unchanged session=%@",
                                     callerInfo.dli_fname,
                                     (unsigned long long)callerOffset,
                                     gNNPPhase7SessionID ?: @"none"]);
@@ -560,7 +560,7 @@ static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
             atomic_load_explicit(&gNNPPhase7AODPresentationActive, memory_order_acquire), pending,
             atomic_load_explicit(&gNNPPhase7ScreenCovered, memory_order_acquire));
         if (shouldReveal) {
-            NNPDiagnosticLogTransition(@"PHASE7 BLS unblank received after suppressed lock blank; revealing native Lock Screen");
+            NNPDiagnosticTrace(@"PHASE7 BLS unblank received after suppressed lock blank; revealing native Lock Screen");
             NNPPhase7NotifyDisplayWake();
         }
     }
@@ -593,7 +593,7 @@ static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger stat
         if (deadline) {
             uint64_t now = mach_absolute_time();
             if (now <= deadline && NNPNotificationDiagnosticsIsNotificationBacklightSource(source) && armed && locked) {
-                NNPDiagnosticLogTransition([NSString stringWithFormat:
+                NNPDiagnosticTrace([NSString stringWithFormat:
                     @"PHASE7 suppressed follow-on notification backlight wake state=%ld source=%ld while snake animation is active",
                     (long)state, (long)source]);
                 return;
@@ -620,12 +620,12 @@ static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger stat
             uint64_t unblankGraceTicks = NNPPhase7TicksForSeconds(2.0);
             atomic_store_explicit(&gNNPPhase7NotificationUnblankSuppressionDeadlineTicks,
                                   unblankGraceTicks ? now + unblankGraceTicks : 0, memory_order_release);
-            NNPDiagnosticLogTransition(@"PHASE7 kept AOD active and replaced correlated notification wake with snake animation");
+            NNPDiagnosticTrace(@"PHASE7 kept AOD active and replaced correlated notification wake with snake animation");
             // The lock session is already active; omitting this correlated wake
             // request keeps the pseudo-AOD presentation and lock state intact.
             return;
         }
-        NNPDiagnosticLogTransition(@"PHASE7 notification wake animation unavailable; passing wake request through");
+        NNPDiagnosticTrace(@"PHASE7 notification wake animation unavailable; passing wake request through");
     }
 
     if (state == 1) {
@@ -641,7 +641,7 @@ static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger stat
             atomic_load_explicit(&gNNPPhase7ScreenCovered, memory_order_acquire), (long)source);
     }
     if (shouldReveal) {
-        NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 SpringBoard backlight state=%ld source=%ld; revealing native Lock Screen before wake transition",
+        NNPDiagnosticTrace([NSString stringWithFormat:@"PHASE7 SpringBoard backlight state=%ld source=%ld; revealing native Lock Screen before wake transition",
                                    (long)state, (long)source]);
         NNPPhase7NotifyDisplayWake();
     }
@@ -682,11 +682,11 @@ static void NNPPhase7ProviderTransitionReplacement(id self, SEL _cmd, long long 
         NNPDiagnosticSetDouble(@"Phase7DimmedBacklightFactor", substitutedFactor);
         NNPDiagnosticSetDouble(@"Phase7AODBrightnessMultiplier", atomic_load_explicit(&gNNPPhase7AODBrightnessMultiplier, memory_order_relaxed));
         NNPDiagnosticSetBool(@"Phase7BacklightFactorSubstitution", YES);
-        NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 HID backlight factor %.6f -> %.6f (systemDim=%.6f AODMultiplier=%.2fx); displayMode remained 0 duration=%.3f session=%@",
+        NNPDiagnosticTrace([NSString stringWithFormat:@"PHASE7 HID backlight factor %.6f -> %.6f (systemDim=%.6f AODMultiplier=%.2fx); displayMode remained 0 duration=%.3f session=%@",
                                     originalFactor, substitutedFactor, atomic_load_explicit(&gNNPPhase7BaseDimmedFactor, memory_order_relaxed), atomic_load_explicit(&gNNPPhase7AODBrightnessMultiplier, memory_order_relaxed), duration, gNNPPhase7SessionID ?: @"none"]);
         NNPPhase7NotifyBacklightFactorSubstitution(originalFactor, substitutedFactor);
     } else {
-        NNPDiagnosticLogTransition([NSString stringWithFormat:@"PHASE7 native mode 0 passed through; dim factor unavailable or not applied duration=%.3f", duration]);
+        NNPDiagnosticTrace([NSString stringWithFormat:@"PHASE7 native mode 0 passed through; dim factor unavailable or not applied duration=%.3f", duration]);
     }
     atomic_store_explicit(&gNNPPhase7FactorWasSubstituted, previousAdjusted, memory_order_release);
     atomic_store_explicit(&gNNPPhase7OriginalFactor, previousOriginal, memory_order_relaxed);

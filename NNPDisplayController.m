@@ -147,7 +147,7 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
     _lifecycleState = state;
     NNPPhase7UpdateForensicsState(_lifecycleState, self.deviceLocked, self.modeSubstitutionObserved, self.visibleDurationTimer != nil);
     NNPDiagnosticSetInteger(@"LockedVisibleLifecycle", state);
-    NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY lifecycle state=%ld", (long)state]);
+    NNPDiagnosticTrace([NSString stringWithFormat:@"DISPLAY lifecycle state=%ld", (long)state]);
     if (self.stateChangedHandler) self.stateChangedHandler();
 }
 
@@ -157,7 +157,7 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
     NNPPhase7SetAODPresentationActive(active);
     NNPNotificationDiagnosticsSetDisplayState(self.deviceLocked, _aodPresentationActive);
     NNPDiagnosticSetBool(@"Phase7AODPresentationActive", active);
-    NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY AOD presentation active=%@", active ? @"YES" : @"NO"]);
+    NNPDiagnosticTrace([NSString stringWithFormat:@"DISPLAY AOD presentation active=%@", active ? @"YES" : @"NO"]);
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE && NNP_PHASE7_DRY_RUN == 0
     if (active && self.automaticBrightnessNits > 0) NNPAODNitsSetTargetNits(self.sessionIdentifier, self.automaticBrightnessNits);
     else if (active) NNPAODNitsBeginSession(self.sessionIdentifier, self.aodBrightnessMultiplier);
@@ -186,7 +186,7 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
     _deviceLocked = deviceLocked;
     NNPNotificationDiagnosticsSetDisplayState(_deviceLocked, self.aodPresentationActive);
     NNPPhase7UpdateForensicsState(_lifecycleState, _deviceLocked, self.modeSubstitutionObserved, self.visibleDurationTimer != nil);
-    NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY deviceLocked=%@ session=%@", deviceLocked ? @"YES" : @"NO", self.sessionIdentifier ?: @"none"]);
+    NNPDiagnosticTrace([NSString stringWithFormat:@"DISPLAY deviceLocked=%@ session=%@", deviceLocked ? @"YES" : @"NO", self.sessionIdentifier ?: @"none"]);
     if (wasLocked && !deviceLocked &&
         (_lifecycleState == NNPDisplayLifecycleStatePreparing ||
          _lifecycleState == NNPDisplayLifecycleStateActive)) {
@@ -202,14 +202,14 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
     self.visibleDurationTimer = nil;
     NNPDiagnosticSetDouble(@"Phase7TimerDeadline", 0.0);
     NNPPhase7UpdateForensicsState(_lifecycleState, self.deviceLocked, self.modeSubstitutionObserved, NO);
-    NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY timer cancelled session=%@ reason=%@", self.sessionIdentifier ?: @"none", reason ?: @"unknown"]);
+    NNPDiagnosticTrace([NSString stringWithFormat:@"DISPLAY timer cancelled session=%@ reason=%@", self.sessionIdentifier ?: @"none", reason ?: @"unknown"]);
 }
 
 - (void)startVisibleDurationTimer {
     [self cancelVisibleDurationTimer:@"replace"];
     if (self.unlimitedDuration) {
         NNPDiagnosticSetDouble(@"Phase7TimerDeadline", 0.0);
-        NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY time limit disabled session=%@", self.sessionIdentifier ?: @"none"]);
+        NNPDiagnosticTrace([NSString stringWithFormat:@"DISPLAY time limit disabled session=%@", self.sessionIdentifier ?: @"none"]);
         return;
     }
     NSTimeInterval duration = MAX(5.0, MIN(60.0, self.maximumDuration));
@@ -217,17 +217,17 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
     NSString *session = [self.sessionIdentifier copy];
     NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:duration];
     NNPDiagnosticSetDouble(@"Phase7TimerDeadline", deadline.timeIntervalSince1970);
-    NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY timer started session=%@ duration=%.1fs deadline=%.3f", session ?: @"none", duration, deadline.timeIntervalSince1970]);
+    NNPDiagnosticTrace([NSString stringWithFormat:@"DISPLAY timer started session=%@ duration=%.1fs deadline=%.3f", session ?: @"none", duration, deadline.timeIntervalSince1970]);
     __weak typeof(self) weakSelf = self;
     self.visibleDurationTimer = [NSTimer scheduledTimerWithTimeInterval:duration repeats:NO block:^(__unused NSTimer *timer) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf) return;
         if (strongSelf.sessionGeneration != generation || strongSelf.sessionIdentifier.length == 0 || ![strongSelf.sessionIdentifier isEqualToString:session] ||
             strongSelf.lifecycleState != NNPDisplayLifecycleStateActive || !strongSelf.deviceLocked || !strongSelf.modeSubstitutionObserved) {
-            NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY stale timeout ignored session=%@ current=%@ generation=%lu currentGeneration=%lu lifecycle=%ld locked=%@ substituted=%@", session ?: @"none", strongSelf.sessionIdentifier ?: @"none", (unsigned long)generation, (unsigned long)strongSelf.sessionGeneration, (long)strongSelf.lifecycleState, strongSelf.deviceLocked ? @"YES" : @"NO", strongSelf.modeSubstitutionObserved ? @"YES" : @"NO"]);
+            NNPDiagnosticTrace([NSString stringWithFormat:@"DISPLAY stale timeout ignored session=%@ current=%@ generation=%lu currentGeneration=%lu lifecycle=%ld locked=%@ substituted=%@", session ?: @"none", strongSelf.sessionIdentifier ?: @"none", (unsigned long)generation, (unsigned long)strongSelf.sessionGeneration, (long)strongSelf.lifecycleState, strongSelf.deviceLocked ? @"YES" : @"NO", strongSelf.modeSubstitutionObserved ? @"YES" : @"NO"]);
             return;
         }
-        NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY timeout callback session=%@ deadline=%.3f autoOff=SUPPRESSED_FAIL_OPEN", strongSelf.sessionIdentifier ?: @"none", deadline.timeIntervalSince1970]);
+        NNPDiagnosticTrace([NSString stringWithFormat:@"DISPLAY timeout callback session=%@ deadline=%.3f autoOff=SUPPRESSED_FAIL_OPEN", strongSelf.sessionIdentifier ?: @"none", deadline.timeIntervalSince1970]);
         [strongSelf stopLockedVisibleModeWithReason:@"maximum-duration"];
     }];
     NNPPhase7UpdateForensicsState(_lifecycleState, self.deviceLocked, self.modeSubstitutionObserved, YES);
@@ -240,7 +240,7 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
     NNPDiagnosticSetBool(@"Phase7LockedVisibleActive", YES);
     NNPDiagnosticSetDouble(@"Phase7LockedTimestamp", NSDate.date.timeIntervalSince1970);
     self.lifecycleState = NNPDisplayLifecycleStateActive;
-    NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY locked-visible active session=%@ modeSubstitution=YES", self.sessionIdentifier ?: @"none"]);
+    NNPDiagnosticTrace([NSString stringWithFormat:@"DISPLAY locked-visible active session=%@ modeSubstitution=YES", self.sessionIdentifier ?: @"none"]);
     [self startVisibleDurationTimer];
 }
 
@@ -249,7 +249,7 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
     self.modeSubstitutionObserved = YES;
     NNPPhase7UpdateForensicsState(_lifecycleState, self.deviceLocked, self.modeSubstitutionObserved, self.visibleDurationTimer != nil);
     NNPDiagnosticSetBool(@"Phase7BacklightFactorSubstitution", YES);
-    NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY backlight factor adjusted session=%@ original=%.6f dimmed=%.6f deviceLocked=%@", self.sessionIdentifier ?: @"none", originalFactor, dimmedFactor, self.deviceLocked ? @"YES" : @"NO"]);
+    NNPDiagnosticTrace([NSString stringWithFormat:@"DISPLAY backlight factor adjusted session=%@ original=%.6f dimmed=%.6f deviceLocked=%@", self.sessionIdentifier ?: @"none", originalFactor, dimmedFactor, self.deviceLocked ? @"YES" : @"NO"]);
     if (self.deviceLocked && self.lifecycleState == NNPDisplayLifecycleStateActive) {
         [self setAODPresentationActive:YES];
     }
@@ -267,20 +267,20 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
     // to continue through the subsequent lock transition above.
     if (self.deviceLocked) {
         NNPDiagnosticSetBool(@"LockedVisibleActivationDeferred", YES);
-        NNPDiagnosticLogTransition(@"DISPLAY activation deferred; device already locked");
+        NNPDiagnosticTrace(@"DISPLAY activation deferred; device already locked");
         return NO;
     }
     NNPDiagnosticSetBool(@"LockedVisibleActivationDeferred", NO);
     if (![self isLockedVisibleSupported]) {
         self.lifecycleState = NNPDisplayLifecycleStateUnsupported;
         NNPDiagnosticSetBool(@"LockedVisibleSupported", NO);
-        NNPDiagnosticLogTransition(@"DISPLAY unsupported; no display mutation attempted");
+        NNPDiagnosticTrace(@"DISPLAY unsupported; no display mutation attempted");
         return NO;
     }
     if (!NNPPhase7EnsureBacklightFactorHook()) {
         self.lifecycleState = NNPDisplayLifecycleStateFailed;
         NNPDiagnosticSetBool(@"Phase7BacklightFactorSubstitution", NO);
-        NNPDiagnosticLogTransition(@"DISPLAY experimental hook unavailable; no session armed");
+        NNPDiagnosticTrace(@"DISPLAY experimental hook unavailable; no session armed");
         return NO;
     }
     self.sessionGeneration = ++NNPNextSessionGeneration;
@@ -295,7 +295,7 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
     self.lifecycleState = NNPDisplayLifecycleStatePreparing;
     NNPPhase7SetExperimentArmed(YES);
     NNPDiagnosticSetBool(@"LockedVisibleSupported", YES);
-    NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY experiment armed session=%@ duration=%.1fs deviceLocked=%@ waitingForModeSubstitution=YES", self.sessionIdentifier, self.maximumDuration, self.deviceLocked ? @"YES" : @"NO"]);
+    NNPDiagnosticTrace([NSString stringWithFormat:@"DISPLAY experiment armed session=%@ duration=%.1fs deviceLocked=%@ waitingForModeSubstitution=YES", self.sessionIdentifier, self.maximumDuration, self.deviceLocked ? @"YES" : @"NO"]);
     return YES;
 }
 
@@ -316,11 +316,11 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
     NNPPhase7SetExperimentArmed(NO);
     self.lifecycleState = NNPDisplayLifecycleStateStopping;
     [self cancelVisibleDurationTimer:reason];
-    NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY cleanup fail-open session=%@ substituted=%@ deviceLocked=%@ reason=%@ autoOff=SUPPRESSED", session, self.modeSubstitutionObserved ? @"YES" : @"NO", self.deviceLocked ? @"YES" : @"NO", reason ?: @"unknown"]);
+    NNPDiagnosticTrace([NSString stringWithFormat:@"DISPLAY cleanup fail-open session=%@ substituted=%@ deviceLocked=%@ reason=%@ autoOff=SUPPRESSED", session, self.modeSubstitutionObserved ? @"YES" : @"NO", self.deviceLocked ? @"YES" : @"NO", reason ?: @"unknown"]);
     self.lifecycleState = NNPDisplayLifecycleStateIdle;
     NNPDiagnosticSetBool(@"Phase7LockedVisibleActive", NO);
     NNPDiagnosticSetBool(@"Phase7RestoreRequested", NO);
-    NNPDiagnosticLogTransition([NSString stringWithFormat:@"DISPLAY experiment stopped session=%@ reason=%@ substituted=%@ lockedSession=%@ restoreRequested=NO autoOff=SUPPRESSED deviceLocked=%@", session, reason ?: @"unknown", self.modeSubstitutionObserved ? @"YES" : @"NO", substitutedDuringLockedSession ? @"YES" : @"NO", self.deviceLocked ? @"YES" : @"NO"]);
+    NNPDiagnosticTrace([NSString stringWithFormat:@"DISPLAY experiment stopped session=%@ reason=%@ substituted=%@ lockedSession=%@ restoreRequested=NO autoOff=SUPPRESSED deviceLocked=%@", session, reason ?: @"unknown", self.modeSubstitutionObserved ? @"YES" : @"NO", substitutedDuringLockedSession ? @"YES" : @"NO", self.deviceLocked ? @"YES" : @"NO"]);
     self.modeSubstitutionObserved = NO;
     self.lockedVisibleActivated = NO;
     self.sessionIdentifier = nil;
