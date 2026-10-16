@@ -44,6 +44,9 @@ static _Atomic(bool) gNNPPhase7ProximitySeenDuringAOD = false;
 static _Atomic(bool) gNNPPhase7RevealOnWakePending = false;
 // Set when the proximity policy (source 13) restores the panel; the paired BLS unblank is not a user wake.
 static _Atomic(uint64_t) gNNPPhase7ProximityWakeDeadlineTicks = 0;
+// After the cover is released SpringBoard believes the panel is on, so the first side-button press arrives as a
+// lock (blank) request instead of a wake. Inside this window that request is treated as the wake it was meant to be.
+static _Atomic(uint64_t) gNNPPhase7CoverRestoreDeadlineTicks = 0;
 static _Atomic(uint64_t) gNNPPhase7NotificationWakeSuppressionDeadlineTicks = 0;
 static _Atomic(uint64_t) gNNPPhase7NotificationUnblankSuppressionDeadlineTicks = 0;
 static const double NNPPhase7NotificationWakeSuppressionSeconds = 6.0;
@@ -449,6 +452,9 @@ BOOL NNPPhase7SetScreenCovered(BOOL covered) {
         if (!isfinite(factor) || factor <= 0.0f) factor = 0.01f;
         gNNPOriginalSetScreenBlanked(NO);
         gNNPOriginalBacklightFactorFunction(1, factor, 0.2f);
+        uint64_t graceTicks = NNPPhase7TicksForSeconds(6.0);
+        atomic_store_explicit(&gNNPPhase7CoverRestoreDeadlineTicks,
+                              graceTicks ? mach_absolute_time() + graceTicks : 0, memory_order_release);
     }
     NNPDiagnosticSetBool(@"CoverNativeBlankRequested", covered);
     NNPDiagnosticTrace(covered ? @"COVER native display blank and zero backlight" : @"COVER native display restored");
@@ -545,6 +551,19 @@ static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
     if (suppress) {
         atomic_store_explicit(&gNNPPhase7BlankRequestSuppressed, true, memory_order_release);
         atomic_store_explicit(&gNNPPhase7RevealOnWakePending, true, memory_order_release);
+        uint64_t restoreDeadline = atomic_exchange_explicit(&gNNPPhase7CoverRestoreDeadlineTicks, 0, memory_order_acq_rel);
+        if (restoreDeadline && mach_absolute_time() <= restoreDeadline &&
+            atomic_load_explicit(&gNNPPhase7DeviceLocked, memory_order_acquire) &&
+            atomic_load_explicit(&gNNPPhase7AODPresentationActive, memory_order_acquire)) {
+            NNPDiagnosticTrace(@"PHASE7 blank request right after cover release treated as user wake");
+            atomic_store_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_release);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                NNPPhase7NotifyDisplayWake();
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    NNPPhase7RestoreWakeBrightness();
+                });
+            });
+        }
         uintptr_t callerOffset = callerInfo.dli_fbase
             ? (uintptr_t)caller - (uintptr_t)callerInfo.dli_fbase : 0;
         NNPDiagnosticTrace([NSString stringWithFormat:@"PHASE7 suppressed BKS screen blank request caller=%s+0x%llx; BLS state and display mode unchanged session=%@",
