@@ -1,4 +1,5 @@
 #import "NNPDisplayController.h"
+#import "NNPAODNitsController.h"
 #import "NNPDiagnostics.h"
 #import "NNPNotificationDiagnostics.h"
 #import "NNPChargingPolicy.h"
@@ -495,9 +496,10 @@ BOOL NNPPhase7ExtendNotificationWakeSuppressionIfActive(void) {
     return YES;
 }
 
-// After the cover cycle SpringBoard can be left in a proximity "off" state (4) while the panel is blank, so a
-// wake that only restores the factor stays dark. Put the backlight state back to on without re-arming AOD.
-static void NNPPhase7EnsureBacklightOn(void) {
+// After the cover cycle SpringBoard can be left in a proximity "off" state (4) while the panel is blank, and
+// restoring only the factor leaves the revealed Lock Screen dark. Use the native tap-wake sequence that the
+// outside-tap path already relies on: cycle the backlight to state 3 unarmed, wake, then release the AOD nits.
+static void NNPPhase7NativeWakeAfterCover(void) {
     if (!NSThread.isMainThread || !gNNPOriginalBacklightState) return;
     Class cls = NSClassFromString(@"SBBacklightController");
     SEL shared = NSSelectorFromString(@"sharedInstance");
@@ -510,11 +512,17 @@ static void NNPPhase7EnsureBacklightOn(void) {
     method_getReturnType(method, type, sizeof(type));
     if (type[0] != 'q') return;
     long long state = ((long long (*)(id, SEL))objc_msgSend)(controller, stateSelector);
-    NNPDiagnosticTrace([NSString stringWithFormat:@"PHASE7 wake after cover release sees SpringBoard backlight state=%lld", state]);
-    if (state == 1) return;
+    NNPDiagnosticTrace([NSString stringWithFormat:@"PHASE7 wake after cover release sees SpringBoard backlight state=%lld; using native tap wake", state]);
     bool wasArmed = atomic_exchange_explicit(&gNNPPhase7Armed, false, memory_order_acq_rel);
-    gNNPOriginalBacklightState(controller, NSSelectorFromString(@"setBacklightState:source:animated:completion:"), 1, 3, YES, nil);
+    gNNPOriginalBacklightState(controller, NSSelectorFromString(@"setBacklightState:source:animated:completion:"), 3, 3, NO, nil);
     atomic_store_explicit(&gNNPPhase7Armed, wasArmed, memory_order_release);
+    Class lockClass = NSClassFromString(@"SBLockScreenManager");
+    if ([lockClass respondsToSelector:shared]) {
+        id manager = ((id (*)(id, SEL))objc_msgSend)(lockClass, shared);
+        SEL wake = NSSelectorFromString(@"_wakeScreenForTapToWake");
+        if ([manager respondsToSelector:wake]) ((void (*)(id, SEL))objc_msgSend)(manager, wake);
+    }
+    NNPAODNitsEndSessionWithCompletion(^{ NNPPhase7RestoreWakeBrightness(); });
 }
 
 BOOL NNPPhase7PrepareNativeTapWake(void) {
@@ -581,10 +589,7 @@ static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
             atomic_store_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_release);
             dispatch_async(dispatch_get_main_queue(), ^{
                 NNPPhase7NotifyDisplayWake();
-                NNPPhase7EnsureBacklightOn();
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    NNPPhase7RestoreWakeBrightness();
-                });
+                NNPPhase7NativeWakeAfterCover();
             });
         }
         uintptr_t callerOffset = callerInfo.dli_fbase
