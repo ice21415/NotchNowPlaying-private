@@ -2,6 +2,11 @@ name: Build process sampler tool
 
 on:
   workflow_dispatch:
+  push:
+    branches: [codex/charging-flow-20261002]
+    paths:
+      - 'research/tools/nnp_proctop.c'
+      - '.github/workflows/build-proctop.yml'
 
 permissions:
   contents: read
