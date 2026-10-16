@@ -42,6 +42,8 @@ static _Atomic(bool) gNNPPhase7LastFactorHadProvider = false;
 static _Atomic(bool) gNNPPhase7BlankRequestSuppressed = false;
 static _Atomic(bool) gNNPPhase7ProximitySeenDuringAOD = false;
 static _Atomic(bool) gNNPPhase7RevealOnWakePending = false;
+// Set when the proximity policy (source 13) restores the panel; the paired BLS unblank is not a user wake.
+static _Atomic(uint64_t) gNNPPhase7ProximityWakeDeadlineTicks = 0;
 static _Atomic(uint64_t) gNNPPhase7NotificationWakeSuppressionDeadlineTicks = 0;
 static _Atomic(uint64_t) gNNPPhase7NotificationUnblankSuppressionDeadlineTicks = 0;
 static const double NNPPhase7NotificationWakeSuppressionSeconds = 6.0;
@@ -554,7 +556,9 @@ static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
     if (!blanked) {
         atomic_store_explicit(&gNNPPhase7BlankRequestSuppressed, false, memory_order_release);
         bool pending = fromBacklightServicesHost && atomic_exchange_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_acq_rel);
-        bool shouldReveal = fromBacklightServicesHost && NNPDisplayWakeShouldReveal(
+        uint64_t proximityDeadline = atomic_load_explicit(&gNNPPhase7ProximityWakeDeadlineTicks, memory_order_acquire);
+        bool proximityWake = proximityDeadline && mach_absolute_time() <= proximityDeadline;
+        bool shouldReveal = fromBacklightServicesHost && !proximityWake && NNPDisplayWakeShouldReveal(
             atomic_load_explicit(&gNNPPhase7Armed, memory_order_acquire),
             atomic_load_explicit(&gNNPPhase7DeviceLocked, memory_order_acquire),
             atomic_load_explicit(&gNNPPhase7AODPresentationActive, memory_order_acquire), pending,
@@ -636,6 +640,13 @@ static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger stat
     bool shouldReveal = false;
     if (state == 1) {
         bool pending = atomic_exchange_explicit(&gNNPPhase7RevealOnWakePending, false, memory_order_acq_rel);
+        if (source == NNPBacklightSourceProximity) {
+            // The suppressed lock blank that armed this flag was the system's own; discard it with the proximity wake.
+            pending = false;
+            uint64_t graceTicks = NNPPhase7TicksForSeconds(2.0);
+            atomic_store_explicit(&gNNPPhase7ProximityWakeDeadlineTicks,
+                                  graceTicks ? mach_absolute_time() + graceTicks : 0, memory_order_release);
+        }
         shouldReveal = NNPDisplayWakeShouldRevealForSource(armed, locked,
             atomic_load_explicit(&gNNPPhase7AODPresentationActive, memory_order_acquire), pending,
             atomic_load_explicit(&gNNPPhase7ScreenCovered, memory_order_acquire), (long)source);
