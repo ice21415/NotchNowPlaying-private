@@ -17,29 +17,52 @@ static BOOL NNPCoverSetter(id object, SEL selector, char argument) {
     return result[0] == 'v' && (input[0] == argument || (argument == 'B' && input[0] == 'c'));
 }
 @implementation NNPScreenCoverObserver {
-    BOOL _active, _covered, _ownedProximity;
-    BOOL _faceDown;
+    BOOL _active, _covered, _ownedProximity, _sensing, _lastNear, _faceDown, _haveLastAccel;
     CMMotionManager *_motion;
     id _proximityAssertion;
     BOOL (*_nativeNear)(void);
     BOOL (*_nativeActive)(void);
     NNPCoverConfirmation *_confirmation;
     NSUInteger _motionGeneration;
+    NSUInteger _stillSamples;
+    NSTimer *_windowTimer, *_periodicTimer;
+    NSTimeInterval _windowEnd;
+    double _lastX, _lastY, _lastZ;
 }
+
+// The proximity sensor is the expensive part (backboardd wakes continuously while it is on), so it only
+// runs in short windows: at activation, when the accelerometer sees movement, and periodically.
+static const NSTimeInterval NNPCoverMotionWindow = 2.5;
+static const NSTimeInterval NNPCoverPeriodicWindow = 2.0;
+static const NSTimeInterval NNPCoverPeriodicInterval = 15.0;
+static const double NNPCoverMotionThreshold = 0.12;
+static const NSUInteger NNPCoverStillSamplesBeforeSlowing = 20;
+
 - (BOOL)covered { return _covered; }
+- (NSTimeInterval)baseAccelerometerInterval { return _lowPower ? 2.0 : 0.5; }
+- (void)applyAccelerometerInterval {
+    NSTimeInterval base = [self baseAccelerometerInterval];
+    NSTimeInterval interval = _stillSamples >= NNPCoverStillSamplesBeforeSlowing ? MIN(5.0, base * 2.5) : base;
+    if (_motion && fabs(_motion.accelerometerUpdateInterval - interval) > 0.01) _motion.accelerometerUpdateInterval = interval;
+}
 - (void)setLowPower:(BOOL)lowPower {
     if (_lowPower == lowPower) return;
     _lowPower = lowPower;
-    _motion.accelerometerUpdateInterval = lowPower ? 2.0 : 0.5;
+    [self applyAccelerometerInterval];
+}
+- (BOOL)readProximityNear {
+    UIDevice *device = UIDevice.currentDevice;
+    return _nativeNear && _proximityAssertion ? _nativeNear() :
+        (device.proximityMonitoringEnabled && device.proximityState);
 }
 - (BOOL)readCovered {
     UIDevice *device = UIDevice.currentDevice;
-    BOOL near = _nativeNear && _proximityAssertion ? _nativeNear() :
-        (device.proximityMonitoringEnabled && device.proximityState);
+    BOOL near = _lastNear;
+    if (_sensing) { near = [self readProximityNear]; _lastNear = near; }
     BOOL down = _faceDown || device.orientation == UIDeviceOrientationFaceDown;
     NNPDiagnosticSetBool(@"CoverProximityNear", near);
     NNPDiagnosticSetBool(@"CoverFaceDown", down);
-    NNPDiagnosticSetBool(@"CoverNativeProximityActive", _nativeActive && _nativeActive());
+    NNPDiagnosticSetBool(@"CoverNativeProximityActive", _sensing);
     return near || down;
 }
 - (void)publish:(BOOL)covered {
@@ -93,6 +116,44 @@ static BOOL NNPCoverSetter(id object, SEL selector, char argument) {
     _proximityAssertion = nil;
     NNPDiagnosticSetBool(@"CoverNativeProximityAssertion", NO);
 }
+- (void)beginSensing {
+    if (_sensing || !_active) return;
+    _sensing = YES;
+    UIDevice *device = UIDevice.currentDevice;
+    _ownedProximity = !device.proximityMonitoringEnabled;
+    if (_ownedProximity) device.proximityMonitoringEnabled = YES;
+    [self startNativeProximity];
+}
+- (void)endSensingKeepingReading:(BOOL)keepReading {
+    if (!_sensing) return;
+    if (keepReading) _lastNear = [self readProximityNear];
+    _sensing = NO;
+    [self stopNativeProximity];
+    if (_ownedProximity) UIDevice.currentDevice.proximityMonitoringEnabled = NO;
+    _ownedProximity = NO;
+}
+- (void)openSensingWindow:(NSTimeInterval)duration {
+    if (!_active) return;
+    [self beginSensing];
+    NSTimeInterval end = NSProcessInfo.processInfo.systemUptime + duration;
+    if (_windowTimer && _windowEnd >= end) return;
+    _windowEnd = end;
+    [_windowTimer invalidate];
+    __weak typeof(self) weakSelf = self;
+    _windowTimer = [NSTimer scheduledTimerWithTimeInterval:duration repeats:NO block:^(__unused NSTimer *timer) {
+        NNPScreenCoverObserver *owner = weakSelf;
+        if (!owner) return;
+        owner->_windowTimer = nil;
+        [owner endSensingKeepingReading:YES];
+        [owner changed:nil];
+    }];
+    _windowTimer.tolerance = 0.3;
+}
+- (void)teardownSensing {
+    [_windowTimer invalidate]; _windowTimer = nil;
+    [_periodicTimer invalidate]; _periodicTimer = nil;
+    [self endSensingKeepingReading:NO];
+}
 - (void)setActive:(BOOL)active {
     if (_active == active) return;
     _active = active;
@@ -101,25 +162,31 @@ static BOOL NNPCoverSetter(id object, SEL selector, char argument) {
     UIDevice *device = UIDevice.currentDevice;
     if (!active) {
         [_motion stopAccelerometerUpdates]; _motion = nil;
-        [self stopNativeProximity];
+        [self teardownSensing];
         _faceDown = NO;
+        _lastNear = NO;
+        _haveLastAccel = NO;
+        _stillSamples = 0;
         [NSNotificationCenter.defaultCenter removeObserver:self];
-        if (_ownedProximity) device.proximityMonitoringEnabled = NO;
-        _ownedProximity = NO;
-        [device endGeneratingDeviceOrientationNotifications];
         [self publish:NO];
         return;
     }
-    _ownedProximity = !device.proximityMonitoringEnabled;
-    if (_ownedProximity) device.proximityMonitoringEnabled = YES;
     __weak typeof(self) confirmationOwner = self;
     if (!_confirmation) {
         _confirmation = [NNPCoverConfirmation new];
         _confirmation.onChange = ^(BOOL covered) { [confirmationOwner publish:covered]; };
     }
-    [self startNativeProximity];
+    _lastNear = NO;
+    _haveLastAccel = NO;
+    _stillSamples = 0;
+    [self openSensingWindow:3.0];
+    __weak typeof(self) periodicOwner = self;
+    _periodicTimer = [NSTimer scheduledTimerWithTimeInterval:NNPCoverPeriodicInterval repeats:YES block:^(__unused NSTimer *timer) {
+        [periodicOwner openSensingWindow:NNPCoverPeriodicWindow];
+    }];
+    _periodicTimer.tolerance = 3.0;
     _motion = [CMMotionManager new];
-    _motion.accelerometerUpdateInterval = _lowPower ? 2.0 : 0.5;
+    _motion.accelerometerUpdateInterval = [self baseAccelerometerInterval];
     NNPDiagnosticSetBool(@"CoverMotionAvailable", _motion.accelerometerAvailable);
     __weak typeof(self) weakSelf = self;
     [_motion startAccelerometerUpdatesToQueue:NSOperationQueue.mainQueue withHandler:^(CMAccelerometerData *data, NSError *error) {
@@ -127,27 +194,32 @@ static BOOL NNPCoverSetter(id object, SEL selector, char argument) {
         if (!owner || !owner->_active || owner->_motionGeneration != motionGeneration ||
             !data || error || !isfinite(data.acceleration.z)) return;
         double age = NSProcessInfo.processInfo.systemUptime - data.timestamp;
-        if (age < 0 || age > 3.0) return;
-        owner->_faceDown = owner->_faceDown ? data.acceleration.z > 0.65 : data.acceleration.z > 0.85;
+        if (age < 0 || age > 6.0) return;
+        CMAcceleration a = data.acceleration;
+        BOOL moved = owner->_haveLastAccel &&
+            (fabs(a.x - owner->_lastX) + fabs(a.y - owner->_lastY) + fabs(a.z - owner->_lastZ)) > NNPCoverMotionThreshold;
+        owner->_lastX = a.x; owner->_lastY = a.y; owner->_lastZ = a.z;
+        owner->_haveLastAccel = YES;
+        if (moved) {
+            owner->_stillSamples = 0;
+            [owner applyAccelerometerInterval];
+            [owner openSensingWindow:NNPCoverMotionWindow];
+        } else if (++owner->_stillSamples == NNPCoverStillSamplesBeforeSlowing) {
+            [owner applyAccelerometerInterval];
+        }
+        owner->_faceDown = owner->_faceDown ? a.z > 0.65 : a.z > 0.85;
         NNPDiagnosticSetBool(@"CoverMotionSampleReceived", YES);
         [owner changed:nil];
     }];
-    [device beginGeneratingDeviceOrientationNotifications];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(changed:)
         name:UIDeviceProximityStateDidChangeNotification object:device];
-    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(changed:)
-        name:UIDeviceOrientationDidChangeNotification object:device];
-    NNPDiagnosticSetBool(@"CoverProximityMonitoringAvailable", device.proximityMonitoringEnabled);
+    NNPDiagnosticSetBool(@"CoverProximityMonitoringAvailable", YES);
     [self changed:nil];
 }
 - (void)dealloc {
     [_motion stopAccelerometerUpdates];
-    [self stopNativeProximity];
+    [self teardownSensing];
     [_confirmation reset];
     [NSNotificationCenter.defaultCenter removeObserver:self];
-    if (_active) {
-        if (_ownedProximity) UIDevice.currentDevice.proximityMonitoringEnabled = NO;
-        [UIDevice.currentDevice endGeneratingDeviceOrientationNotifications];
-    }
 }
 @end
