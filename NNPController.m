@@ -279,6 +279,10 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (BOOL)idleBrightnessIntent;
 - (void)scheduleIdleDeepIfNeeded;
 - (void)cancelIdleDeep;
+- (void)cancelStillOff;
+- (void)updateStillOffForActiveAOD:(BOOL)activeAOD;
+- (void)stillOffPickupDetected;
+- (void)armStillTimerForMinutes:(NSInteger)minutes;
 - (void)updatePowerStatsTimer;
 - (void)stopPowerStatsTimer;
 - (void)updateNotchGestureWindow;
