@@ -422,6 +422,11 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         if (!controller || !(controller.preferences.aodAutomaticBrightnessEnabled || [controller idleBrightnessIntent]) ||
             controller.idleDeepActive || ![controller shouldPresentInsideCoverSheet]) return;
         float target = valid ? NNPAODAmbientTargetNits(lux) : 0;
+#if NNP_ENABLE_VERBOSE_DIAGNOSTICS
+        // Research only: a fixed nits level for power-versus-brightness measurements.
+        id research = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("ResearchFixedNits"), CFSTR("com.user.notchnowplaying")));
+        if ([research respondsToSelector:@selector(floatValue)] && [research floatValue] > 0.0f) target = [research floatValue];
+#endif
         if (fabsf(controller.ambientBrightnessTargetNits - target) >= 0.5f) {
             NNPDiagnosticLogTransition([NSString stringWithFormat:@"AOD_AMBIENT lux=%.1f valid=%@ targetNits=%.2f", lux, valid ? @"YES" : @"NO", target]);
         }
