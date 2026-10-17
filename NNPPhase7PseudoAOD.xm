@@ -1,5 +1,6 @@
 #import "NNPDisplayController.h"
 #import "NNPAODNitsController.h"
+#import "NNPRecorder.h"
 #import "NNPDiagnostics.h"
 #import "NNPNotificationDiagnostics.h"
 #import "NNPChargingPolicy.h"
@@ -389,6 +390,7 @@ static BOOL NNPPhase7ReadDimmedFactor(void *providerObject, float *factorOut) {
 }
 
 static void NNPPhase7BacklightFactorReplacement(int displayID, float factor, float fadeDuration) {
+    NNPRecorderLog([NSString stringWithFormat:@"HID factor display=%d factor=%.3f fade=%.2f main=%d", displayID, factor, fadeDuration, (int)NSThread.isMainThread]);
     void *provider = atomic_load_explicit(&gNNPPhase7ProviderForFactorHook, memory_order_acquire);
     bool armed = atomic_load_explicit(&gNNPPhase7Armed, memory_order_acquire);
     uint64_t callCount = armed
@@ -549,6 +551,7 @@ BOOL NNPPhase7PrepareNativeTapWake(void) {
 }
 
 static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
+    NNPRecorderLog([NSString stringWithFormat:@"BKS setScreenBlanked=%d", (int)blanked]);
     NNPSetScreenBlankedFunction original = gNNPOriginalSetScreenBlanked;
     if (!original) return;
 
@@ -619,6 +622,7 @@ static void NNPPhase7SetScreenBlankedReplacement(BOOL blanked) {
 }
 
 static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger state, NSInteger source, BOOL animated, id completion) {
+    NNPRecorderLog([NSString stringWithFormat:@"SB setBacklightState=%ld source=%ld animated=%d", (long)state, (long)source, (int)animated]);
     NNPBacklightStateIMP original = gNNPOriginalBacklightState;
     if (!original) return;
 
@@ -725,6 +729,7 @@ static void NNPPhase7BacklightStateReplacement(id self, SEL _cmd, NSInteger stat
 }
 
 static void NNPPhase7ProviderTransitionReplacement(id self, SEL _cmd, long long mode, double duration) {
+    NNPRecorderLog([NSString stringWithFormat:@"BLS transitionToDisplayMode=%lld duration=%.2f", mode, duration]);
     NNPProviderTransitionIMP original = gNNPOriginalProviderTransition;
     if (!original) return;
     if (mode != 0 || atomic_load_explicit(&gNNPPhase7ScreenCovered, memory_order_acquire) ||
