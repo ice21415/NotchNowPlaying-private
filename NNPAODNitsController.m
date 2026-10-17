@@ -181,3 +181,23 @@ void NNPAODNitsEndSessionWithCompletion(dispatch_block_t completion) {
         });
     });
 }
+
+static NSString *gNNPAODPanelSummary = @"pn=?";
+NSString *NNPAODPanelBrightnessSummary(void) { return gNNPAODPanelSummary; }
+void NNPAODStartPanelBrightnessSampler(void) {
+    static dispatch_source_t timer;
+    if (timer) return;
+    dispatch_queue_t queue = dispatch_queue_create("com.user.notchnowplaying.panelsampler", DISPATCH_QUEUE_SERIAL);
+    timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, queue);
+    dispatch_source_set_timer(timer, DISPATCH_TIME_NOW, (uint64_t)(0.1 * NSEC_PER_SEC), (uint64_t)(0.01 * NSEC_PER_SEC));
+    dispatch_source_set_event_handler(timer, ^{
+        id<NNPAODBrightnessClient> client = NNPAODGetBrightnessClient();
+        id brightness = nil;
+        @try { brightness = [client copyPropertyForKey:@"DisplayBrightness"]; } @catch (NSException *exception) { (void)exception; }
+        if ([brightness isKindOfClass:NSDictionary.class]) {
+            NSDictionary *d = brightness;
+            gNNPAODPanelSummary = [NSString stringWithFormat:@"pn=%@/%@", d[@"Nits"], d[@"Brightness"]];
+        }
+    });
+    dispatch_resume(timer);
+}

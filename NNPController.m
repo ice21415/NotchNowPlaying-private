@@ -370,16 +370,17 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     id controller = [cls respondsToSelector:NSSelectorFromString(@"sharedInstance")] ? ((id (*)(id, SEL))objc_msgSend)(cls, NSSelectorFromString(@"sharedInstance")) : nil;
     if ([controller respondsToSelector:NSSelectorFromString(@"backlightState")]) backlight = ((long long (*)(id, SEL))objc_msgSend)(controller, NSSelectorFromString(@"backlightState"));
     UIWindow *host = self.coverSheetHostView.window;
-    return [NSString stringWithFormat:@"bl=%lld scr=%.3f locked=%d aod=%d life=%ld still=%d pocket=%d win(h=%d a=%.2f) view(a=%.2f op=%.2f) host(w=%d h=%d a=%.2f) reveal=%d nits=%.1f",
+    return [NSString stringWithFormat:@"bl=%lld scr=%.3f locked=%d aod=%d life=%ld still=%d pocket=%d win(h=%d a=%.2f) view(a=%.2f op=%.2f) host(w=%d h=%d a=%.2f) reveal=%d nits=%.1f %@",
         backlight, UIScreen.mainScreen.brightness, (int)self.locked, (int)self.display.aodPresentationActive, (long)self.display.lifecycleState,
         (int)self.stillBlanked, (int)[self pocketSuspended], self.window ? (int)self.window.hidden : -1, self.window.alpha,
         self.view.alpha, self.view.layer.opacity, host != nil, host ? (int)host.hidden : -1, host.alpha,
-        (int)self.coverSheetBlackoutRevealed, self.display.automaticBrightnessNits];
+        (int)self.coverSheetBlackoutRevealed, self.display.automaticBrightnessNits, NNPAODPanelBrightnessSummary()];
 }
 - (void)install {
     if (_installed) return; _installed = YES;
     if (NNPRecorderEnabled()) {
         __weak typeof(self) recorderSelf = self;
+        NNPAODStartPanelBrightnessSampler();
         NNPRecorderStart(^NSString *{ return [recorderSelf recorderSnapshot]; });
     }
     self.preferences = [NNPPreferences sharedPreferences]; [self.preferences startObserving];
