@@ -31,8 +31,7 @@ void NNPRecorderLog(NSString *message) {
         flushScheduled = YES;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), NNPRecorderQueue(), ^{
             flushScheduled = NO;
-            NNPDiagnosticSetString(@"RecorderLog", [lines componentsJoinedByString:@"
-"]);
+            NNPDiagnosticSetString(@"RecorderLog", [lines componentsJoinedByString:@"\n"]);
         });
     });
 }
