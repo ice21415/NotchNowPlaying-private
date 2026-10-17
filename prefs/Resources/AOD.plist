@@ -306,6 +306,42 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
+			<string>環境很暗（低於約 2 lux）又沒有拿起手機時，時鐘 AOD 會在設定的時間後熄屏，不必等到上面的熄屏時間。拿起手機、碰螢幕或按側鍵會再亮起。充電中不會熄屏。只用無音樂時鐘已經在取樣的環境光，不會增加感測。</string>
+			<key>label</key>
+			<string>暗處自動熄屏（睡覺模式）</string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.user.notchnowplaying.preferences.changed</string>
+			<key>cell</key>
+			<string>PSSegmentCell</string>
+			<key>default</key>
+			<integer>3</integer>
+			<key>defaults</key>
+			<string>com.user.notchnowplaying</string>
+			<key>key</key>
+			<string>AODDarkTimeoutMinutes</string>
+			<key>label</key>
+			<string>暗處自動熄屏（睡覺模式）</string>
+			<key>validTitles</key>
+			<array>
+				<string>關</string>
+				<string>1 分</string>
+				<string>3 分</string>
+				<string>10 分</string>
+			</array>
+			<key>validValues</key>
+			<array>
+				<integer>0</integer>
+				<integer>1</integer>
+				<integer>3</integer>
+				<integer>10</integer>
+			</array>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
 			<string>AOD 期間會定時微幅移動內容，並讓亮度每幾分鐘緩慢起伏，降低烙印風險。關閉後內容固定不動，長時間顯示有烙印風險。</string>
 			<key>label</key>
 			<string>像素保護</string>

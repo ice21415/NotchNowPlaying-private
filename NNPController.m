@@ -238,6 +238,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic) BOOL liftBoostActive;
 @property(nonatomic, strong) NSTimer *liftBoostTimer;
 @property(nonatomic, strong) NSTimer *stillTimer;
+@property(nonatomic, strong) NSTimer *darkTimer;
+@property(nonatomic) BOOL ambientDark;
 @property(nonatomic, strong) NNPPickupMonitor *pickupMonitor;
 @property(nonatomic) uint32_t idleSleepAssertion;
 @property(nonatomic, strong) NSTimer *powerStatsTimer;
@@ -299,6 +301,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)endLiftBoost;
 - (void)updateStillOffForActiveAOD:(BOOL)activeAOD;
 - (void)stillOffPickupEvent:(long long)gesture;
+- (void)noteAmbientLux:(double)lux valid:(BOOL)valid;
+- (void)updateDarkTimerForActiveAOD:(BOOL)activeAOD;
 - (void)armStillTimerForMinutes:(double)minutes;
 - (void)updatePowerStatsTimer;
 - (void)stopPowerStatsTimer;
@@ -469,6 +473,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     self.ambientLight = [NNPAODAmbientLight new];
     self.ambientLight.sampleHandler = ^(double lux, BOOL valid) {
         NNPController *controller = weakSelf;
+        if (controller) [controller noteAmbientLux:lux valid:valid];
         if (!controller || !(controller.preferences.aodAutomaticBrightnessEnabled || [controller idleBrightnessIntent]) ||
             controller.idleDeepActive || ![controller shouldPresentInsideCoverSheet]) return;
         float target = valid ? NNPAODAmbientTargetNits(lux) : 0;
@@ -652,6 +657,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)cancelStillOff {
     [self.stillTimer invalidate];
     self.stillTimer = nil;
+    [self.darkTimer invalidate];
+    self.darkTimer = nil;
     self.stillBlanked = NO;
     [self.pickupMonitor setActive:NO];
     [self endLiftBoost];
@@ -704,17 +711,56 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     }];
     self.stillTimer.tolerance = MIN(15.0, minutes * 60.0 * 0.1);
 }
+// "Sleep mode": in a dark room with no pickup for a few minutes the idle clock is not being read, so blank the
+// panel the same way as the still timeout. Only the ambient samples the clock AOD already takes are used.
+- (void)noteAmbientLux:(double)lux valid:(BOOL)valid {
+    BOOL dark = valid && lux < (self.ambientDark ? 4.0 : 2.0);
+    if (dark == self.ambientDark) return;
+    self.ambientDark = dark;
+    [self reconcile];
+}
+- (void)updateDarkTimerForActiveAOD:(BOOL)activeAOD {
+    double minutes = self.preferences.aodDarkTimeoutMinutes;
+    BOOL wanted = minutes > 0 && activeAOD && self.ambientDark && [self idleBrightnessIntent] && !self.mengoOpen;
+    if (!wanted || self.stillBlanked) {
+        [self.darkTimer invalidate];
+        self.darkTimer = nil;
+        return;
+    }
+    if (self.darkTimer) return;
+    __weak typeof(self) weakSelf = self;
+    self.darkTimer = [NSTimer scheduledTimerWithTimeInterval:minutes * 60.0 repeats:NO block:^(__unused NSTimer *timer) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        strongSelf.darkTimer = nil;
+        UIDeviceBatteryState battery = UIDevice.currentDevice.batteryState;
+        if (!strongSelf.ambientDark || battery == UIDeviceBatteryStateCharging || battery == UIDeviceBatteryStateFull) {
+            [strongSelf reconcile];
+            return;
+        }
+        strongSelf.stillBlanked = YES;
+        NNPDiagnosticTrace([NSString stringWithFormat:@"DARK no pickup for %.1f min in the dark; blanking idle AOD", minutes]);
+        [strongSelf reconcile];
+    }];
+    self.darkTimer.tolerance = MIN(15.0, minutes * 60.0 * 0.1);
+}
 - (void)updateStillOffForActiveAOD:(BOOL)activeAOD {
     double minutes = self.preferences.aodStillTimeoutMinutes;
     // idleModeActive turns NO while the panel is blanked, so use the intent that does not depend on it.
-    BOOL stillWanted = minutes > 0 && activeAOD && [self idleBrightnessIntent] && !self.mengoOpen;
+    BOOL idleIntent = activeAOD && [self idleBrightnessIntent] && !self.mengoOpen;
+    BOOL stillWanted = minutes > 0 && idleIntent;
+    BOOL darkWanted = self.preferences.aodDarkTimeoutMinutes > 0 && idleIntent;
     BOOL boostWanted = activeAOD && self.preferences.aodLiftBoostFactor > 1.01 && !self.mengoOpen;
     if (!stillWanted) {
         [self.stillTimer invalidate];
         self.stillTimer = nil;
-        self.stillBlanked = NO;
     }
-    if (!stillWanted && !boostWanted) {
+    if (!stillWanted && !darkWanted) self.stillBlanked = NO;
+    if (!darkWanted) {
+        [self.darkTimer invalidate];
+        self.darkTimer = nil;
+    }
+    if (!stillWanted && !darkWanted && !boostWanted) {
         if (self.pickupMonitor) [self.pickupMonitor setActive:NO];
         [self endLiftBoost];
         return;
@@ -726,12 +772,15 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     }
     [self.pickupMonitor setActive:YES];
     if (stillWanted && !self.stillBlanked && !self.stillTimer) [self armStillTimerForMinutes:minutes];
+    [self updateDarkTimerForActiveAOD:activeAOD];
 }
 - (void)stillOffPickupEvent:(long long)gesture {
     BOOL lifted = gesture != 3;
     BOOL wasBlanked = self.stillBlanked;
     [self.stillTimer invalidate];
     self.stillTimer = nil;
+    [self.darkTimer invalidate];
+    self.darkTimer = nil;
     self.stillBlanked = NO;
     NNPDiagnosticTrace(wasBlanked ? @"STILL pickup while blanked; restoring idle AOD" : @"STILL pickup; restarting the idle timer");
     if (lifted) {
