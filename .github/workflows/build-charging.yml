@@ -17,6 +17,7 @@ on:
       - 'Makefile'
       - 'control'
       - 'layout/**'
+      - 'prefs/**'
       - 'Preferences/**'
       - 'research/tools/*_test.*'
       - '.github/workflows/build-charging.yml'
