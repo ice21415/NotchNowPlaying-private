@@ -5,6 +5,7 @@
 #import "NNPAODPresentation.h"
 #import "NNPPickupMonitor.h"
 #import "NNPRecorder.h"
+#import <dlfcn.h>
 #import "NNPMengoSensorMode.h"
 #import "NNPController.h"
 #import "NNPChargingController.h"
@@ -243,6 +244,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic, strong) NSTimer *keepAliveTimer;
 @property(nonatomic, strong) CALayer *keepAliveLayer;
 @property(nonatomic) BOOL keepAlivePhase;
+@property(nonatomic) uint32_t idleSleepAssertion;
 @property(nonatomic, strong) NSTimer *powerStatsTimer;
 @property(nonatomic, strong) NSTimer *idleDeepTimer;
 @property(nonatomic) NSTimeInterval progressTimerInterval;
@@ -1442,6 +1444,31 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
                     [CATransaction commit];
                 }];
                 NNPRecorderLog([NSString stringWithFormat:@"KEEPALIVE started interval=%.2f", seconds]);
+            }
+        }
+        // Research: hold "prevent idle system sleep" during the idle clock, as audio playback does for the music AOD.
+        {
+            typedef int (*NNPAssertCreate)(CFStringRef, uint32_t, CFStringRef, uint32_t *);
+            typedef int (*NNPAssertRelease)(uint32_t);
+            static NNPAssertCreate create; static NNPAssertRelease release;
+            static dispatch_once_t once;
+            dispatch_once(&once, ^{
+                void *iokit = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_LAZY);
+                create = iokit ? (NNPAssertCreate)dlsym(iokit, "IOPMAssertionCreateWithName") : NULL;
+                release = iokit ? (NNPAssertRelease)dlsym(iokit, "IOPMAssertionRelease") : NULL;
+            });
+            id flag = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("ResearchSystemAssertion"), CFSTR("com.user.notchnowplaying")));
+            BOOL want = [flag respondsToSelector:@selector(boolValue)] && [flag boolValue] && activeAOD &&
+                [self idleBrightnessIntent] && !self.stillBlanked;
+            if (want && !self.idleSleepAssertion && create) {
+                uint32_t identifier = 0;
+                int result = create(CFSTR("PreventUserIdleSystemSleep"), 255, CFSTR("NotchNowPlaying idle AOD"), &identifier);
+                if (result == 0) self.idleSleepAssertion = identifier;
+                NNPRecorderLog([NSString stringWithFormat:@"ASSERT create result=0x%x id=%u", result, identifier]);
+            } else if (!want && self.idleSleepAssertion && release) {
+                release(self.idleSleepAssertion);
+                NNPRecorderLog(@"ASSERT released");
+                self.idleSleepAssertion = 0;
             }
         }
         BOOL coverDetectionActive = activeAOD && self.preferences.aodPocketModeEnabled && !self.mengoOpen && !self.stillBlanked;
