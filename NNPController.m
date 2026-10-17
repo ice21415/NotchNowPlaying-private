@@ -1558,7 +1558,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     NNPDiagnosticLogTransition([NSString stringWithFormat:@"CONTROLLER AOD all-surface physical pixel shift x=%d y=%d step=%lu rest=0.21s", offset.x, offset.y, (unsigned long)self.pixelShiftStep]);
 }
 - (void)startAODPixelShiftTimer {
-    if (![self shouldPresentInsideCoverSheet] || [self pocketSuspended]) {
+    if (!self.preferences.aodPixelShiftEnabled || ![self shouldPresentInsideCoverSheet] || [self pocketSuspended]) {
         [self stopAODPixelShiftTimer];
         return;
     }
@@ -1587,6 +1587,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     self.charging.pixelShiftPixels = CGPointZero;
     [self.view.layer removeAnimationForKey:@"aodPixelRest"];
     [self.statusBarPlayerView.layer removeAnimationForKey:@"aodPixelRest"];
+    NNPAODClearBreathDim(self.view.layer);
+    NNPAODClearBreathDim(self.statusBarPlayerView.layer);
     NNPDiagnosticSetBool(@"AODPixelShiftTimerActive", NO);
     NNPDiagnosticSetInteger(@"AODPixelShiftX", 0);
     NNPDiagnosticSetInteger(@"AODPixelShiftY", 0);

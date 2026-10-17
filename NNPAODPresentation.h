@@ -44,3 +44,9 @@ static inline void NNPAODRestPixels(CALayer *layer) {
     dim.opacity = target;
     [CATransaction commit];
 }
+
+// Drops the brightness-breathing overlay (used when pixel protection is turned off).
+static inline void NNPAODClearBreathDim(CALayer *layer) {
+    for (CALayer *sub in [layer.sublayers copy])
+        if ([sub.name isEqualToString:@"nnpAODBreathDim"]) [sub removeFromSuperlayer];
+}
