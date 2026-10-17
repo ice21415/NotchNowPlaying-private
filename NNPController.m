@@ -240,6 +240,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic, strong) NSTimer *stillTimer;
 @property(nonatomic, strong) NNPPickupMonitor *pickupMonitor;
 @property(nonatomic, strong) NNPMengoSensorMode *idleSensorMode;
+@property(nonatomic, strong) NSTimer *keepAliveTimer;
+@property(nonatomic, strong) CALayer *keepAliveLayer;
+@property(nonatomic) BOOL keepAlivePhase;
 @property(nonatomic, strong) NSTimer *powerStatsTimer;
 @property(nonatomic, strong) NSTimer *idleDeepTimer;
 @property(nonatomic) NSTimeInterval progressTimerInterval;
@@ -1415,6 +1418,31 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
             if (want && !self.idleSensorMode) self.idleSensorMode = [NNPMengoSensorMode new];
             [self.idleSensorMode setActive:want];
             NNPRecorderLog([NSString stringWithFormat:@"IDLE sensor mode active=%d", (int)want]);
+        }
+        // Research: keep the display pipeline from idling on the static idle clock by changing one invisible
+        // near-black pixel at the configured interval (the music AOD redraws its progress every second).
+        {
+            id interval = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("ResearchKeepAliveInterval"), CFSTR("com.user.notchnowplaying")));
+            double seconds = [interval respondsToSelector:@selector(doubleValue)] ? [interval doubleValue] : 0;
+            BOOL want = seconds > 0 && activeAOD && [self idleBrightnessIntent] && !self.stillBlanked;
+            if (!want) { [self.keepAliveTimer invalidate]; self.keepAliveTimer = nil; [self.keepAliveLayer removeFromSuperlayer]; self.keepAliveLayer = nil; }
+            else if (!self.keepAliveTimer) {
+                self.keepAliveLayer = [CALayer layer];
+                self.keepAliveLayer.frame = CGRectMake(0, 0, 2, 2);
+                self.keepAliveLayer.backgroundColor = UIColor.blackColor.CGColor;
+                [self.window.layer addSublayer:self.keepAliveLayer];
+                __weak typeof(self) weakSelf = self;
+                self.keepAliveTimer = [NSTimer scheduledTimerWithTimeInterval:seconds repeats:YES block:^(__unused NSTimer *timer) {
+                    NNPController *controller = weakSelf;
+                    if (!controller) return;
+                    controller.keepAlivePhase = !controller.keepAlivePhase;
+                    [CATransaction begin];
+                    [CATransaction setDisableActions:YES];
+                    controller.keepAliveLayer.backgroundColor = [UIColor colorWithWhite:controller.keepAlivePhase ? 0.004 : 0.0 alpha:1.0].CGColor;
+                    [CATransaction commit];
+                }];
+                NNPRecorderLog([NSString stringWithFormat:@"KEEPALIVE started interval=%.2f", seconds]);
+            }
         }
         BOOL coverDetectionActive = activeAOD && self.preferences.aodPocketModeEnabled && !self.mengoOpen && !self.stillBlanked;
         [self.pocketObserver setActive:coverDetectionActive];
