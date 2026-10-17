@@ -25,6 +25,12 @@ static void print_value(CFStringRef key, CFTypeRef value) {
         char s[256];
         CFStringGetCString(value, s, sizeof(s), kCFStringEncodingUTF8);
         printf("%-34s \"%s\"\n", k, s);
+    } else if (CFGetTypeID(value) == CFDictionaryGetTypeID()) {
+        CFStringRef text = CFCopyDescription(value);
+        char s[4096];
+        if (CFStringGetCString(text, s, sizeof(s), kCFStringEncodingUTF8)) printf("%-34s %s
+", k, s);
+        CFRelease(text);
     } else {
         printf("%-34s <type %lu>\n", k, (unsigned long)CFGetTypeID(value));
     }
