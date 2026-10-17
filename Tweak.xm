@@ -1,7 +1,6 @@
 #import <UIKit/UIKit.h>
 #import <unistd.h>
 #import "NNPController.h"
-#import "NNPWakeGestureProbe.h"
 #import "NNPDiagnostics.h"
 #import "NNPDisplayController.h"
 #import "NNPNotificationDiagnostics.h"
@@ -110,7 +109,6 @@ static __attribute__((noinline)) void NNPLocalNoop(void) {
 #endif
         NNPNotificationDiagnosticsStart();
         [[NNPController sharedController] install];
-        NNPWakeGestureProbeStartIfEnabled();
 #if NNP_ENABLE_SSH_SCREENSHOT_PROBE
         NNPScreenshotProbeInterfaces();
 #endif

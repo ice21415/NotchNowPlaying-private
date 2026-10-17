@@ -3,6 +3,7 @@
 #import "NNPAODPowerPolicy.h"
 #import "NNPAODNitsController.h"
 #import "NNPAODPresentation.h"
+#import "NNPPickupMonitor.h"
 #import "NNPController.h"
 #import "NNPChargingController.h"
 #import "NNPMediaController.h"
@@ -224,6 +225,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic, strong) NNPAODAmbientLight *ambientLight;
 @property(nonatomic) float ambientBrightnessTargetNits;
 @property(nonatomic) BOOL idleDeepActive;
+@property(nonatomic) BOOL stillBlanked;
+@property(nonatomic, strong) NSTimer *stillTimer;
+@property(nonatomic, strong) NNPPickupMonitor *pickupMonitor;
 @property(nonatomic, strong) NSTimer *powerStatsTimer;
 @property(nonatomic, strong) NSTimer *idleDeepTimer;
 @property(nonatomic) NSTimeInterval progressTimerInterval;
@@ -1260,7 +1264,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 #endif
         BOOL activeAOD = self.locked && self.display.aodPresentationActive &&
             self.display.lifecycleState == NNPDisplayLifecycleStateActive;
-        BOOL coverDetectionActive = activeAOD && self.preferences.aodPocketModeEnabled && !self.mengoOpen;
+        [self updateStillOffForActiveAOD:activeAOD];
+        BOOL coverDetectionActive = activeAOD && self.preferences.aodPocketModeEnabled && !self.mengoOpen && !self.stillBlanked;
         [self.pocketObserver setActive:coverDetectionActive];
         self.screenCoverObserver.lowPower = [self idleBrightnessIntent];
         [self.screenCoverObserver setActive:coverDetectionActive];
