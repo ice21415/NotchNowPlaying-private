@@ -575,7 +575,56 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (BOOL)pocketSuspended {
     return NNPAODCoverShouldSuspend(self.preferences.aodPocketModeEnabled, self.locked,
         self.display.aodPresentationActive, self.mengoOpen,
-        self.screenCoverObserver.covered, self.pocketObserver.inPocket);
+        self.screenCoverObserver.covered, self.pocketObserver.inPocket) ||
+        (self.stillBlanked && self.locked && self.display.aodPresentationActive);
+}
+// "Auto-off after being put down": the idle clock AOD blanks the panel (the same path as the cover blank)
+// once no pickup has been seen for the configured time, and a pickup brings it back. Pickups come from the
+// motion coprocessor, so nothing polls while the panel is off.
+- (void)cancelStillOff {
+    [self.stillTimer invalidate];
+    self.stillTimer = nil;
+    self.stillBlanked = NO;
+    [self.pickupMonitor setActive:NO];
+}
+- (void)armStillTimerForMinutes:(NSInteger)minutes {
+    __weak typeof(self) weakSelf = self;
+    self.stillTimer = [NSTimer scheduledTimerWithTimeInterval:(NSTimeInterval)minutes * 60.0 repeats:NO block:^(__unused NSTimer *timer) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        strongSelf.stillTimer = nil;
+        UIDeviceBatteryState battery = UIDevice.currentDevice.batteryState;
+        if (battery == UIDeviceBatteryStateCharging || battery == UIDeviceBatteryStateFull) {
+            [strongSelf armStillTimerForMinutes:minutes];
+            return;
+        }
+        strongSelf.stillBlanked = YES;
+        NNPDiagnosticTrace([NSString stringWithFormat:@"STILL no pickup for %ld min; blanking idle AOD", (long)minutes]);
+        [strongSelf reconcile];
+    }];
+    self.stillTimer.tolerance = 15.0;
+}
+- (void)updateStillOffForActiveAOD:(BOOL)activeAOD {
+    NSInteger minutes = self.preferences.aodStillTimeoutMinutes;
+    if (minutes <= 0 || !activeAOD || ![self idleModeActive] || self.mengoOpen) {
+        if (self.stillBlanked || self.stillTimer || self.pickupMonitor) [self cancelStillOff];
+        return;
+    }
+    if (!self.pickupMonitor) {
+        self.pickupMonitor = [NNPPickupMonitor new];
+        __weak typeof(self) weakSelf = self;
+        self.pickupMonitor.lifted = ^{ [weakSelf stillOffPickupDetected]; };
+    }
+    [self.pickupMonitor setActive:YES];
+    if (!self.stillBlanked && !self.stillTimer) [self armStillTimerForMinutes:minutes];
+}
+- (void)stillOffPickupDetected {
+    BOOL wasBlanked = self.stillBlanked;
+    [self.stillTimer invalidate];
+    self.stillTimer = nil;
+    self.stillBlanked = NO;
+    NNPDiagnosticTrace(wasBlanked ? @"STILL pickup while blanked; restoring idle AOD" : @"STILL pickup; restarting the idle timer");
+    [self reconcile];
 }
 - (void)aodOrientationChanged:(__unused NSNotification *)note {
     if (!self.orientationMonitoring) return;
