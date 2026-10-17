@@ -108,6 +108,9 @@ static void NNPAODClearBacklightFeatures(void) {
 }
 
 static void NNPAODApplyTargetNits(NSString *sessionID, float targetNits, BOOL smooth) {
+    // Research switch: leave CoreBrightness untouched to test whether the fixed-nits override causes display glitches.
+    id researchNoNits = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("ResearchNoNits"), CFSTR("com.user.notchnowplaying")));
+    if ([researchNoNits respondsToSelector:@selector(boolValue)] && [researchNoNits boolValue]) return;
     uint64_t generation = atomic_fetch_add_explicit(&gNNPAODNitsGeneration, 1, memory_order_acq_rel) + 1;
     NSString *session = [sessionID copy] ?: @"none";
     NNPDiagnosticSetInteger(@"Phase7FixedBrightnessPID", getpid());
