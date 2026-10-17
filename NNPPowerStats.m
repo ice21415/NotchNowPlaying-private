@@ -89,7 +89,10 @@ static double NNPNumber(NSDictionary *dictionary, NSString *key, double fallback
         amperage = NNPSignedCurrent(current.unsignedLongLongValue);
     }
     BOOL charging = [registry[@"IsCharging"] boolValue] || [registry[@"ExternalConnected"] boolValue];
+    NSDictionary *telemetry = [registry[@"PowerTelemetryData"] isKindOfClass:NSDictionary.class] ? registry[@"PowerTelemetryData"] : nil;
     return @{
+        @"loadAcc": @(NNPNumber(telemetry, @"AccumulatedSystemLoad", NAN)),
+        @"loadCount": @(NNPNumber(telemetry, @"SystemLoadAccumulatorCount", NAN)),
         @"percent": @(NNPNumber(registry, @"CurrentCapacity", -1)),
         @"rawMAh": @(NNPNumber(registry, @"AppleRawCurrentCapacity", 0)),
         @"maxMAh": @(NNPNumber(registry, @"AppleRawMaxCapacity", 0)),
@@ -147,19 +150,35 @@ static double NNPNumber(NSDictionary *dictionary, NSString *key, double fallback
             BOOL charging = [battery[@"charging"] boolValue];
             BOOL previousCharging = [_lastBattery[@"charging"] boolValue];
             if (charging && previousCharging) rates[@"chgS"] = @1;
+            double v0 = NNPNumber(_lastBattery, @"voltage", 0), v1 = NNPNumber(battery, @"voltage", 0);
+            BOOL voltsValid = v0 >= 2000 && v0 <= 20000 && v1 >= 2000 && v1 <= 20000;
+            // Primary: the gauge's system-load accumulator, the mean of about one load sample per second over
+            // the whole interval. It measures what the device draws, so it stays valid while charging.
+            double power = NNPAccumulatorMeanPower(NNPNumber(_lastBattery, @"loadAcc", NAN), NNPNumber(_lastBattery, @"loadCount", NAN),
+                                                   NNPNumber(battery, @"loadAcc", NAN), NNPNumber(battery, @"loadCount", NAN));
+            if (power >= 0) {
+                rates[@"energyMWs"] = @(power);
+                rates[@"powerS"] = @1;
+                rates[@"accS"] = @1;
+            }
             if (!charging && !previousCharging) {
-                double i0 = NNPNumber(_lastBattery, @"amperage", NAN), i1 = NNPNumber(battery, @"amperage", NAN);
-                double v0 = NNPNumber(_lastBattery, @"voltage", 0), v1 = NNPNumber(battery, @"voltage", 0);
-                double g0 = NNPNumber(_lastBattery, @"gaugeTime", 0), g1 = NNPNumber(battery, @"gaugeTime", 0);
-                BOOL fresh = g0 <= 0 || g1 <= 0 || g1 > g0;
-                if (fresh && isfinite(i0) && isfinite(i1) && i0 <= 0 && i1 <= 0 &&
-                    i0 >= -30000 && i1 >= -30000 && v0 >= 2000 && v0 <= 20000 && v1 >= 2000 && v1 <= 20000) {
-                    // Trapezoidal integration: mA*s/3600 = mAh; mV*mA/1000 = mW.
-                    double chargeRate = NNPChargeRate(i0, i1);
+                double chargeRate = NAN;
+                if (power >= 0 && voltsValid) {
+                    chargeRate = NNPChargeRateFromPower(power, v0, v1);
+                } else if (power < 0) {
+                    // Fallback: trapezoidal integration of the two average-current endpoints.
+                    double i0 = NNPNumber(_lastBattery, @"amperage", NAN), i1 = NNPNumber(battery, @"amperage", NAN);
+                    double g0 = NNPNumber(_lastBattery, @"gaugeTime", 0), g1 = NNPNumber(battery, @"gaugeTime", 0);
+                    BOOL fresh = g0 <= 0 || g1 <= 0 || g1 > g0;
+                    if (fresh && voltsValid && isfinite(i0) && isfinite(i1) && i0 <= 0 && i1 <= 0 && i0 >= -30000 && i1 >= -30000) {
+                        chargeRate = NNPChargeRate(i0, i1);
+                        rates[@"energyMWs"] = @(NNPMeanPower(i0, v0, i1, v1));
+                        rates[@"powerS"] = @1;
+                    }
+                }
+                if (isfinite(chargeRate)) {
                     rates[@"dischS2"] = @1;
                     rates[@"usedMAh2"] = @(chargeRate);
-                    rates[@"energyMWs"] = @(NNPMeanPower(i0, v0, i1, v1));
-                    rates[@"powerS"] = @1;
                     double c0 = NNPNumber(_lastBattery, @"maxMAh", 0), c1 = NNPNumber(battery, @"maxMAh", 0);
                     if (c0 > 0 && c1 > 0) {
                         rates[@"usedPct2"] = @(chargeRate / ((c0 + c1) / 2.0) * 100.0);

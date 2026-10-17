@@ -19,3 +19,18 @@ Limitations: these are whole-device battery-gauge estimates, not isolated plugin
 References: https://github.com/apple-oss-distributions/PowerManagement/blob/main/AppleSmartBatteryManager/AppleSmartBattery.cpp and https://developer.apple.com/documentation/kernel/1646199-mach_continuous_time
 
 Validation: `cc -Wall -Wextra -Werror research/tools/power_math_test.c -lm -o /tmp/nnp-power-math-test && /tmp/nnp-power-math-test`.
+
+## Accumulator revision
+
+The two-endpoint trapezoid still misses load changes between the minute samples. The gauge's PowerTelemetryData
+exposes AccumulatedSystemLoad (sum of the load in mW) and SystemLoadAccumulatorCount (about one sample per
+second), so the primary estimate is now:
+
+- P(mW) = dAccumulatedSystemLoad / dSystemLoadAccumulatorCount
+- E(mW*s) = P * dt, valid while charging too (it is the device load, not battery flow)
+- Q(mAh) = P / mean(V0, V1) / 3.6 * dt, only for intervals unplugged at both ends
+- The trapezoid is the fallback when the counters reset, stall or are missing.
+
+In earlier SSH measurements the accumulator gave stable 620-730 mW means where single InstantAmperage reads
+ranged from 30 to 2400 mW. The summary "used" percentage now applies the measured rate to all unplugged AOD time
+instead of summing only valid intervals.

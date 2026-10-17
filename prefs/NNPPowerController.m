@@ -352,10 +352,18 @@ static NSAttributedString *NNPLegend(NSArray<NSArray *> *items) {
     if (sum.pctS >= 1800)
         [parts addObject:[NSString stringWithFormat:@"每小時約 %.1f%%", sum.usedPct / (sum.pctS / 3600.0)]];
     if (sum.pctS >= 600)
-        [parts addObject:[NSString stringWithFormat:@"共用掉約 %.1f%%", sum.usedPct]];
+        [parts addObject:[NSString stringWithFormat:@"共用掉約 %.1f%%", [self estimatedUsedPercent:sum]]];
     _summaryLine.text = [parts componentsJoinedByString:@" · "];
     _modeLegend.attributedText = NNPLegend(@[@[[NSString stringWithFormat:@"時鐘 %@", NNPDuration(sum.idleS)], UIColor.systemBlueColor],
                                              @[[NSString stringWithFormat:@"音樂 %@", NNPDuration(sum.mediaS)], UIColor.systemGreenColor]]);
+}
+
+// Drain over all unplugged AOD time: the measured rate applied to the whole period, so intervals whose
+// gauge reading could not be used are estimated instead of being counted as zero.
+- (double)estimatedUsedPercent:(NNPAggregate)sum {
+    if (sum.pctS <= 0) return 0;
+    double unplugged = MAX(sum.pctS, sum.idleS + sum.mediaS - sum.chgS);
+    return sum.usedPct / sum.pctS * unplugged;
 }
 
 - (NSString *)detailTextForAggregate:(NNPAggregate)sum percent:(double)percent {
@@ -365,7 +373,7 @@ static NSAttributedString *NNPLegend(NSArray<NSArray *> *items) {
         [lines addObject:[NSString stringWithFormat:@"AOD 顯示 %@（時鐘 %@、音樂 %@）", NNPDuration(total), NNPDuration(sum.idleS), NNPDuration(sum.mediaS)]];
     else
         [lines addObject:@"這段期間沒有 AOD 顯示"];
-    if (total > 0) [lines addObject:[NSString stringWithFormat:@"有效放電量測 %@（顯示時間的 %.0f%%）", NNPDuration(sum.pwrN), MIN(100.0, sum.pwrN / total * 100.0)]];
+    if (total > 0) [lines addObject:[NSString stringWithFormat:@"有效功率量測 %@（顯示時間的 %.0f%%）", NNPDuration(sum.pwrN), MIN(100.0, sum.pwrN / total * 100.0)]];
     if (sum.pwrN > 0) [lines addObject:[NSString stringWithFormat:@"估計平均功率 %.0f mW（有效量測 %.0f 秒）", sum.pwrSum / sum.pwrN, sum.pwrN]];
     if (sum.usedMAh > 0) {
         NSString *share = sum.pctS > 0 ? [NSString stringWithFormat:@"，約 %.1f%%", sum.usedPct] : @"";
@@ -415,7 +423,7 @@ static NSAttributedString *NNPLegend(NSArray<NSArray *> *items) {
 - (id)valueUsedPercent:(__unused PSSpecifier *)specifier {
     NNPAggregate sum = [self currentAggregate];
     if (sum.pctS < 600) return @"資料不足";
-    return [NSString stringWithFormat:@"約 %.1f%%", sum.usedPct];
+    return [NSString stringWithFormat:@"約 %.1f%%", [self estimatedUsedPercent:sum]];
 }
 
 - (id)valuePerHour:(__unused PSSpecifier *)specifier {
