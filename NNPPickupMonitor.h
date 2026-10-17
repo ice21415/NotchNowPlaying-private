@@ -6,6 +6,7 @@
 // When the system already owns the engine's delegate, its delegate methods are observed instead and
 // the engine is never started or stopped here.
 @interface NNPPickupMonitor : NSObject
-@property(nonatomic, copy) void (^lifted)(void);
+// gesture: 1 = phone lifted, 3 = phone put down (observed on iOS 17.1.2); other values are passed through.
+@property(nonatomic, copy) void (^event)(long long gesture);
 - (void)setActive:(BOOL)active;
 @end

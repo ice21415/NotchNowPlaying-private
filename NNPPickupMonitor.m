@@ -11,7 +11,7 @@ static void NNPPickupDeliver(long long gesture, long long orientation) {
     NNPDiagnosticTrace([NSString stringWithFormat:@"PICKUP event gesture=%lld orientation=%lld", gesture, orientation]);
     dispatch_async(dispatch_get_main_queue(), ^{
         NNPPickupMonitor *monitor = NNPActiveMonitor;
-        if (monitor.lifted) monitor.lifted();
+        if (monitor.event) monitor.event(gesture);
     });
 }
 static void NNPObservedDelegate4(id self, SEL _cmd, id manager, long long gesture, long long orientation, id detectedAt) {

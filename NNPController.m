@@ -286,7 +286,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)startLiftBoost;
 - (void)endLiftBoost;
 - (void)updateStillOffForActiveAOD:(BOOL)activeAOD;
-- (void)stillOffPickupDetected;
+- (void)stillOffPickupEvent:(long long)gesture;
 - (void)armStillTimerForMinutes:(double)minutes;
 - (void)updatePowerStatsTimer;
 - (void)stopPowerStatsTimer;
@@ -659,19 +659,24 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     if (!self.pickupMonitor) {
         self.pickupMonitor = [NNPPickupMonitor new];
         __weak typeof(self) weakSelf = self;
-        self.pickupMonitor.lifted = ^{ [weakSelf stillOffPickupDetected]; };
+        self.pickupMonitor.event = ^(long long gesture) { [weakSelf stillOffPickupEvent:gesture]; };
     }
     [self.pickupMonitor setActive:YES];
     if (stillWanted && !self.stillBlanked && !self.stillTimer) [self armStillTimerForMinutes:minutes];
 }
-- (void)stillOffPickupDetected {
+- (void)stillOffPickupEvent:(long long)gesture {
+    BOOL lifted = gesture != 3;
     BOOL wasBlanked = self.stillBlanked;
     [self.stillTimer invalidate];
     self.stillTimer = nil;
     self.stillBlanked = NO;
     NNPDiagnosticTrace(wasBlanked ? @"STILL pickup while blanked; restoring idle AOD" : @"STILL pickup; restarting the idle timer");
-    if (self.idleDeepActive) [self cancelIdleDeep];
-    [self startLiftBoost];
+    if (lifted) {
+        if (self.idleDeepActive) [self cancelIdleDeep];
+        [self startLiftBoost];
+    } else {
+        [self endLiftBoost];
+    }
     [self reconcile];
 }
 - (void)aodOrientationChanged:(__unused NSNotification *)note {
