@@ -606,7 +606,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 }
 - (void)updateStillOffForActiveAOD:(BOOL)activeAOD {
     NSInteger minutes = self.preferences.aodStillTimeoutMinutes;
-    if (minutes <= 0 || !activeAOD || ![self idleModeActive] || self.mengoOpen) {
+    // idleModeActive turns NO while the panel is blanked, so use the intent that does not depend on it.
+    if (minutes <= 0 || !activeAOD || ![self idleBrightnessIntent] || self.mengoOpen) {
         if (self.stillBlanked || self.stillTimer || self.pickupMonitor) [self cancelStillOff];
         return;
     }
