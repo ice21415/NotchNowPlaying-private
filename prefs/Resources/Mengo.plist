@@ -25,6 +25,10 @@
 			<string>MengoEnabled</string>
 			<key>label</key>
 			<string>顯示乘車碼入口</string>
+			<key>symbol</key>
+			<string>qrcode</string>
+			<key>tint</key>
+			<string>teal</string>
 		</dict>
 	</array>
 	<key>title</key>

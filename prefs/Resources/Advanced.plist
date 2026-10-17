@@ -10,13 +10,13 @@
 			<key>footerText</key>
 			<string>播放器更新進度的間隔。間隔越短越流暢，也越耗電。預設 1 秒。</string>
 			<key>label</key>
-			<string>更新頻率</string>
+			<string>進度更新間隔</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
 			<string>com.user.notchnowplaying.preferences.changed</string>
 			<key>cell</key>
-			<string>PSSliderCell</string>
+			<string>PSSegmentCell</string>
 			<key>default</key>
 			<integer>1</integer>
 			<key>defaults</key>
@@ -24,13 +24,21 @@
 			<key>key</key>
 			<string>ProgressUpdateInterval</string>
 			<key>label</key>
-			<string>進度更新間隔（秒）</string>
-			<key>max</key>
-			<integer>5</integer>
-			<key>min</key>
-			<real>0.5</real>
-			<key>showValue</key>
-			<true/>
+			<string>進度更新間隔</string>
+			<key>validTitles</key>
+			<array>
+				<string>0.5 秒</string>
+				<string>1 秒</string>
+				<string>2 秒</string>
+				<string>5 秒</string>
+			</array>
+			<key>validValues</key>
+			<array>
+				<real>0.5</real>
+				<integer>1</integer>
+				<integer>2</integer>
+				<integer>5</integer>
+			</array>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -53,6 +61,10 @@
 			<string>NotificationWakeTraceEnabled</string>
 			<key>label</key>
 			<string>記錄通知喚醒事件</string>
+			<key>symbol</key>
+			<string>ladybug.fill</string>
+			<key>tint</key>
+			<string>gray</string>
 		</dict>
 		<dict>
 			<key>cell</key>

@@ -25,6 +25,10 @@
 			<string>ExperimentalLockedVisible</string>
 			<key>label</key>
 			<string>啟用 AOD 顯示</string>
+			<key>symbol</key>
+			<string>moon.stars.fill</string>
+			<key>tint</key>
+			<string>indigo</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -39,6 +43,10 @@
 			<string>AODIdleDisplayEnabled</string>
 			<key>label</key>
 			<string>無音樂時顯示時鐘／日期／電量</string>
+			<key>symbol</key>
+			<string>clock.fill</string>
+			<key>tint</key>
+			<string>teal</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -61,12 +69,22 @@
 			<string>ExperimentalUnlimitedDuration</string>
 			<key>label</key>
 			<string>持續顯示（不限時）</string>
+			<key>symbol</key>
+			<string>infinity</string>
+			<key>tint</key>
+			<string>orange</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>時間上限</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
 			<string>com.user.notchnowplaying.preferences.changed</string>
 			<key>cell</key>
-			<string>PSSliderCell</string>
+			<string>PSSegmentCell</string>
 			<key>default</key>
 			<integer>30</integer>
 			<key>defaults</key>
@@ -80,13 +98,23 @@
 			<key>key</key>
 			<string>ExperimentalMaxDuration</string>
 			<key>label</key>
-			<string>時間上限（秒）</string>
-			<key>max</key>
-			<integer>60</integer>
-			<key>min</key>
-			<integer>5</integer>
-			<key>showValue</key>
-			<true/>
+			<string>時間上限</string>
+			<key>validTitles</key>
+			<array>
+				<string>10 秒</string>
+				<string>15 秒</string>
+				<string>30 秒</string>
+				<string>45 秒</string>
+				<string>60 秒</string>
+			</array>
+			<key>validValues</key>
+			<array>
+				<integer>10</integer>
+				<integer>15</integer>
+				<integer>30</integer>
+				<integer>45</integer>
+				<integer>60</integer>
+			</array>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -109,12 +137,22 @@
 			<string>AODAutomaticBrightnessEnabled</string>
 			<key>label</key>
 			<string>依環境光調整</string>
+			<key>symbol</key>
+			<string>sun.max.fill</string>
+			<key>tint</key>
+			<string>yellow</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>手動亮度</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
 			<string>com.user.notchnowplaying.preferences.changed</string>
 			<key>cell</key>
-			<string>PSSliderCell</string>
+			<string>PSSegmentCell</string>
 			<key>default</key>
 			<integer>100</integer>
 			<key>defaults</key>
@@ -128,13 +166,23 @@
 			<key>key</key>
 			<string>AODBrightnessMultiplier</string>
 			<key>label</key>
-			<string>手動亮度（%）</string>
-			<key>max</key>
-			<integer>400</integer>
-			<key>min</key>
-			<integer>100</integer>
-			<key>showValue</key>
-			<true/>
+			<string>手動亮度</string>
+			<key>validTitles</key>
+			<array>
+				<string>100%</string>
+				<string>150%</string>
+				<string>200%</string>
+				<string>300%</string>
+				<string>400%</string>
+			</array>
+			<key>validValues</key>
+			<array>
+				<integer>100</integer>
+				<integer>150</integer>
+				<integer>200</integer>
+				<integer>300</integer>
+				<integer>400</integer>
+			</array>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -157,6 +205,10 @@
 			<string>AODPocketModeEnabled</string>
 			<key>label</key>
 			<string>遮蔽／朝下自動熄屏</string>
+			<key>symbol</key>
+			<string>hand.raised.fill</string>
+			<key>tint</key>
+			<string>red</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -171,12 +223,16 @@
 			<string>AODLandscapeEnabled</string>
 			<key>label</key>
 			<string>橫向版面</string>
+			<key>symbol</key>
+			<string>iphone.landscape</string>
+			<key>tint</key>
+			<string>blue</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>AOD 期間會定時微幅移動內容並短暫淡出，降低烙印風險。自動啟用，無法保證完全避免。</string>
+			<string>AOD 期間會定時微幅移動內容，並讓亮度每幾分鐘緩慢起伏，降低烙印風險。自動啟用，無法保證完全避免。</string>
 			<key>label</key>
 			<string>像素保護</string>
 		</dict>

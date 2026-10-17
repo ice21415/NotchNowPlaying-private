@@ -25,6 +25,10 @@
 			<string>NotificationSnakeWakeEnabled</string>
 			<key>label</key>
 			<string>蛇形光效通知</string>
+			<key>symbol</key>
+			<string>bell.badge.fill</string>
+			<key>tint</key>
+			<string>red</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -47,6 +51,10 @@
 			<string>ChargingAnimationEnabled</string>
 			<key>label</key>
 			<string>充電流光</string>
+			<key>symbol</key>
+			<string>bolt.fill</string>
+			<key>tint</key>
+			<string>orange</string>
 		</dict>
 	</array>
 	<key>title</key>
