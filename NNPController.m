@@ -282,7 +282,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)cancelStillOff;
 - (void)updateStillOffForActiveAOD:(BOOL)activeAOD;
 - (void)stillOffPickupDetected;
-- (void)armStillTimerForMinutes:(NSInteger)minutes;
+- (void)armStillTimerForMinutes:(double)minutes;
 - (void)updatePowerStatsTimer;
 - (void)stopPowerStatsTimer;
 - (void)updateNotchGestureWindow;
@@ -587,9 +587,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     self.stillBlanked = NO;
     [self.pickupMonitor setActive:NO];
 }
-- (void)armStillTimerForMinutes:(NSInteger)minutes {
+- (void)armStillTimerForMinutes:(double)minutes {
     __weak typeof(self) weakSelf = self;
-    self.stillTimer = [NSTimer scheduledTimerWithTimeInterval:(NSTimeInterval)minutes * 60.0 repeats:NO block:^(__unused NSTimer *timer) {
+    self.stillTimer = [NSTimer scheduledTimerWithTimeInterval:minutes * 60.0 repeats:NO block:^(__unused NSTimer *timer) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf) return;
         strongSelf.stillTimer = nil;
@@ -599,13 +599,13 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
             return;
         }
         strongSelf.stillBlanked = YES;
-        NNPDiagnosticTrace([NSString stringWithFormat:@"STILL no pickup for %ld min; blanking idle AOD", (long)minutes]);
+        NNPDiagnosticTrace([NSString stringWithFormat:@"STILL no pickup for %.2f min; blanking idle AOD", minutes]);
         [strongSelf reconcile];
     }];
-    self.stillTimer.tolerance = 15.0;
+    self.stillTimer.tolerance = MIN(15.0, minutes * 60.0 * 0.1);
 }
 - (void)updateStillOffForActiveAOD:(BOOL)activeAOD {
-    NSInteger minutes = self.preferences.aodStillTimeoutMinutes;
+    double minutes = self.preferences.aodStillTimeoutMinutes;
     // idleModeActive turns NO while the panel is blanked, so use the intent that does not depend on it.
     if (minutes <= 0 || !activeAOD || ![self idleBrightnessIntent] || self.mengoOpen) {
         if (self.stillBlanked || self.stillTimer || self.pickupMonitor) [self cancelStillOff];
