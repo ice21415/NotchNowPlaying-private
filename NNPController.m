@@ -236,6 +236,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic) BOOL idleDeepActive;
 @property(nonatomic) BOOL stillBlanked;
 @property(nonatomic) BOOL liftBoostActive;
+@property(nonatomic) BOOL phoneHeld;
 @property(nonatomic, strong) NSTimer *liftBoostTimer;
 @property(nonatomic, strong) NSTimer *stillTimer;
 @property(nonatomic, strong) NSTimer *sleepBoundaryTimer;
@@ -664,6 +665,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     }
 }
 - (void)cancelStillOff {
+    self.phoneHeld = NO;
     [self.stillTimer invalidate];
     self.stillTimer = nil;
     [self.sleepBoundaryTimer invalidate];
@@ -679,17 +681,22 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     float factor = (float)self.preferences.aodLiftBoostFactor;
     return MIN(250.0f, MAX(target * factor, target + (factor - 1.0f) * 40.0f));
 }
-// A pickup briefly raises the ambient-driven AOD level, then it falls back; both changes ride the normal
-// nits ramp and happen only on a pickup event, so there is no polling.
+// A pickup raises the ambient-driven AOD level until the phone is put down again (holding it still sends no
+// event, so time alone must not end it). Both changes ride the normal nits ramp and are event driven.
 - (void)startLiftBoost {
     if (self.preferences.aodLiftBoostFactor <= 1.01) return;
     self.liftBoostActive = YES;
     [self.liftBoostTimer invalidate];
     __weak typeof(self) weakSelf = self;
-    self.liftBoostTimer = [NSTimer scheduledTimerWithTimeInterval:8.0 repeats:NO block:^(__unused NSTimer *timer) {
-        [weakSelf endLiftBoost];
+    // Safety net in case the put-down event never arrives: treat the phone as put down after 3 minutes.
+    self.liftBoostTimer = [NSTimer scheduledTimerWithTimeInterval:180.0 repeats:NO block:^(__unused NSTimer *timer) {
+        NNPController *controller = weakSelf;
+        if (!controller) return;
+        controller.phoneHeld = NO;
+        [controller endLiftBoost];
+        [controller reconcile];
     }];
-    self.liftBoostTimer.tolerance = 1.0;
+    self.liftBoostTimer.tolerance = 10.0;
     if (!self.mengoOpen && self.ambientBrightnessTargetNits > 0)
         self.display.automaticBrightnessNits = [self displayNitsForTarget:self.ambientBrightnessTargetNits];
     NNPDiagnosticTrace(@"LIFT boost started");
@@ -790,6 +797,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     }
     if (!stillWanted) self.stillBlanked = NO;
     if (!stillWanted && !boostWanted) {
+        self.phoneHeld = NO;
         if (self.pickupMonitor) [self.pickupMonitor setActive:NO];
         [self endLiftBoost];
         [self.sleepBoundaryTimer invalidate];
@@ -802,16 +810,26 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         self.pickupMonitor.event = ^(long long gesture) { [weakSelf stillOffPickupEvent:gesture]; };
     }
     [self.pickupMonitor setActive:YES];
-    if (stillWanted && !self.stillBlanked && !self.stillTimer) [self armStillTimerForMinutes:minutes];
+    // While the phone is held the countdown waits; it starts when the phone is put down.
+    if (self.phoneHeld) {
+        [self.stillTimer invalidate];
+        self.stillTimer = nil;
+    } else if (stillWanted && !self.stillBlanked && !self.stillTimer) {
+        [self armStillTimerForMinutes:minutes];
+    }
     [self updateSleepBoundaryTimer];
 }
 - (void)stillOffPickupEvent:(long long)gesture {
     BOOL lifted = gesture != 3;
+    // A put-down event never wakes a blanked panel; only a lift does.
+    if (!lifted && self.stillBlanked) return;
     BOOL wasBlanked = self.stillBlanked;
+    self.phoneHeld = lifted;
     [self.stillTimer invalidate];
     self.stillTimer = nil;
     self.stillBlanked = NO;
-    NNPDiagnosticTrace(wasBlanked ? @"STILL pickup while blanked; restoring idle AOD" : @"STILL pickup; restarting the idle timer");
+    NNPDiagnosticTrace(lifted ? (wasBlanked ? @"STILL lifted while blanked; restoring idle AOD" : @"STILL lifted; holding")
+                              : @"STILL put down; idle countdown starts");
     if (lifted) {
         if (self.idleDeepActive) [self cancelIdleDeep];
         [self startLiftBoost];
