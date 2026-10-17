@@ -21,15 +21,47 @@ static NSString *NNPDuration(double seconds) {
     return rest ? [NSString stringWithFormat:@"%ld 小時 %ld 分", hours, rest] : [NSString stringWithFormat:@"%ld 小時", hours];
 }
 
+static UIView *NNPCard(void) {
+    UIView *card = [UIView new];
+    card.backgroundColor = UIColor.secondarySystemGroupedBackgroundColor;
+    card.layer.cornerRadius = 12.0;
+    card.layer.cornerCurve = kCACornerCurveContinuous;
+    return card;
+}
+
+static UILabel *NNPLabel(CGFloat size, UIFontWeight weight, UIColor *color) {
+    UILabel *label = [UILabel new];
+    label.font = [UIFont systemFontOfSize:size weight:weight];
+    label.textColor = color;
+    label.numberOfLines = 0;
+    return label;
+}
+
+static NSAttributedString *NNPLegend(NSArray<NSArray *> *items) {
+    NSMutableAttributedString *text = [NSMutableAttributedString new];
+    UIFont *font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightMedium];
+    for (NSArray *item in items) {
+        if (text.length) [text appendAttributedString:[[NSAttributedString alloc] initWithString:@"　" attributes:@{NSFontAttributeName: font}]];
+        [text appendAttributedString:[[NSAttributedString alloc] initWithString:@"● " attributes:@{NSFontAttributeName: font, NSForegroundColorAttributeName: item[1]}]];
+        [text appendAttributedString:[[NSAttributedString alloc] initWithString:item[0] attributes:@{NSFontAttributeName: font, NSForegroundColorAttributeName: UIColor.secondaryLabelColor}]];
+    }
+    return text;
+}
+
 @implementation NNPPowerController {
     UISegmentedControl *_range;
-    NNPPowerChartView *_chart;
-    UILabel *_legend;
-    UILabel *_detail;
     UIView *_header;
+    UIView *_summaryCard;
+    UILabel *_bigValue, *_bigCaption, *_summaryLine, *_modeLegend;
+    UIView *_modeTrack, *_modeIdle, *_modeMedia;
+    NSMutableArray<UIView *> *_chartCards;
+    NSMutableArray<UILabel *> *_chartTitles, *_chartLegends;
+    NSMutableArray<NNPPowerChartView *> *_charts;
+    UIView *_detailCard;
+    UILabel *_detailTitle, *_detail;
     NSArray<NSDictionary *> *_hours;
     NSDictionary *_battery;
-    NSArray<NSString *> *_barDetails;
+    NSArray<NSString *> *_barTitles, *_barDetails;
 }
 
 - (NSString *)plistName { return @"Power"; }
@@ -37,27 +69,69 @@ static NSString *NNPDuration(double seconds) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"AOD 耗電量";
+    _header = [UIView new];
     _range = [[UISegmentedControl alloc] initWithItems:@[@"過去 24 小時", @"過去 10 天"]];
     _range.selectedSegmentIndex = 0;
     [_range addTarget:self action:@selector(rangeChanged) forControlEvents:UIControlEventValueChanged];
-    _chart = [[NNPPowerChartView alloc] initWithFrame:CGRectZero];
-    __weak typeof(self) weakSelf = self;
-    _chart.onSelect = ^(NSInteger index) { [weakSelf showDetailForIndex:index]; };
-    _legend = [UILabel new];
-    _legend.font = [UIFont systemFontOfSize:12.0];
-    _legend.textColor = UIColor.secondaryLabelColor;
-    _legend.numberOfLines = 0;
-    _legend.text = @"藍色：無音樂時鐘　綠色：音樂播放　橘線：電量";
-    _detail = [UILabel new];
-    _detail.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightMedium];
-    _detail.textColor = UIColor.labelColor;
-    _detail.numberOfLines = 0;
-    _detail.text = @"點一下長條可看該時段的詳細資料。";
-    _header = [UIView new];
     [_header addSubview:_range];
-    [_header addSubview:_chart];
-    [_header addSubview:_legend];
-    [_header addSubview:_detail];
+
+    _summaryCard = NNPCard();
+    _bigValue = NNPLabel(34.0, UIFontWeightBold, UIColor.labelColor);
+    _bigValue.font = [UIFont monospacedDigitSystemFontOfSize:34.0 weight:UIFontWeightBold];
+    _bigCaption = NNPLabel(13.0, UIFontWeightRegular, UIColor.secondaryLabelColor);
+    _summaryLine = NNPLabel(15.0, UIFontWeightSemibold, UIColor.labelColor);
+    _modeTrack = [UIView new];
+    _modeTrack.backgroundColor = UIColor.tertiarySystemFillColor;
+    _modeTrack.layer.cornerRadius = 4.0;
+    _modeTrack.clipsToBounds = YES;
+    _modeIdle = [UIView new];
+    _modeIdle.backgroundColor = UIColor.systemBlueColor;
+    _modeMedia = [UIView new];
+    _modeMedia.backgroundColor = UIColor.systemGreenColor;
+    [_modeTrack addSubview:_modeIdle];
+    [_modeTrack addSubview:_modeMedia];
+    _modeLegend = NNPLabel(12.0, UIFontWeightMedium, UIColor.secondaryLabelColor);
+    for (UIView *view in @[_bigValue, _bigCaption, _summaryLine, _modeTrack, _modeLegend]) [_summaryCard addSubview:view];
+    [_header addSubview:_summaryCard];
+
+    _chartCards = [NSMutableArray array];
+    _chartTitles = [NSMutableArray array];
+    _chartLegends = [NSMutableArray array];
+    _charts = [NSMutableArray array];
+    NSArray *titles = @[@"電量", @"AOD 顯示時間", @"AOD 期間平均功率"];
+    NSArray *legends = @[
+        NNPLegend(@[@[@"電量", UIColor.systemOrangeColor], @[@"充電中", UIColor.systemGreenColor]]),
+        NNPLegend(@[@[@"無音樂時鐘", UIColor.systemBlueColor], @[@"音樂播放", UIColor.systemGreenColor]]),
+        NNPLegend(@[@[@"以時鐘為主", UIColor.systemIndigoColor], @[@"以音樂為主", UIColor.systemGreenColor], @[@"整段平均", UIColor.systemRedColor]]),
+    ];
+    NSArray *kinds = @[@(NNPChartKindBattery), @(NNPChartKindTime), @(NNPChartKindPower)];
+    __weak typeof(self) weakSelf = self;
+    for (NSUInteger index = 0; index < titles.count; index++) {
+        UIView *card = NNPCard();
+        UILabel *title = NNPLabel(15.0, UIFontWeightSemibold, UIColor.labelColor);
+        title.text = titles[index];
+        UILabel *legend = NNPLabel(12.0, UIFontWeightMedium, UIColor.secondaryLabelColor);
+        legend.attributedText = legends[index];
+        NNPPowerChartView *chart = [[NNPPowerChartView alloc] initWithFrame:CGRectZero];
+        chart.kind = (NNPChartKind)[kinds[index] integerValue];
+        chart.onSelect = ^(NSInteger selected) { [weakSelf selectIndex:selected]; };
+        [card addSubview:title];
+        [card addSubview:legend];
+        [card addSubview:chart];
+        [_header addSubview:card];
+        [_chartCards addObject:card];
+        [_chartTitles addObject:title];
+        [_chartLegends addObject:legend];
+        [_charts addObject:chart];
+    }
+
+    _detailCard = NNPCard();
+    _detailTitle = NNPLabel(15.0, UIFontWeightSemibold, UIColor.labelColor);
+    _detail = NNPLabel(14.0, UIFontWeightRegular, UIColor.secondaryLabelColor);
+    [_detailCard addSubview:_detailTitle];
+    [_detailCard addSubview:_detail];
+    [_header addSubview:_detailCard];
+
     self.table.tableHeaderView = _header;
     [self reloadStats];
 }
@@ -71,19 +145,59 @@ static NSString *NNPDuration(double seconds) {
     [super viewDidLayoutSubviews];
     CGFloat width = CGRectGetWidth(self.table.bounds);
     if (width <= 0) return;
-    CGFloat margin = 16.0;
-    CGFloat inner = width - margin * 2.0;
+    CGFloat margin = 16.0, pad = 14.0;
+    CGFloat inner = width - margin * 2.0, content = inner - pad * 2.0;
     _range.frame = CGRectMake(margin, 12.0, inner, 32.0);
-    _chart.frame = CGRectMake(margin - 8.0, CGRectGetMaxY(_range.frame) + 12.0, inner + 16.0, 190.0);
-    CGSize legendSize = [_legend sizeThatFits:CGSizeMake(inner, CGFLOAT_MAX)];
-    _legend.frame = CGRectMake(margin, CGRectGetMaxY(_chart.frame) + 4.0, inner, legendSize.height);
-    CGSize detailSize = [_detail sizeThatFits:CGSizeMake(inner, CGFLOAT_MAX)];
-    _detail.frame = CGRectMake(margin, CGRectGetMaxY(_legend.frame) + 8.0, inner, MAX(36.0, detailSize.height));
-    CGRect header = CGRectMake(0, 0, width, CGRectGetMaxY(_detail.frame) + 12.0);
+
+    CGFloat y = pad;
+    _bigValue.frame = CGRectMake(pad, y, content, 40.0);
+    y += 40.0;
+    _bigCaption.frame = CGRectMake(pad, y, content, [_bigCaption sizeThatFits:CGSizeMake(content, CGFLOAT_MAX)].height);
+    y = CGRectGetMaxY(_bigCaption.frame) + 10.0;
+    _summaryLine.frame = CGRectMake(pad, y, content, [_summaryLine sizeThatFits:CGSizeMake(content, CGFLOAT_MAX)].height);
+    y = CGRectGetMaxY(_summaryLine.frame) + 10.0;
+    _modeTrack.frame = CGRectMake(pad, y, content, 8.0);
+    y += 14.0;
+    _modeLegend.frame = CGRectMake(pad, y, content, [_modeLegend sizeThatFits:CGSizeMake(content, CGFLOAT_MAX)].height);
+    y = CGRectGetMaxY(_modeLegend.frame) + pad;
+    _summaryCard.frame = CGRectMake(margin, CGRectGetMaxY(_range.frame) + 12.0, inner, y);
+    [self layoutModeBar];
+
+    CGFloat top = CGRectGetMaxY(_summaryCard.frame) + 12.0;
+    for (NSUInteger index = 0; index < _chartCards.count; index++) {
+        UILabel *title = _chartTitles[index], *legend = _chartLegends[index];
+        CGFloat cy = pad;
+        title.frame = CGRectMake(pad, cy, content, 20.0);
+        cy += 22.0;
+        legend.frame = CGRectMake(pad, cy, content, [legend sizeThatFits:CGSizeMake(content, CGFLOAT_MAX)].height);
+        cy = CGRectGetMaxY(legend.frame) + 6.0;
+        _charts[index].frame = CGRectMake(pad - 4.0, cy, content + 8.0, index == 0 ? 120.0 : 130.0);
+        cy = CGRectGetMaxY(_charts[index].frame) + pad - 4.0;
+        _chartCards[index].frame = CGRectMake(margin, top, inner, cy);
+        top = CGRectGetMaxY(_chartCards[index].frame) + 12.0;
+    }
+
+    CGFloat dy = pad;
+    _detailTitle.frame = CGRectMake(pad, dy, content, [_detailTitle sizeThatFits:CGSizeMake(content, CGFLOAT_MAX)].height);
+    dy = CGRectGetMaxY(_detailTitle.frame) + 6.0;
+    _detail.frame = CGRectMake(pad, dy, content, [_detail sizeThatFits:CGSizeMake(content, CGFLOAT_MAX)].height);
+    dy = CGRectGetMaxY(_detail.frame) + pad;
+    _detailCard.frame = CGRectMake(margin, top, inner, dy);
+
+    CGRect header = CGRectMake(0, 0, width, CGRectGetMaxY(_detailCard.frame) + 4.0);
     if (!CGRectEqualToRect(_header.frame, header)) {
         _header.frame = header;
         self.table.tableHeaderView = _header;
     }
+}
+
+- (void)layoutModeBar {
+    NNPAggregate sum = [self currentAggregate];
+    double total = sum.idleS + sum.mediaS;
+    CGFloat width = CGRectGetWidth(_modeTrack.bounds), height = CGRectGetHeight(_modeTrack.bounds);
+    CGFloat idle = total > 0 ? width * (CGFloat)(sum.idleS / total) : 0;
+    _modeIdle.frame = CGRectMake(0, 0, idle, height);
+    _modeMedia.frame = CGRectMake(idle, 0, total > 0 ? width - idle : 0, height);
 }
 
 - (void)rangeChanged {
@@ -97,7 +211,9 @@ static NSString *NNPDuration(double seconds) {
     id battery = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)NNPStatsBatteryKey, domain));
     _hours = [hours isKindOfClass:NSArray.class] ? hours : @[];
     _battery = [battery isKindOfClass:NSDictionary.class] ? battery : @{};
-    [self rebuildChart];
+    [self rebuildCharts];
+    [self updateSummary];
+    [self selectIndex:-1];
     [self.table reloadData];
     [self.view setNeedsLayout];
 }
@@ -136,74 +252,112 @@ static NSString *NNPDuration(double seconds) {
     return nowHour - ([self showsDays] ? 239 : 23);
 }
 
-- (void)rebuildChart {
+- (void)rebuildCharts {
     NSMutableArray<NNPChartBar *> *bars = [NSMutableArray array];
+    NSMutableArray<NSString *> *titles = [NSMutableArray array];
     NSMutableArray<NSString *> *details = [NSMutableArray array];
     long long nowHour = (long long)([NSDate date].timeIntervalSince1970 / 3600.0);
     NSCalendar *calendar = NSCalendar.currentCalendar;
     NSDateFormatter *hourFormatter = [NSDateFormatter new];
     hourFormatter.dateFormat = @"HH:00";
     NSDateFormatter *dayFormatter = [NSDateFormatter new];
-    dayFormatter.dateFormat = @"M/d";
-    double maxSeconds = 0;
+    dayFormatter.locale = [NSLocale localeWithLocaleIdentifier:@"zh_Hant_TW"];
+    dayFormatter.dateFormat = @"M月d日 EEEE";
+    NSDateFormatter *shortDay = [NSDateFormatter new];
+    shortDay.dateFormat = @"M/d";
 
+    void (^add)(long long, long long, NSString *, NSString *, BOOL) = ^(long long start, long long end, NSString *label, NSString *title, BOOL showLabel) {
+        NNPAggregate sum = [self aggregateFrom:start to:end];
+        NNPChartBar *bar = [NNPChartBar new];
+        bar.idleSeconds = sum.idleS;
+        bar.mediaSeconds = sum.mediaS;
+        bar.chargeSeconds = sum.chgS;
+        bar.percent = [self lastPercentFrom:start to:end];
+        bar.power = sum.pwrN > 0 ? sum.pwrSum / sum.pwrN : -1;
+        bar.label = label;
+        bar.showLabel = showLabel;
+        [bars addObject:bar];
+        [titles addObject:title];
+        [details addObject:[self detailTextForAggregate:sum percent:bar.percent]];
+    };
     if (![self showsDays]) {
         for (long long hour = nowHour - 23; hour <= nowHour; hour++) {
-            NNPAggregate sum = [self aggregateFrom:hour to:hour];
-            NNPChartBar *bar = [NNPChartBar new];
-            bar.idleSeconds = sum.idleS;
-            bar.mediaSeconds = sum.mediaS;
-            bar.percent = [self lastPercentFrom:hour to:hour];
             NSDate *date = [NSDate dateWithTimeIntervalSince1970:(double)hour * 3600.0];
-            bar.label = [[hourFormatter stringFromDate:date] substringToIndex:2];
-            bar.showLabel = ((nowHour - hour) % 6) == 0;
-            [bars addObject:bar];
-            maxSeconds = MAX(maxSeconds, sum.idleS + sum.mediaS);
-            [details addObject:[self detailTextForTitle:[hourFormatter stringFromDate:date] aggregate:sum percent:bar.percent]];
+            NSDate *next = [NSDate dateWithTimeIntervalSince1970:(double)(hour + 1) * 3600.0];
+            NSString *title = [NSString stringWithFormat:@"%@–%@", [hourFormatter stringFromDate:date], [hourFormatter stringFromDate:next]];
+            add(hour, hour, [hourFormatter stringFromDate:date], title, ((nowHour - hour) % 6) == 0);
         }
-        maxSeconds = MAX(3600.0, maxSeconds);
     } else {
         NSDate *today = [calendar startOfDayForDate:[NSDate date]];
         for (NSInteger offset = 9; offset >= 0; offset--) {
             NSDate *day = [calendar dateByAddingUnit:NSCalendarUnitDay value:-offset toDate:today options:0];
-            long long startHour = (long long)llround(day.timeIntervalSince1970 / 3600.0);
             NSDate *next = [calendar dateByAddingUnit:NSCalendarUnitDay value:1 toDate:day options:0];
-            long long endHour = (long long)llround(next.timeIntervalSince1970 / 3600.0) - 1;
-            NNPAggregate sum = [self aggregateFrom:startHour to:endHour];
-            NNPChartBar *bar = [NNPChartBar new];
-            bar.idleSeconds = sum.idleS;
-            bar.mediaSeconds = sum.mediaS;
-            bar.percent = [self lastPercentFrom:startHour to:endHour];
-            bar.label = [dayFormatter stringFromDate:day];
-            bar.showLabel = (offset % 3) == 0;
-            [bars addObject:bar];
-            maxSeconds = MAX(maxSeconds, sum.idleS + sum.mediaS);
-            [details addObject:[self detailTextForTitle:[dayFormatter stringFromDate:day] aggregate:sum percent:bar.percent]];
+            long long start = (long long)llround(day.timeIntervalSince1970 / 3600.0);
+            long long end = (long long)llround(next.timeIntervalSince1970 / 3600.0) - 1;
+            add(start, end, [shortDay stringFromDate:day], [dayFormatter stringFromDate:day], (offset % 3) == 0);
         }
-        maxSeconds = MAX(3.0 * 3600.0, ceil(maxSeconds / 3600.0 / 3.0) * 3.0 * 3600.0);
     }
+    double maxSeconds = 0, maxPower = 0;
+    for (NNPChartBar *bar in bars) {
+        maxSeconds = MAX(maxSeconds, bar.idleSeconds + bar.mediaSeconds);
+        maxPower = MAX(maxPower, bar.power);
+    }
+    // Readable axis steps: an hour bar tops out at 60 min, day bars use 2 h steps, power uses 200 mW steps.
+    if ([self showsDays]) maxSeconds = MAX(4.0 * 3600.0, ceil(maxSeconds / 7200.0) * 7200.0);
+    else maxSeconds = 3600.0;
+    maxPower = MAX(400.0, ceil(maxPower / 200.0) * 200.0);
+    NNPAggregate range = [self currentAggregate];
+    for (NNPPowerChartView *chart in _charts) {
+        chart.bars = bars;
+        chart.maxValue = chart.kind == NNPChartKindTime ? maxSeconds : maxPower;
+        chart.averagePower = range.pwrN > 0 ? range.pwrSum / range.pwrN : -1;
+    }
+    _barTitles = titles;
     _barDetails = details;
-    _chart.maxSeconds = maxSeconds;
-    _chart.selectedIndex = -1;
-    _chart.bars = bars;
-    _detail.text = @"點一下長條可看該時段的詳細資料。";
 }
 
-- (NSString *)detailTextForTitle:(NSString *)title aggregate:(NNPAggregate)sum percent:(double)percent {
+- (void)updateSummary {
+    NNPAggregate sum = [self currentAggregate];
     double total = sum.idleS + sum.mediaS;
-    if (total <= 0) return [NSString stringWithFormat:@"%@：沒有 AOD 紀錄", title];
-    NSMutableArray *parts = [NSMutableArray arrayWithObject:[NSString stringWithFormat:@"%@　AOD %@", title, NNPDuration(total)]];
-    if (sum.idleS > 0) [parts addObject:[NSString stringWithFormat:@"時鐘 %@", NNPDuration(sum.idleS)]];
-    if (sum.mediaS > 0) [parts addObject:[NSString stringWithFormat:@"音樂 %@", NNPDuration(sum.mediaS)]];
-    if (sum.pwrN > 0) [parts addObject:[NSString stringWithFormat:@"平均 %.0f mW", sum.pwrSum / sum.pwrN]];
-    if (percent >= 0) [parts addObject:[NSString stringWithFormat:@"電量 %.0f%%", percent]];
-    return [parts componentsJoinedByString:@" · "];
+    _bigValue.text = sum.pwrN >= 3 ? [NSString stringWithFormat:@"%.0f mW", sum.pwrSum / sum.pwrN] : @"—";
+    _bigCaption.text = [NSString stringWithFormat:@"%@ AOD 顯示期間，整支手機的平均功率（含螢幕與系統，不只是插件）。",
+                        [self showsDays] ? @"過去 10 天" : @"過去 24 小時"];
+    NSMutableArray *parts = [NSMutableArray arrayWithObject:[NSString stringWithFormat:@"AOD %@", NNPDuration(total)]];
+    double capacity = [self batteryCapacityMAh];
+    if (sum.dischS >= 1800 && capacity > 0)
+        [parts addObject:[NSString stringWithFormat:@"每小時約 %.1f%%", sum.usedMAh / (sum.dischS / 3600.0) / capacity * 100.0]];
+    if (sum.dischS >= 600 && capacity > 0)
+        [parts addObject:[NSString stringWithFormat:@"共用掉約 %.1f%%", sum.usedMAh / capacity * 100.0]];
+    _summaryLine.text = [parts componentsJoinedByString:@" · "];
+    _modeLegend.attributedText = NNPLegend(@[@[[NSString stringWithFormat:@"時鐘 %@", NNPDuration(sum.idleS)], UIColor.systemBlueColor],
+                                             @[[NSString stringWithFormat:@"音樂 %@", NNPDuration(sum.mediaS)], UIColor.systemGreenColor]]);
 }
 
-- (void)showDetailForIndex:(NSInteger)index {
+- (NSString *)detailTextForAggregate:(NNPAggregate)sum percent:(double)percent {
+    double total = sum.idleS + sum.mediaS;
+    NSMutableArray *lines = [NSMutableArray array];
+    if (total > 0)
+        [lines addObject:[NSString stringWithFormat:@"AOD 顯示 %@（時鐘 %@、音樂 %@）", NNPDuration(total), NNPDuration(sum.idleS), NNPDuration(sum.mediaS)]];
+    else
+        [lines addObject:@"這段期間沒有 AOD 顯示"];
+    if (sum.pwrN > 0) [lines addObject:[NSString stringWithFormat:@"平均功率 %.0f mW（%.0f 筆取樣）", sum.pwrSum / sum.pwrN, sum.pwrN]];
+    double capacity = [self batteryCapacityMAh];
+    if (sum.usedMAh > 0) {
+        NSString *share = capacity > 0 ? [NSString stringWithFormat:@"，約 %.1f%%", sum.usedMAh / capacity * 100.0] : @"";
+        [lines addObject:[NSString stringWithFormat:@"AOD 期間用掉 %.0f mAh%@", sum.usedMAh, share]];
+    }
+    if (sum.chgS > 0) [lines addObject:[NSString stringWithFormat:@"其中充電 %@", NNPDuration(sum.chgS)]];
+    if (percent >= 0) [lines addObject:[NSString stringWithFormat:@"時段結束時電量 %.0f%%", percent]];
+    return [lines componentsJoinedByString:@"\n"];
+}
+
+- (void)selectIndex:(NSInteger)index {
+    for (NNPPowerChartView *chart in _charts) chart.selectedIndex = index;
     if (index < 0 || index >= (NSInteger)_barDetails.count) {
-        _detail.text = @"點一下長條可看該時段的詳細資料。";
+        _detailTitle.text = @"點選或拖曳圖表";
+        _detail.text = @"三張圖會一起標出同一個時段，這裡會顯示該時段的 AOD 時間、平均功率、用掉的電量與充電時間。";
     } else {
+        _detailTitle.text = _barTitles[(NSUInteger)index];
         _detail.text = _barDetails[(NSUInteger)index];
     }
     [self.view setNeedsLayout];
