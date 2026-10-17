@@ -21,6 +21,8 @@ FOUNDATION_EXPORT NSString * const NNPSpotifyDataDidChangeNotification;
 @property(nonatomic, readonly) BOOL aodIdleDisplayEnabled;
 @property(nonatomic, readonly) double aodStillTimeoutMinutes;
 @property(nonatomic, readonly) BOOL aodSleepEnabled;
+@property(nonatomic, readonly) BOOL aodSleepWhileCharging;
+@property(nonatomic, readonly) NSInteger aodLowBatteryPercent;
 @property(nonatomic, readonly) NSInteger aodSleepStartMinutes;   // minutes after midnight
 @property(nonatomic, readonly) NSInteger aodSleepEndMinutes;
 @property(nonatomic, readonly) double aodSleepTimeoutMinutes;    // idle time before the clock blanks inside the window

@@ -302,6 +302,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)updateStillOffForActiveAOD:(BOOL)activeAOD;
 - (void)stillOffPickupEvent:(long long)gesture;
 - (BOOL)sleepModeActiveNow;
+- (BOOL)deviceIsCharging;
 - (double)effectiveStillMinutes;
 - (void)updateSleepBoundaryTimer;
 - (void)armStillTimerForMinutes:(double)minutes;
@@ -400,6 +401,14 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 }
 - (void)install {
     if (_installed) return; _installed = YES;
+    {
+        __weak typeof(self) batterySelf = self;
+        UIDevice.currentDevice.batteryMonitoringEnabled = YES;
+        for (NSString *name in @[UIDeviceBatteryLevelDidChangeNotification, UIDeviceBatteryStateDidChangeNotification]) {
+            [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:NSOperationQueue.mainQueue
+                                                        usingBlock:^(__unused NSNotification *note) { [batterySelf reconcile]; }];
+        }
+    }
     if (NNPRecorderEnabled()) {
         __weak typeof(self) recorderSelf = self;
         NNPAODStartPanelBrightnessSampler();
@@ -701,8 +710,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf) return;
         strongSelf.stillTimer = nil;
-        UIDeviceBatteryState battery = UIDevice.currentDevice.batteryState;
-        if (battery == UIDeviceBatteryStateCharging || battery == UIDeviceBatteryStateFull) {
+        BOOL chargingAllowed = [strongSelf sleepModeActiveNow] && strongSelf.preferences.aodSleepWhileCharging;
+        if ([strongSelf deviceIsCharging] && !chargingAllowed) {
             [strongSelf armStillTimerForMinutes:minutes];
             return;
         }
@@ -721,8 +730,22 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     if (start == end) return YES;
     return start < end ? (now >= start && now < end) : (now >= start || now < end);
 }
+- (BOOL)deviceIsCharging {
+    UIDeviceBatteryState state = UIDevice.currentDevice.batteryState;
+    return state == UIDeviceBatteryStateCharging || state == UIDeviceBatteryStateFull;
+}
+// Normal delay, or the shorter sleep-window delay; a low battery tightens it further (to 2 minutes below the
+// chosen level, to "immediately" below 10%) even when the normal auto-off is switched off.
 - (double)effectiveStillMinutes {
-    return [self sleepModeActiveNow] ? self.preferences.aodSleepTimeoutMinutes : self.preferences.aodStillTimeoutMinutes;
+    double minutes = [self sleepModeActiveNow] ? self.preferences.aodSleepTimeoutMinutes : self.preferences.aodStillTimeoutMinutes;
+    NSInteger threshold = self.preferences.aodLowBatteryPercent;
+    float level = UIDevice.currentDevice.batteryLevel;
+    if (threshold > 0 && level >= 0.0f && ![self deviceIsCharging]) {
+        double percent = (double)level * 100.0;
+        if (percent < 10.0 && percent < (double)threshold) minutes = 0.05;
+        else if (percent < (double)threshold) minutes = minutes > 0 ? MIN(minutes, 2.0) : 2.0;
+    }
+    return minutes;
 }
 // The blank delay changes when the window opens or closes, so wake up at each boundary and re-arm.
 - (void)updateSleepBoundaryTimer {

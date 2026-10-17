@@ -71,6 +71,8 @@ static CGFloat NNPFloat(NSString *key, CGFloat fallback) {
 @property(nonatomic) BOOL aodIdleDisplayEnabled;
 @property(nonatomic) double aodStillTimeoutMinutes;
 @property(nonatomic) BOOL aodSleepEnabled;
+@property(nonatomic) BOOL aodSleepWhileCharging;
+@property(nonatomic) NSInteger aodLowBatteryPercent;
 @property(nonatomic) NSInteger aodSleepStartMinutes;
 @property(nonatomic) NSInteger aodSleepEndMinutes;
 @property(nonatomic) double aodSleepTimeoutMinutes;
@@ -124,6 +126,8 @@ static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observe
     self.aodIdleDisplayEnabled = NNPBool(@"AODIdleDisplayEnabled", YES);
     self.aodLiftBoostFactor = MAX(1.0, MIN(4.0, NNPFloat(@"AODLiftBoostFactor", 2.0)));
     self.aodSleepEnabled = NNPBool(@"AODSleepEnabled", NO);
+    self.aodSleepWhileCharging = NNPBool(@"AODSleepWhileCharging", NO);
+    self.aodLowBatteryPercent = (NSInteger)MAX(0.0, MIN(60.0, NNPFloat(@"AODLowBatteryPercent", 20.0)));
     self.aodSleepStartMinutes = (NSInteger)MAX(0.0, MIN(1439.0, NNPFloat(@"AODSleepStartMinutes", 1380.0)));
     self.aodSleepEndMinutes = (NSInteger)MAX(0.0, MIN(1439.0, NNPFloat(@"AODSleepEndMinutes", 420.0)));
     self.aodSleepTimeoutMinutes = MAX(0.02, MIN(120.0, NNPFloat(@"AODSleepTimeoutMinutes", 1.0)));

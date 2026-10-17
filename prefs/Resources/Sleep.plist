@@ -31,6 +31,30 @@
 			<string>indigo</string>
 		</dict>
 		<dict>
+			<key>PostNotification</key>
+			<string>com.user.notchnowplaying.preferences.changed</string>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<false/>
+			<key>defaults</key>
+			<string>com.user.notchnowplaying</string>
+			<key>dependsDefault</key>
+			<false/>
+			<key>dependsEnabledWhen</key>
+			<true/>
+			<key>dependsOn</key>
+			<string>AODSleepEnabled</string>
+			<key>key</key>
+			<string>AODSleepWhileCharging</string>
+			<key>label</key>
+			<string>充電中也熄屏</string>
+			<key>symbol</key>
+			<string>bolt.slash.fill</string>
+			<key>tint</key>
+			<string>orange</string>
+		</dict>
+		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>

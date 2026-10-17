@@ -199,8 +199,14 @@ static const NSUInteger NNPCoverStillSamplesBeforeSlowing = 20;
     _stillSamples = 0;
     [self openSensingWindow:3.0];
     __weak typeof(self) periodicOwner = self;
+    __block NSUInteger periodicTicks = 0;
     _periodicTimer = [NSTimer scheduledTimerWithTimeInterval:NNPCoverPeriodicInterval repeats:YES block:^(__unused NSTimer *timer) {
-        [periodicOwner openSensingWindow:NNPCoverPeriodicWindow];
+        NNPScreenCoverObserver *owner = periodicOwner;
+        if (!owner) return;
+        // Once the phone has sat still for a while, anything that covers it must first move it (which opens a
+        // window through the accelerometer), so probe the proximity sensor only every fourth tick (60 s).
+        if (owner->_stillSamples >= NNPCoverStillSamplesBeforeSlowing && (++periodicTicks % 4) != 0) return;
+        [owner openSensingWindow:NNPCoverPeriodicWindow];
     }];
     _periodicTimer.tolerance = 3.0;
     _motion = [CMMotionManager new];
