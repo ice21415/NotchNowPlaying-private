@@ -22,6 +22,19 @@ static void NNPProbeDelegate3(id self, SEL _cmd, id manager, long long gesture, 
     if (NNPProbeOriginal3) NNPProbeOriginal3(self, _cmd, manager, gesture, orientation);
 }
 
+// Receives lift events when the system has no delegate of its own (Raise to Wake off).
+@interface NNPWakeProbeDelegate : NSObject
+@end
+@implementation NNPWakeProbeDelegate
+- (void)wakeGestureManager:(id)manager didUpdateWakeGesture:(long long)gesture orientation:(long long)orientation detectedAt:(id)detectedAt {
+    NNPProbeRecord(@"own4", gesture, orientation);
+}
+- (void)wakeGestureManager:(id)manager didUpdateWakeGesture:(long long)gesture orientation:(long long)orientation {
+    NNPProbeRecord(@"own3", gesture, orientation);
+}
+@end
+static NNPWakeProbeDelegate *NNPProbeOwnDelegate;
+
 void NNPWakeGestureProbeStartIfEnabled(void) {
     id flag = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("ResearchWakeGestureProbe"), CFSTR("com.user.notchnowplaying")));
     if (![flag respondsToSelector:@selector(boolValue)] || ![flag boolValue]) return;
@@ -47,6 +60,11 @@ void NNPWakeGestureProbeStartIfEnabled(void) {
             if (m4 && !NNPProbeOriginal4) NNPProbeOriginal4 = (void (*)(id, SEL, id, long long, long long, id))method_setImplementation(m4, (IMP)NNPProbeDelegate4);
             if (m3 && !NNPProbeOriginal3) NNPProbeOriginal3 = (void (*)(id, SEL, id, long long, long long))method_setImplementation(m3, (IMP)NNPProbeDelegate3);
             NNPDiagnosticSetString(@"WakeProbeHookedSelectors", [NSString stringWithFormat:@"4arg=%d 3arg=%d", m4 != NULL, m3 != NULL]);
+        }
+        if (!delegate && [manager respondsToSelector:NSSelectorFromString(@"setDelegate:")]) {
+            NNPProbeOwnDelegate = [NNPWakeProbeDelegate new];
+            ((void (*)(id, SEL, id))objc_msgSend)(manager, NSSelectorFromString(@"setDelegate:"), NNPProbeOwnDelegate);
+            NNPDiagnosticSetBool(@"WakeProbeOwnDelegateSet", YES);
         }
         SEL startSel = NSSelectorFromString(@"startWakeGestureUpdates");
         if ([manager respondsToSelector:startSel]) {
