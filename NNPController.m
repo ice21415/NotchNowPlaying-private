@@ -401,6 +401,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         NNPRecorderStart(^NSString *{ return [recorderSelf recorderSnapshot]; });
     }
     self.preferences = [NNPPreferences sharedPreferences]; [self.preferences startObserving];
+    [[NNPPowerStats sharedStats] startObservingBattery];
     Class applicationClass = [UIApplication.sharedApplication class];
     Method early = class_getInstanceMethod(applicationClass, NSSelectorFromString(@"__handleHIDEvent:withUIEvent:"));
     if (early && method_getNumberOfArguments(early) == 4 && !NNPOriginalEarlyHIDEvent) {

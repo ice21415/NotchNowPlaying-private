@@ -11,4 +11,6 @@ typedef NS_ENUM(NSInteger, NNPPowerStatsMode) {
 - (void)sampleWithMode:(NNPPowerStatsMode)mode;
 // Ends the current continuous run (the next sample starts a new baseline) and persists pending data.
 - (void)endRun;
+// Records the battery level and charging time whenever the level or charging state changes, AOD or not.
+- (void)startObservingBattery;
 @end

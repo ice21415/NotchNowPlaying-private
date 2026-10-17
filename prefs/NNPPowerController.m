@@ -3,7 +3,7 @@
 #import "NNPPowerStatsShared.h"
 
 typedef struct {
-    double idleS, mediaS, dischS, chgS, usedMAh, pwrSum, pwrN;
+    double idleS, mediaS, dischS, chgS, chgAllS, usedMAh, pwrSum, pwrN;
 } NNPAggregate;
 
 static double NNPValue(NSDictionary *dictionary, NSString *key, double fallback) {
@@ -62,6 +62,8 @@ static NSAttributedString *NNPLegend(NSArray<NSArray *> *items) {
     NSArray<NSDictionary *> *_hours;
     NSDictionary *_battery;
     NSArray<NSString *> *_barTitles, *_barDetails;
+    NSTimer *_refreshTimer;
+    id _batteryObserver;
 }
 
 - (NSString *)plistName { return @"Power"; }
@@ -138,7 +140,22 @@ static NSAttributedString *NNPLegend(NSArray<NSArray *> *items) {
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    UIDevice.currentDevice.batteryMonitoringEnabled = YES;
+    __weak typeof(self) weakSelf = self;
+    // SpringBoard records each battery change within a minute; refresh while the page is visible.
+    if (!_batteryObserver) _batteryObserver = [NSNotificationCenter.defaultCenter addObserverForName:UIDeviceBatteryLevelDidChangeNotification
+        object:nil queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) { [weakSelf reloadStats]; }];
+    [_refreshTimer invalidate];
+    _refreshTimer = [NSTimer scheduledTimerWithTimeInterval:30.0 repeats:YES block:^(__unused NSTimer *timer) { [weakSelf reloadStats]; }];
     [self reloadStats];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    [_refreshTimer invalidate];
+    _refreshTimer = nil;
+    if (_batteryObserver) [NSNotificationCenter.defaultCenter removeObserver:_batteryObserver];
+    _batteryObserver = nil;
 }
 
 - (void)viewDidLayoutSubviews {
@@ -229,6 +246,7 @@ static NSAttributedString *NNPLegend(NSArray<NSArray *> *items) {
         sum.mediaS += NNPValue(entry, @"mediaS", 0);
         sum.dischS += NNPValue(entry, @"dischS", 0);
         sum.chgS += NNPValue(entry, @"chgS", 0);
+        sum.chgAllS += NNPValue(entry, @"chgAllS", 0);
         sum.usedMAh += NNPValue(entry, @"usedMAh", 0);
         sum.pwrSum += NNPValue(entry, @"pwrSum", 0);
         sum.pwrN += NNPValue(entry, @"pwrN", 0);
@@ -271,7 +289,7 @@ static NSAttributedString *NNPLegend(NSArray<NSArray *> *items) {
         NNPChartBar *bar = [NNPChartBar new];
         bar.idleSeconds = sum.idleS;
         bar.mediaSeconds = sum.mediaS;
-        bar.chargeSeconds = sum.chgS;
+        bar.chargeSeconds = MAX(sum.chgS, sum.chgAllS);
         bar.percent = [self lastPercentFrom:start to:end];
         bar.power = sum.pwrN > 0 ? sum.pwrSum / sum.pwrN : -1;
         bar.label = label;
@@ -346,7 +364,7 @@ static NSAttributedString *NNPLegend(NSArray<NSArray *> *items) {
         NSString *share = capacity > 0 ? [NSString stringWithFormat:@"，約 %.1f%%", sum.usedMAh / capacity * 100.0] : @"";
         [lines addObject:[NSString stringWithFormat:@"AOD 期間用掉 %.0f mAh%@", sum.usedMAh, share]];
     }
-    if (sum.chgS > 0) [lines addObject:[NSString stringWithFormat:@"其中充電 %@", NNPDuration(sum.chgS)]];
+    if (MAX(sum.chgS, sum.chgAllS) > 0) [lines addObject:[NSString stringWithFormat:@"充電 %@", NNPDuration(MAX(sum.chgS, sum.chgAllS))]];
     if (percent >= 0) [lines addObject:[NSString stringWithFormat:@"時段結束時電量 %.0f%%", percent]];
     return [lines componentsJoinedByString:@"\n"];
 }
@@ -406,6 +424,11 @@ static NSAttributedString *NNPLegend(NSArray<NSArray *> *items) {
 }
 
 - (id)valueBattery:(__unused PSSpecifier *)specifier {
+    UIDevice *device = UIDevice.currentDevice;
+    if (device.batteryLevel >= 0) {
+        BOOL charging = device.batteryState == UIDeviceBatteryStateCharging || device.batteryState == UIDeviceBatteryStateFull;
+        return [NSString stringWithFormat:@"%.0f%%%@", device.batteryLevel * 100.0, charging ? @"（充電中）" : @""];
+    }
     double percent = NNPValue(_battery, @"percent", -1);
     if (percent < 0) return @"尚無資料";
     NSString *state = [_battery[@"charging"] boolValue] ? @"（充電中）" : @"";

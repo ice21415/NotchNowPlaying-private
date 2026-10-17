@@ -4,6 +4,7 @@
 #import <CoreFoundation/CoreFoundation.h>
 #import <dlfcn.h>
 #import <mach/mach.h>
+#import <UIKit/UIKit.h>
 
 typedef mach_port_t NNPIOObject;
 typedef CFMutableDictionaryRef (*NNPIOServiceMatchingFn)(const char *);
@@ -26,6 +27,10 @@ static double NNPNumber(NSDictionary *dictionary, NSString *key, double fallback
     BOOL _lastCharging;
     NSTimeInterval _lastPersistTime;
     BOOL _dirty;
+    BOOL _observingBattery;
+    NSTimeInterval _lastBatteryEventTime;
+    BOOL _lastBatteryCharging;
+    BOOL _persistScheduled;
     NNPIOServiceMatchingFn _serviceMatching;
     NNPIOServiceGetMatchingServiceFn _getMatchingService;
     NNPIORegistryCreatePropertiesFn _createProperties;
@@ -158,6 +163,46 @@ static double NNPNumber(NSDictionary *dictionary, NSString *key, double fallback
     [self persistBattery:battery];
     _lastSampleTime = 0;
     _lastRawMAh = 0;
+}
+
+- (void)startObservingBattery {
+    if (_observingBattery) return;
+    _observingBattery = YES;
+    UIDevice.currentDevice.batteryMonitoringEnabled = YES;
+    __weak typeof(self) weakSelf = self;
+    for (NSString *name in @[UIDeviceBatteryLevelDidChangeNotification, UIDeviceBatteryStateDidChangeNotification]) {
+        [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:NSOperationQueue.mainQueue
+                                                    usingBlock:^(__unused NSNotification *note) { [weakSelf recordBatteryEvent]; }];
+    }
+    [self recordBatteryEvent];
+}
+
+// Event driven (about one event per percent), so the battery line and charging periods stay current even when
+// no AOD is shown. Charging time between events is credited to the hour of the later event.
+- (void)recordBatteryEvent {
+    NSDictionary *battery = [self readBattery];
+    if (!battery) return;
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    NSMutableDictionary *bucket = [self bucketForHour:(long long)(now / 3600.0)];
+    double percent = NNPNumber(battery, @"percent", -1);
+    if (percent >= 0) bucket[@"pct1"] = @(percent);
+    BOOL charging = [battery[@"charging"] boolValue];
+    if (_lastBatteryEventTime > 0 && _lastBatteryCharging && now - _lastBatteryEventTime <= 3 * 3600.0)
+        [self add:MIN(3600.0, now - _lastBatteryEventTime) forKey:@"chgAllS" to:bucket];
+    _lastBatteryEventTime = now;
+    _lastBatteryCharging = charging;
+    _dirty = YES;
+    NSTimeInterval wait = 60.0 - (now - _lastPersistTime);
+    if (wait <= 0) { [self persistBattery:battery]; return; }
+    if (_persistScheduled) return;
+    _persistScheduled = YES;
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(wait * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        NNPPowerStats *stats = weakSelf;
+        if (!stats) return;
+        stats->_persistScheduled = NO;
+        [stats persistBattery:nil];
+    });
 }
 
 @end
