@@ -73,6 +73,12 @@ typedef uint64_t (*NNPHIDTimestamp)(CFTypeRef);
 }
 - (void)sample {
     if (!_active || _pending) return;
+    // Research switch: skip the sensor read entirely to test whether sampling is visible on screen.
+    id skip = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("ResearchSkipAmbient"), CFSTR("com.user.notchnowplaying")));
+    if ([skip respondsToSelector:@selector(boolValue)] && [skip boolValue]) {
+        [self scheduleNextSampleAfter:10];
+        return;
+    }
     _pending = YES;
     NSUInteger generation = _generation;
     dispatch_async(_queue, ^{
