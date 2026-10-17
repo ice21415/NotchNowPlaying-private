@@ -124,6 +124,7 @@ BOOL NNPPhase7PresentNotificationSnakeAnimation(void) {
 - (void)setAutomaticBrightnessNits:(float)nits {
     float safe = NNPAODClampAutomaticNits(nits);
     if (!NNPAODBrightnessNeedsUpdate(_automaticBrightnessNits, safe)) return;
+    NNPDiagnosticTrace([NSString stringWithFormat:@"NITS apply %.2f -> %.2f", _automaticBrightnessNits, safe]);
     _automaticBrightnessNits = safe;
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE && NNP_PHASE7_DRY_RUN == 0
     if (self.aodPresentationActive) {
