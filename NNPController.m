@@ -6,7 +6,6 @@
 #import "NNPPickupMonitor.h"
 #import "NNPRecorder.h"
 #import <dlfcn.h>
-#import "NNPMengoSensorMode.h"
 #import "NNPController.h"
 #import "NNPChargingController.h"
 #import "NNPMediaController.h"
@@ -240,10 +239,6 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic, strong) NSTimer *liftBoostTimer;
 @property(nonatomic, strong) NSTimer *stillTimer;
 @property(nonatomic, strong) NNPPickupMonitor *pickupMonitor;
-@property(nonatomic, strong) NNPMengoSensorMode *idleSensorMode;
-@property(nonatomic, strong) NSTimer *keepAliveTimer;
-@property(nonatomic, strong) CALayer *keepAliveLayer;
-@property(nonatomic) BOOL keepAlivePhase;
 @property(nonatomic) uint32_t idleSleepAssertion;
 @property(nonatomic, strong) NSTimer *powerStatsTimer;
 @property(nonatomic, strong) NSTimer *idleDeepTimer;
@@ -297,6 +292,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)scheduleIdleDeepIfNeeded;
 - (void)cancelIdleDeep;
 - (void)cancelStillOff;
+- (void)updateIdleSleepAssertion:(BOOL)wanted;
 - (NSString *)recorderSnapshot;
 - (float)displayNitsForTarget:(float)target;
 - (void)startLiftBoost;
@@ -626,6 +622,32 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 // "Auto-off after being put down": the idle clock AOD blanks the panel (the same path as the cover blank)
 // once no pickup has been seen for the configured time, and a pickup brings it back. Pickups come from the
 // motion coprocessor, so nothing polls while the panel is off.
+// While the pseudo-AOD panel is lit, SpringBoard's backlight state is "off", so with nothing else keeping the
+// system awake it idle-sleeps every few seconds and the display pipeline powers the panel down with it (seen as
+// CurrentPowerState/NormalModeActive 1 -> 0 -> 1 on AppleCLCD2). Audio playback holds such an assertion for the
+// music AOD; hold one ourselves while the panel is meant to be lit, and drop it whenever the panel is blanked.
+- (void)updateIdleSleepAssertion:(BOOL)wanted {
+    typedef int (*NNPAssertCreate)(CFStringRef, uint32_t, CFStringRef, uint32_t *);
+    typedef int (*NNPAssertRelease)(uint32_t);
+    static NNPAssertCreate create;
+    static NNPAssertRelease release;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        void *iokit = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_LAZY | RTLD_LOCAL);
+        create = iokit ? (NNPAssertCreate)dlsym(iokit, "IOPMAssertionCreateWithName") : NULL;
+        release = iokit ? (NNPAssertRelease)dlsym(iokit, "IOPMAssertionRelease") : NULL;
+    });
+    if (wanted && !self.idleSleepAssertion && create) {
+        uint32_t identifier = 0;
+        int result = create(CFSTR("PreventUserIdleSystemSleep"), 255, CFSTR("NotchNowPlaying AOD"), &identifier);
+        if (result == 0) self.idleSleepAssertion = identifier;
+        NNPDiagnosticSetBool(@"AODIdleSleepAssertionActive", result == 0);
+    } else if (!wanted && self.idleSleepAssertion && release) {
+        release(self.idleSleepAssertion);
+        self.idleSleepAssertion = 0;
+        NNPDiagnosticSetBool(@"AODIdleSleepAssertionActive", NO);
+    }
+}
 - (void)cancelStillOff {
     [self.stillTimer invalidate];
     self.stillTimer = nil;
@@ -1411,66 +1433,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         BOOL activeAOD = self.locked && self.display.aodPresentationActive &&
             self.display.lifecycleState == NNPDisplayLifecycleStateActive;
         [self updateStillOffForActiveAOD:activeAOD];
-        // Research: give the idle clock the same "display on" HID sensor configuration that the music AOD gets
-        // through the MeN Go entry, to test whether the "display off" configuration power-cycles the panel.
-        {
-            id flag = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("ResearchIdleSensorMode"), CFSTR("com.user.notchnowplaying")));
-            BOOL want = [flag respondsToSelector:@selector(boolValue)] && [flag boolValue] && activeAOD &&
-                [self idleBrightnessIntent] && !self.stillBlanked && !self.mengoOpen;
-            if (want && !self.idleSensorMode) self.idleSensorMode = [NNPMengoSensorMode new];
-            [self.idleSensorMode setActive:want];
-            NNPRecorderLog([NSString stringWithFormat:@"IDLE sensor mode active=%d", (int)want]);
-        }
-        // Research: keep the display pipeline from idling on the static idle clock by changing one invisible
-        // near-black pixel at the configured interval (the music AOD redraws its progress every second).
-        {
-            id interval = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("ResearchKeepAliveInterval"), CFSTR("com.user.notchnowplaying")));
-            double seconds = [interval respondsToSelector:@selector(doubleValue)] ? [interval doubleValue] : 0;
-            BOOL want = seconds > 0 && activeAOD && [self idleBrightnessIntent] && !self.stillBlanked;
-            if (!want) { [self.keepAliveTimer invalidate]; self.keepAliveTimer = nil; [self.keepAliveLayer removeFromSuperlayer]; self.keepAliveLayer = nil; }
-            else if (!self.keepAliveTimer) {
-                self.keepAliveLayer = [CALayer layer];
-                self.keepAliveLayer.frame = CGRectMake(0, 0, 2, 2);
-                self.keepAliveLayer.backgroundColor = UIColor.blackColor.CGColor;
-                [self.window.layer addSublayer:self.keepAliveLayer];
-                __weak typeof(self) weakSelf = self;
-                self.keepAliveTimer = [NSTimer scheduledTimerWithTimeInterval:seconds repeats:YES block:^(__unused NSTimer *timer) {
-                    NNPController *controller = weakSelf;
-                    if (!controller) return;
-                    controller.keepAlivePhase = !controller.keepAlivePhase;
-                    [CATransaction begin];
-                    [CATransaction setDisableActions:YES];
-                    controller.keepAliveLayer.backgroundColor = [UIColor colorWithWhite:controller.keepAlivePhase ? 0.004 : 0.0 alpha:1.0].CGColor;
-                    [CATransaction commit];
-                }];
-                NNPRecorderLog([NSString stringWithFormat:@"KEEPALIVE started interval=%.2f", seconds]);
-            }
-        }
-        // Research: hold "prevent idle system sleep" during the idle clock, as audio playback does for the music AOD.
-        {
-            typedef int (*NNPAssertCreate)(CFStringRef, uint32_t, CFStringRef, uint32_t *);
-            typedef int (*NNPAssertRelease)(uint32_t);
-            static NNPAssertCreate create; static NNPAssertRelease release;
-            static dispatch_once_t once;
-            dispatch_once(&once, ^{
-                void *iokit = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_LAZY);
-                create = iokit ? (NNPAssertCreate)dlsym(iokit, "IOPMAssertionCreateWithName") : NULL;
-                release = iokit ? (NNPAssertRelease)dlsym(iokit, "IOPMAssertionRelease") : NULL;
-            });
-            id flag = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("ResearchSystemAssertion"), CFSTR("com.user.notchnowplaying")));
-            BOOL want = [flag respondsToSelector:@selector(boolValue)] && [flag boolValue] && activeAOD &&
-                [self idleBrightnessIntent] && !self.stillBlanked;
-            if (want && !self.idleSleepAssertion && create) {
-                uint32_t identifier = 0;
-                int result = create(CFSTR("PreventUserIdleSystemSleep"), 255, CFSTR("NotchNowPlaying idle AOD"), &identifier);
-                if (result == 0) self.idleSleepAssertion = identifier;
-                NNPRecorderLog([NSString stringWithFormat:@"ASSERT create result=0x%x id=%u", result, identifier]);
-            } else if (!want && self.idleSleepAssertion && release) {
-                release(self.idleSleepAssertion);
-                NNPRecorderLog(@"ASSERT released");
-                self.idleSleepAssertion = 0;
-            }
-        }
+        [self updateIdleSleepAssertion:activeAOD && ![self pocketSuspended]];
         BOOL coverDetectionActive = activeAOD && self.preferences.aodPocketModeEnabled && !self.mengoOpen && !self.stillBlanked;
         [self.pocketObserver setActive:coverDetectionActive];
         self.screenCoverObserver.lowPower = [self idleBrightnessIntent];
@@ -1752,6 +1715,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     [self setAODOrientationMonitoring:NO];
     [self.screenCoverObserver setActive:NO];
     [self.pocketObserver setActive:NO];
+    [self updateIdleSleepAssertion:NO];
     [_charging stop];
     [_ambientLight setActive:NO];
 #if NNP_ENABLE_EXPERIMENTAL_LOCKED_VISIBLE
