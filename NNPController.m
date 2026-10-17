@@ -5,6 +5,7 @@
 #import "NNPAODPresentation.h"
 #import "NNPPickupMonitor.h"
 #import "NNPRecorder.h"
+#import "NNPMengoSensorMode.h"
 #import "NNPController.h"
 #import "NNPChargingController.h"
 #import "NNPMediaController.h"
@@ -143,6 +144,13 @@ static long long NNPSensorModeInteger(id mode, const char *selectorName) {
 }
 static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     id result = NNPOriginalRequestUISensorMode ? NNPOriginalRequestUISensorMode(service, selector, mode) : nil;
+    if (NNPRecorderEnabled()) {
+        NSString *reason = [mode respondsToSelector:@selector(reason)] ? [mode reason] : @"unknown";
+        NNPRecorderLog([NSString stringWithFormat:@"SENSOR request reason=%@ display=%lld digitizer=%d alwaysOn=%d tap=%d swipe=%d",
+            reason, NNPSensorModeInteger(mode, "displayState"), (int)NNPSensorModeBool(mode, "digitizerEnabled"),
+            (int)NNPSensorModeBool(mode, "alwaysOnGesturesEnabled"), (int)NNPSensorModeBool(mode, "tapToWakeEnabled"),
+            (int)NNPSensorModeBool(mode, "wakeOnSwipeEnabled")]);
+    }
     static NSUInteger requestCount = 0;
     if (++requestCount <= 30) {
         NSString *reason = [mode respondsToSelector:@selector(reason)] ? [mode reason] : @"unknown";
@@ -231,6 +239,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic, strong) NSTimer *liftBoostTimer;
 @property(nonatomic, strong) NSTimer *stillTimer;
 @property(nonatomic, strong) NNPPickupMonitor *pickupMonitor;
+@property(nonatomic, strong) NNPMengoSensorMode *idleSensorMode;
 @property(nonatomic, strong) NSTimer *powerStatsTimer;
 @property(nonatomic, strong) NSTimer *idleDeepTimer;
 @property(nonatomic) NSTimeInterval progressTimerInterval;
@@ -1397,6 +1406,16 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         BOOL activeAOD = self.locked && self.display.aodPresentationActive &&
             self.display.lifecycleState == NNPDisplayLifecycleStateActive;
         [self updateStillOffForActiveAOD:activeAOD];
+        // Research: give the idle clock the same "display on" HID sensor configuration that the music AOD gets
+        // through the MeN Go entry, to test whether the "display off" configuration power-cycles the panel.
+        {
+            id flag = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("ResearchIdleSensorMode"), CFSTR("com.user.notchnowplaying")));
+            BOOL want = [flag respondsToSelector:@selector(boolValue)] && [flag boolValue] && activeAOD &&
+                [self idleBrightnessIntent] && !self.stillBlanked && !self.mengoOpen;
+            if (want && !self.idleSensorMode) self.idleSensorMode = [NNPMengoSensorMode new];
+            [self.idleSensorMode setActive:want];
+            NNPRecorderLog([NSString stringWithFormat:@"IDLE sensor mode active=%d", (int)want]);
+        }
         BOOL coverDetectionActive = activeAOD && self.preferences.aodPocketModeEnabled && !self.mengoOpen && !self.stillBlanked;
         [self.pocketObserver setActive:coverDetectionActive];
         self.screenCoverObserver.lowPower = [self idleBrightnessIntent];
