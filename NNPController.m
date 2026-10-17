@@ -226,6 +226,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic) float ambientBrightnessTargetNits;
 @property(nonatomic) BOOL idleDeepActive;
 @property(nonatomic) BOOL stillBlanked;
+@property(nonatomic) BOOL liftBoostActive;
+@property(nonatomic, strong) NSTimer *liftBoostTimer;
 @property(nonatomic, strong) NSTimer *stillTimer;
 @property(nonatomic, strong) NNPPickupMonitor *pickupMonitor;
 @property(nonatomic, strong) NSTimer *powerStatsTimer;
@@ -280,6 +282,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)scheduleIdleDeepIfNeeded;
 - (void)cancelIdleDeep;
 - (void)cancelStillOff;
+- (float)displayNitsForTarget:(float)target;
+- (void)startLiftBoost;
+- (void)endLiftBoost;
 - (void)updateStillOffForActiveAOD:(BOOL)activeAOD;
 - (void)stillOffPickupDetected;
 - (void)armStillTimerForMinutes:(double)minutes;
@@ -439,7 +444,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
             NNPDiagnosticLogTransition([NSString stringWithFormat:@"AOD_AMBIENT lux=%.1f valid=%@ targetNits=%.2f", lux, valid ? @"YES" : @"NO", target]);
         }
         controller.ambientBrightnessTargetNits = target;
-        if (!controller.mengoOpen) controller.display.automaticBrightnessNits = target;
+        if (!controller.mengoOpen) controller.display.automaticBrightnessNits = [controller displayNitsForTarget:target];
     };
     self.display.stateChangedHandler = ^{
         NNPController *controller = weakSelf;
@@ -586,6 +591,35 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     self.stillTimer = nil;
     self.stillBlanked = NO;
     [self.pickupMonitor setActive:NO];
+    [self endLiftBoost];
+}
+- (float)displayNitsForTarget:(float)target {
+    if (target <= 0.0f || !self.liftBoostActive) return target;
+    return MIN(250.0f, target * (float)self.preferences.aodLiftBoostFactor);
+}
+// A pickup briefly raises the ambient-driven AOD level, then it falls back; both changes ride the normal
+// nits ramp and happen only on a pickup event, so there is no polling.
+- (void)startLiftBoost {
+    if (self.preferences.aodLiftBoostFactor <= 1.01) return;
+    self.liftBoostActive = YES;
+    [self.liftBoostTimer invalidate];
+    __weak typeof(self) weakSelf = self;
+    self.liftBoostTimer = [NSTimer scheduledTimerWithTimeInterval:8.0 repeats:NO block:^(__unused NSTimer *timer) {
+        [weakSelf endLiftBoost];
+    }];
+    self.liftBoostTimer.tolerance = 1.0;
+    if (!self.mengoOpen && self.ambientBrightnessTargetNits > 0)
+        self.display.automaticBrightnessNits = [self displayNitsForTarget:self.ambientBrightnessTargetNits];
+    NNPDiagnosticTrace(@"LIFT boost started");
+}
+- (void)endLiftBoost {
+    [self.liftBoostTimer invalidate];
+    self.liftBoostTimer = nil;
+    if (!self.liftBoostActive) return;
+    self.liftBoostActive = NO;
+    if (!self.mengoOpen && self.ambientBrightnessTargetNits > 0)
+        self.display.automaticBrightnessNits = self.ambientBrightnessTargetNits;
+    NNPDiagnosticTrace(@"LIFT boost ended");
 }
 - (void)armStillTimerForMinutes:(double)minutes {
     __weak typeof(self) weakSelf = self;
@@ -607,8 +641,16 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)updateStillOffForActiveAOD:(BOOL)activeAOD {
     double minutes = self.preferences.aodStillTimeoutMinutes;
     // idleModeActive turns NO while the panel is blanked, so use the intent that does not depend on it.
-    if (minutes <= 0 || !activeAOD || ![self idleBrightnessIntent] || self.mengoOpen) {
-        if (self.stillBlanked || self.stillTimer || self.pickupMonitor) [self cancelStillOff];
+    BOOL stillWanted = minutes > 0 && activeAOD && [self idleBrightnessIntent] && !self.mengoOpen;
+    BOOL boostWanted = activeAOD && self.preferences.aodLiftBoostFactor > 1.01 && !self.mengoOpen;
+    if (!stillWanted) {
+        [self.stillTimer invalidate];
+        self.stillTimer = nil;
+        self.stillBlanked = NO;
+    }
+    if (!stillWanted && !boostWanted) {
+        if (self.pickupMonitor) [self.pickupMonitor setActive:NO];
+        [self endLiftBoost];
         return;
     }
     if (!self.pickupMonitor) {
@@ -617,7 +659,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         self.pickupMonitor.lifted = ^{ [weakSelf stillOffPickupDetected]; };
     }
     [self.pickupMonitor setActive:YES];
-    if (!self.stillBlanked && !self.stillTimer) [self armStillTimerForMinutes:minutes];
+    if (stillWanted && !self.stillBlanked && !self.stillTimer) [self armStillTimerForMinutes:minutes];
 }
 - (void)stillOffPickupDetected {
     BOOL wasBlanked = self.stillBlanked;
@@ -625,6 +667,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     self.stillTimer = nil;
     self.stillBlanked = NO;
     NNPDiagnosticTrace(wasBlanked ? @"STILL pickup while blanked; restoring idle AOD" : @"STILL pickup; restarting the idle timer");
+    if (self.idleDeepActive) [self cancelIdleDeep];
+    [self startLiftBoost];
     [self reconcile];
 }
 - (void)aodOrientationChanged:(__unused NSNotification *)note {

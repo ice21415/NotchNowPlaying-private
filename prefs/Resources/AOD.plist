@@ -145,6 +145,42 @@
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>拿起手機時，AOD 會短暫變亮約 8 秒，然後回到原本亮度。只在「依環境光調整」開啟時有效（無音樂時鐘一律有效）。拿起偵測由動作協同處理器完成，不會額外耗電。</string>
+			<key>label</key>
+			<string>拿起時提高亮度</string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.user.notchnowplaying.preferences.changed</string>
+			<key>cell</key>
+			<string>PSSegmentCell</string>
+			<key>default</key>
+			<integer>2</integer>
+			<key>defaults</key>
+			<string>com.user.notchnowplaying</string>
+			<key>key</key>
+			<string>AODLiftBoostFactor</string>
+			<key>label</key>
+			<string>拿起時提高亮度</string>
+			<key>validTitles</key>
+			<array>
+				<string>關</string>
+				<string>1.5 倍</string>
+				<string>2 倍</string>
+				<string>3 倍</string>
+			</array>
+			<key>validValues</key>
+			<array>
+				<integer>1</integer>
+				<real>1.5</real>
+				<integer>2</integer>
+				<integer>3</integer>
+			</array>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
 			<key>label</key>
 			<string>手動亮度</string>
 		</dict>

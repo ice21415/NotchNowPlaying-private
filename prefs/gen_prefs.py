@@ -118,6 +118,8 @@ page("AOD", "鎖定畫面 AOD", [
             dependsOn="ExperimentalUnlimitedDuration", dependsEnabledWhen=False, dependsDefault=False),
     group("亮度", "自動亮度依環境光平滑調整，只影響 AOD，不更改系統設定。關閉後才使用手動亮度。"),
     switch("AODAutomaticBrightnessEnabled", "依環境光調整", True, "sun.max.fill", "yellow"),
+    segment("拿起時提高亮度", "AODLiftBoostFactor", 2, [1, 1.5, 2, 3], ["關", "1.5 倍", "2 倍", "3 倍"],
+            "拿起手機時，AOD 會短暫變亮約 8 秒，然後回到原本亮度。只在「依環境光調整」開啟時有效（無音樂時鐘一律有效）。拿起偵測由動作協同處理器完成，不會額外耗電。"),
     segment("手動亮度", "AODBrightnessMultiplier", 100, [100, 150, 200, 300, 400],
             ["100%", "150%", "200%", "300%", "400%"],
             dependsOn="AODAutomaticBrightnessEnabled", dependsEnabledWhen=False, dependsDefault=True),
