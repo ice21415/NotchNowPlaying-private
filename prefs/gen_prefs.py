@@ -129,11 +129,38 @@ page("AOD", "鎖定畫面 AOD", [
     segment("放下後自動熄屏", "AODStillTimeoutMinutes", 0, [0, 5, 15, 30, 60],
             ["關", "5 分", "15 分", "30 分", "1 小時"],
             "只用於無音樂的時鐘 AOD。超過設定時間沒有拿起手機，螢幕會完全熄滅（耗電最低）；拿起手機、碰螢幕或按側鍵會再亮起。充電中不會熄屏。拿起偵測由手機的動作協同處理器完成，熄屏期間不會額外耗電。"),
-    segment("暗處自動熄屏（睡覺模式）", "AODDarkTimeoutMinutes", 3, [0, 1, 3, 10],
-            ["關", "1 分", "3 分", "10 分"],
-            "環境很暗（低於約 2 lux）又沒有拿起手機時，時鐘 AOD 會在設定的時間後熄屏，不必等到上面的熄屏時間。拿起手機、碰螢幕或按側鍵會再亮起。充電中不會熄屏。只用無音樂時鐘已經在取樣的環境光，不會增加感測。"),
+    group("睡眠模式", "在指定的時段內改用更短的熄屏時間，例如夜裡放著不動一分鐘就熄屏。"),
+    link("睡眠模式", "Sleep", "bed.double.fill", "indigo"),
     group("像素保護", "AOD 期間會定時微幅移動內容，並讓亮度每幾分鐘緩慢起伏，降低烙印風險。關閉後內容固定不動，長時間顯示有烙印風險。"),
     switch("AODPixelShiftEnabled", "像素位移與亮度起伏", True, "square.on.square", "purple"),
+])
+
+def time_choices():
+    values = list(range(0, 24 * 60, 30))
+    return values, ["%02d:%02d" % (v // 60, v % 60) for v in values]
+
+
+_tv, _tt = time_choices()
+
+
+def time_cell(key, label, default):
+    return {"cell": "PSLinkListCell", "label": label, "detail": "PSListItemsController", "defaults": DOM,
+            "key": key, "default": default, "validValues": _tv, "validTitles": _tt,
+            "PostNotification": NOTE, "dependsOn": "AODSleepEnabled", "dependsEnabledWhen": True,
+            "dependsDefault": False}
+
+
+page("Sleep", "睡眠模式", [
+    group("睡眠模式",
+          "在指定時段內，無音樂的時鐘 AOD 只要一段時間沒有拿起手機，就會完全熄屏（耗電最低）；拿起手機、碰螢幕或按側鍵會再亮起。時段外使用「鎖定畫面 AOD」裡的一般熄屏時間。"),
+    switch("AODSleepEnabled", "啟用睡眠模式", False, "bed.double.fill", "indigo"),
+    group("時段", "開始與結束時間相同表示全天都算睡眠模式。可以跨午夜，例如 23:00 到 07:00。"),
+    time_cell("AODSleepStartMinutes", "開始時間", 1380),
+    time_cell("AODSleepEndMinutes", "結束時間", 420),
+    segment("睡眠中的熄屏時間", "AODSleepTimeoutMinutes", 1, [0.05, 1, 2, 5, 10],
+            ["立即", "1 分", "2 分", "5 分", "10 分"],
+            "睡眠時段內，放下手機多久沒動後熄屏。「立即」是鎖定後幾秒就熄屏，只靠碰螢幕、按側鍵或拿起手機喚醒。",
+            dependsOn="AODSleepEnabled", dependsEnabledWhen=True, dependsDefault=False),
 ])
 
 page("Alerts", "通知與充電提示", [

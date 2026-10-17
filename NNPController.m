@@ -238,8 +238,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 @property(nonatomic) BOOL liftBoostActive;
 @property(nonatomic, strong) NSTimer *liftBoostTimer;
 @property(nonatomic, strong) NSTimer *stillTimer;
-@property(nonatomic, strong) NSTimer *darkTimer;
-@property(nonatomic) BOOL ambientDark;
+@property(nonatomic, strong) NSTimer *sleepBoundaryTimer;
+@property(nonatomic) double armedStillMinutes;
 @property(nonatomic, strong) NNPPickupMonitor *pickupMonitor;
 @property(nonatomic) uint32_t idleSleepAssertion;
 @property(nonatomic, strong) NSTimer *powerStatsTimer;
@@ -301,8 +301,9 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)endLiftBoost;
 - (void)updateStillOffForActiveAOD:(BOOL)activeAOD;
 - (void)stillOffPickupEvent:(long long)gesture;
-- (void)noteAmbientLux:(double)lux valid:(BOOL)valid;
-- (void)updateDarkTimerForActiveAOD:(BOOL)activeAOD;
+- (BOOL)sleepModeActiveNow;
+- (double)effectiveStillMinutes;
+- (void)updateSleepBoundaryTimer;
 - (void)armStillTimerForMinutes:(double)minutes;
 - (void)updatePowerStatsTimer;
 - (void)stopPowerStatsTimer;
@@ -473,7 +474,6 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     self.ambientLight = [NNPAODAmbientLight new];
     self.ambientLight.sampleHandler = ^(double lux, BOOL valid) {
         NNPController *controller = weakSelf;
-        if (controller) [controller noteAmbientLux:lux valid:valid];
         if (!controller || !(controller.preferences.aodAutomaticBrightnessEnabled || [controller idleBrightnessIntent]) ||
             controller.idleDeepActive || ![controller shouldPresentInsideCoverSheet]) return;
         float target = valid ? NNPAODAmbientTargetNits(lux) : 0;
@@ -657,8 +657,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 - (void)cancelStillOff {
     [self.stillTimer invalidate];
     self.stillTimer = nil;
-    [self.darkTimer invalidate];
-    self.darkTimer = nil;
+    [self.sleepBoundaryTimer invalidate];
+    self.sleepBoundaryTimer = nil;
     self.stillBlanked = NO;
     [self.pickupMonitor setActive:NO];
     [self endLiftBoost];
@@ -695,6 +695,7 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     NNPDiagnosticTrace(@"LIFT boost ended");
 }
 - (void)armStillTimerForMinutes:(double)minutes {
+    self.armedStillMinutes = minutes;
     __weak typeof(self) weakSelf = self;
     self.stillTimer = [NSTimer scheduledTimerWithTimeInterval:minutes * 60.0 repeats:NO block:^(__unused NSTimer *timer) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
@@ -711,58 +712,65 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     }];
     self.stillTimer.tolerance = MIN(15.0, minutes * 60.0 * 0.1);
 }
-// "Sleep mode": in a dark room with no pickup for a few minutes the idle clock is not being read, so blank the
-// panel the same way as the still timeout. Only the ambient samples the clock AOD already takes are used.
-- (void)noteAmbientLux:(double)lux valid:(BOOL)valid {
-    BOOL dark = valid && lux < (self.ambientDark ? 4.0 : 2.0);
-    if (dark == self.ambientDark) return;
-    self.ambientDark = dark;
-    [self reconcile];
+// Sleep mode: inside the configured time window the idle clock blanks after a shorter idle time than usual.
+- (BOOL)sleepModeActiveNow {
+    NNPPreferences *p = self.preferences;
+    if (!p.aodSleepEnabled) return NO;
+    NSDateComponents *c = [NSCalendar.currentCalendar components:NSCalendarUnitHour | NSCalendarUnitMinute fromDate:NSDate.date];
+    NSInteger now = c.hour * 60 + c.minute, start = p.aodSleepStartMinutes, end = p.aodSleepEndMinutes;
+    if (start == end) return YES;
+    return start < end ? (now >= start && now < end) : (now >= start || now < end);
 }
-- (void)updateDarkTimerForActiveAOD:(BOOL)activeAOD {
-    double minutes = self.preferences.aodDarkTimeoutMinutes;
-    BOOL wanted = minutes > 0 && activeAOD && self.ambientDark && [self idleBrightnessIntent] && !self.mengoOpen;
-    if (!wanted || self.stillBlanked) {
-        [self.darkTimer invalidate];
-        self.darkTimer = nil;
+- (double)effectiveStillMinutes {
+    return [self sleepModeActiveNow] ? self.preferences.aodSleepTimeoutMinutes : self.preferences.aodStillTimeoutMinutes;
+}
+// The blank delay changes when the window opens or closes, so wake up at each boundary and re-arm.
+- (void)updateSleepBoundaryTimer {
+    NNPPreferences *p = self.preferences;
+    if (!p.aodSleepEnabled || p.aodSleepStartMinutes == p.aodSleepEndMinutes) {
+        [self.sleepBoundaryTimer invalidate];
+        self.sleepBoundaryTimer = nil;
         return;
     }
-    if (self.darkTimer) return;
+    NSDate *now = NSDate.date;
+    NSDateComponents *c = [NSCalendar.currentCalendar components:NSCalendarUnitHour | NSCalendarUnitMinute | NSCalendarUnitSecond fromDate:now];
+    NSTimeInterval nowSeconds = c.hour * 3600.0 + c.minute * 60.0 + c.second;
+    NSTimeInterval best = 86400.0;
+    for (NSNumber *boundary in @[@(p.aodSleepStartMinutes), @(p.aodSleepEndMinutes)]) {
+        NSTimeInterval delta = boundary.doubleValue * 60.0 - nowSeconds;
+        if (delta <= 1.0) delta += 86400.0;
+        best = MIN(best, delta);
+    }
+    NSDate *fire = [now dateByAddingTimeInterval:best + 1.0];
+    if (self.sleepBoundaryTimer && fabs([self.sleepBoundaryTimer.fireDate timeIntervalSinceDate:fire]) < 5.0) return;
+    [self.sleepBoundaryTimer invalidate];
     __weak typeof(self) weakSelf = self;
-    self.darkTimer = [NSTimer scheduledTimerWithTimeInterval:minutes * 60.0 repeats:NO block:^(__unused NSTimer *timer) {
+    self.sleepBoundaryTimer = [NSTimer scheduledTimerWithTimeInterval:best + 1.0 repeats:NO block:^(__unused NSTimer *timer) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf) return;
-        strongSelf.darkTimer = nil;
-        UIDeviceBatteryState battery = UIDevice.currentDevice.batteryState;
-        if (!strongSelf.ambientDark || battery == UIDeviceBatteryStateCharging || battery == UIDeviceBatteryStateFull) {
-            [strongSelf reconcile];
-            return;
-        }
-        strongSelf.stillBlanked = YES;
-        NNPDiagnosticTrace([NSString stringWithFormat:@"DARK no pickup for %.1f min in the dark; blanking idle AOD", minutes]);
+        strongSelf.sleepBoundaryTimer = nil;
+        [strongSelf.stillTimer invalidate];
+        strongSelf.stillTimer = nil;
+        NNPDiagnosticTrace([NSString stringWithFormat:@"SLEEP window boundary; sleep mode now %@", [strongSelf sleepModeActiveNow] ? @"active" : @"inactive"]);
         [strongSelf reconcile];
     }];
-    self.darkTimer.tolerance = MIN(15.0, minutes * 60.0 * 0.1);
+    self.sleepBoundaryTimer.tolerance = 20.0;
 }
 - (void)updateStillOffForActiveAOD:(BOOL)activeAOD {
-    double minutes = self.preferences.aodStillTimeoutMinutes;
+    double minutes = [self effectiveStillMinutes];
     // idleModeActive turns NO while the panel is blanked, so use the intent that does not depend on it.
-    BOOL idleIntent = activeAOD && [self idleBrightnessIntent] && !self.mengoOpen;
-    BOOL stillWanted = minutes > 0 && idleIntent;
-    BOOL darkWanted = self.preferences.aodDarkTimeoutMinutes > 0 && idleIntent;
+    BOOL stillWanted = minutes > 0 && activeAOD && [self idleBrightnessIntent] && !self.mengoOpen;
     BOOL boostWanted = activeAOD && self.preferences.aodLiftBoostFactor > 1.01 && !self.mengoOpen;
-    if (!stillWanted) {
+    if (!stillWanted || (self.stillTimer && fabs(self.armedStillMinutes - minutes) > 0.001)) {
         [self.stillTimer invalidate];
         self.stillTimer = nil;
     }
-    if (!stillWanted && !darkWanted) self.stillBlanked = NO;
-    if (!darkWanted) {
-        [self.darkTimer invalidate];
-        self.darkTimer = nil;
-    }
-    if (!stillWanted && !darkWanted && !boostWanted) {
+    if (!stillWanted) self.stillBlanked = NO;
+    if (!stillWanted && !boostWanted) {
         if (self.pickupMonitor) [self.pickupMonitor setActive:NO];
         [self endLiftBoost];
+        [self.sleepBoundaryTimer invalidate];
+        self.sleepBoundaryTimer = nil;
         return;
     }
     if (!self.pickupMonitor) {
@@ -772,15 +780,13 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     }
     [self.pickupMonitor setActive:YES];
     if (stillWanted && !self.stillBlanked && !self.stillTimer) [self armStillTimerForMinutes:minutes];
-    [self updateDarkTimerForActiveAOD:activeAOD];
+    [self updateSleepBoundaryTimer];
 }
 - (void)stillOffPickupEvent:(long long)gesture {
     BOOL lifted = gesture != 3;
     BOOL wasBlanked = self.stillBlanked;
     [self.stillTimer invalidate];
     self.stillTimer = nil;
-    [self.darkTimer invalidate];
-    self.darkTimer = nil;
     self.stillBlanked = NO;
     NNPDiagnosticTrace(wasBlanked ? @"STILL pickup while blanked; restoring idle AOD" : @"STILL pickup; restarting the idle timer");
     if (lifted) {

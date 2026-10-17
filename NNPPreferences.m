@@ -70,7 +70,10 @@ static CGFloat NNPFloat(NSString *key, CGFloat fallback) {
 @property(nonatomic) BOOL aodPocketModeEnabled;
 @property(nonatomic) BOOL aodIdleDisplayEnabled;
 @property(nonatomic) double aodStillTimeoutMinutes;
-@property(nonatomic) double aodDarkTimeoutMinutes;
+@property(nonatomic) BOOL aodSleepEnabled;
+@property(nonatomic) NSInteger aodSleepStartMinutes;
+@property(nonatomic) NSInteger aodSleepEndMinutes;
+@property(nonatomic) double aodSleepTimeoutMinutes;
 @property(nonatomic) double aodLiftBoostFactor;
 @property(nonatomic) BOOL mengoEnabled;
 @property(nonatomic) CGFloat lyricsSyncOffsetMilliseconds;
@@ -120,7 +123,10 @@ static void NNPPreferencesCallback(CFNotificationCenterRef center, void *observe
     self.aodPocketModeEnabled = NNPBool(@"AODPocketModeEnabled", YES);
     self.aodIdleDisplayEnabled = NNPBool(@"AODIdleDisplayEnabled", YES);
     self.aodLiftBoostFactor = MAX(1.0, MIN(4.0, NNPFloat(@"AODLiftBoostFactor", 2.0)));
-    self.aodDarkTimeoutMinutes = MAX(0.0, MIN(120.0, NNPFloat(@"AODDarkTimeoutMinutes", 3.0)));
+    self.aodSleepEnabled = NNPBool(@"AODSleepEnabled", NO);
+    self.aodSleepStartMinutes = (NSInteger)MAX(0.0, MIN(1439.0, NNPFloat(@"AODSleepStartMinutes", 1380.0)));
+    self.aodSleepEndMinutes = (NSInteger)MAX(0.0, MIN(1439.0, NNPFloat(@"AODSleepEndMinutes", 420.0)));
+    self.aodSleepTimeoutMinutes = MAX(0.02, MIN(120.0, NNPFloat(@"AODSleepTimeoutMinutes", 1.0)));
     self.aodStillTimeoutMinutes = MAX(0.0, MIN(120.0, NNPFloat(@"AODStillTimeoutMinutes", 0.0)));
     self.mengoEnabled = NNPBool(@"MengoEnabled", YES);
     self.lyricsSyncOffsetMilliseconds = MAX(-500.0, MIN(500.0, NNPFloat(@"LyricsSyncOffsetMilliseconds", 100.0)));

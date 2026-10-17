@@ -20,7 +20,10 @@ FOUNDATION_EXPORT NSString * const NNPSpotifyDataDidChangeNotification;
 @property(nonatomic, readonly) BOOL aodPocketModeEnabled;
 @property(nonatomic, readonly) BOOL aodIdleDisplayEnabled;
 @property(nonatomic, readonly) double aodStillTimeoutMinutes;
-@property(nonatomic, readonly) double aodDarkTimeoutMinutes;
+@property(nonatomic, readonly) BOOL aodSleepEnabled;
+@property(nonatomic, readonly) NSInteger aodSleepStartMinutes;   // minutes after midnight
+@property(nonatomic, readonly) NSInteger aodSleepEndMinutes;
+@property(nonatomic, readonly) double aodSleepTimeoutMinutes;    // idle time before the clock blanks inside the window
 @property(nonatomic, readonly) double aodLiftBoostFactor;
 @property(nonatomic, readonly) BOOL mengoEnabled;
 @property(nonatomic, readonly) CGFloat lyricsSyncOffsetMilliseconds;

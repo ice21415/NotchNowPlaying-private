@@ -306,37 +306,25 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>環境很暗（低於約 2 lux）又沒有拿起手機時，時鐘 AOD 會在設定的時間後熄屏，不必等到上面的熄屏時間。拿起手機、碰螢幕或按側鍵會再亮起。充電中不會熄屏。只用無音樂時鐘已經在取樣的環境光，不會增加感測。</string>
+			<string>在指定的時段內改用更短的熄屏時間，例如夜裡放著不動一分鐘就熄屏。</string>
 			<key>label</key>
-			<string>暗處自動熄屏（睡覺模式）</string>
+			<string>睡眠模式</string>
 		</dict>
 		<dict>
-			<key>PostNotification</key>
-			<string>com.user.notchnowplaying.preferences.changed</string>
 			<key>cell</key>
-			<string>PSSegmentCell</string>
-			<key>default</key>
-			<integer>3</integer>
-			<key>defaults</key>
-			<string>com.user.notchnowplaying</string>
-			<key>key</key>
-			<string>AODDarkTimeoutMinutes</string>
+			<string>PSLinkCell</string>
+			<key>detail</key>
+			<string>NNPPrefsListController</string>
+			<key>isController</key>
+			<true/>
 			<key>label</key>
-			<string>暗處自動熄屏（睡覺模式）</string>
-			<key>validTitles</key>
-			<array>
-				<string>關</string>
-				<string>1 分</string>
-				<string>3 分</string>
-				<string>10 分</string>
-			</array>
-			<key>validValues</key>
-			<array>
-				<integer>0</integer>
-				<integer>1</integer>
-				<integer>3</integer>
-				<integer>10</integer>
-			</array>
+			<string>睡眠模式</string>
+			<key>plistName</key>
+			<string>Sleep</string>
+			<key>symbol</key>
+			<string>bed.double.fill</string>
+			<key>tint</key>
+			<string>indigo</string>
 		</dict>
 		<dict>
 			<key>cell</key>
