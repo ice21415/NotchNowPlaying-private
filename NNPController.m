@@ -1458,6 +1458,8 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
         }
         [strongSelf applyRandomAODPixelShift];
     }];
+    // Pixel shift is a burn-in guard, not a visible animation, so let the system coalesce its wakeups.
+    self.pixelShiftTimer.tolerance = [self idleModeActive] ? 20.0 : 5.0;
     [[NSRunLoop mainRunLoop] addTimer:self.pixelShiftTimer forMode:NSRunLoopCommonModes];
     NNPDiagnosticSetBool(@"AODPixelShiftTimerActive", YES);
 }
