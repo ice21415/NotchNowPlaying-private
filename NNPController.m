@@ -595,7 +595,10 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
 }
 - (float)displayNitsForTarget:(float)target {
     if (target <= 0.0f || !self.liftBoostActive) return target;
-    return MIN(250.0f, target * (float)self.preferences.aodLiftBoostFactor);
+    // Perceived brightness is roughly logarithmic, so a pure multiplier barely shows at low levels: also add a
+    // fixed step that grows with the chosen factor (1.5x: +20 nits, 2x: +40, 3x: +80).
+    float factor = (float)self.preferences.aodLiftBoostFactor;
+    return MIN(250.0f, MAX(target * factor, target + (factor - 1.0f) * 40.0f));
 }
 // A pickup briefly raises the ambient-driven AOD level, then it falls back; both changes ride the normal
 // nits ramp and happen only on a pickup event, so there is no polling.
