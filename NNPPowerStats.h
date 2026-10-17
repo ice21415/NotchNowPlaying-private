@@ -9,6 +9,8 @@ typedef NS_ENUM(NSInteger, NNPPowerStatsMode) {
 @interface NNPPowerStats : NSObject
 + (instancetype)sharedStats;
 - (void)sampleWithMode:(NNPPowerStatsMode)mode;
+// Samples only on a mode transition, preserving interval attribution without extra polling.
+- (void)updateMode:(NNPPowerStatsMode)mode;
 // Ends the current continuous run (the next sample starts a new baseline) and persists pending data.
 - (void)endRun;
 // Records the battery level and charging time whenever the level or charging state changes, AOD or not.

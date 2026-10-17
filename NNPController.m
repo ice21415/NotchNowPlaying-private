@@ -1607,7 +1607,10 @@ static id NNPRequestUISensorModeReplacement(id service, SEL selector, id mode) {
     BOOL active = self.display.aodPresentationActive && ![self pocketSuspended] && !self.mengoOpen &&
         self.window && !self.window.hidden;
     if (!active) { [self stopPowerStatsTimer]; return; }
-    if (self.powerStatsTimer) return;
+    if (self.powerStatsTimer) {
+        [[NNPPowerStats sharedStats] updateMode:[self idleModeActive] ? NNPPowerStatsModeIdle : NNPPowerStatsModeMedia];
+        return;
+    }
     [self samplePowerStats];
     __weak typeof(self) weakSelf = self;
     self.powerStatsTimer = [NSTimer timerWithTimeInterval:60.0 repeats:YES block:^(__unused NSTimer *timer) {

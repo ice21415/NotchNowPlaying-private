@@ -1,9 +1,12 @@
 #import "NNPPowerStats.h"
 #import "NNPPowerStatsShared.h"
+#import "NNPPowerMath.h"
 #import "NNPDiagnostics.h"
 #import <CoreFoundation/CoreFoundation.h>
 #import <dlfcn.h>
 #import <mach/mach.h>
+#import <time.h>
+#import <math.h>
 #import <UIKit/UIKit.h>
 
 typedef mach_port_t NNPIOObject;
@@ -17,13 +20,16 @@ static const NSTimeInterval NNPPowerStatsPersistInterval = 300.0;
 
 static double NNPNumber(NSDictionary *dictionary, NSString *key, double fallback) {
     id value = dictionary[key];
-    return [value isKindOfClass:NSNumber.class] ? [(NSNumber *)value doubleValue] : fallback;
+    double number = [value isKindOfClass:NSNumber.class] ? [(NSNumber *)value doubleValue] : fallback;
+    return isfinite(number) ? number : fallback;
 }
 
 @implementation NNPPowerStats {
     NSMutableArray<NSMutableDictionary *> *_hours;
     NSTimeInterval _lastSampleTime;
-    double _lastRawMAh;
+    NSDictionary *_lastBattery;
+    NNPPowerStatsMode _lastMode;
+    double _lastMonotonic;
     BOOL _lastCharging;
     NSTimeInterval _lastPersistTime;
     BOOL _dirty;
@@ -76,9 +82,12 @@ static double NNPNumber(NSDictionary *dictionary, NSString *key, double fallback
     _release(service);
     if (result != KERN_SUCCESS || !properties) return nil;
     NSDictionary *registry = CFBridgingRelease(properties);
-    double amperage = registry[@"InstantAmperage"] ? NNPNumber(registry, @"InstantAmperage", 0) : NNPNumber(registry, @"Amperage", 0);
-    // The registry reports unsigned 64-bit values for negative currents.
-    if (amperage > 1e15) amperage = (double)(int64_t)(uint64_t)amperage;
+    // Convert the integer before double: unsigned -100 mA rounds to 2^64 in double.
+    NSNumber *current = registry[@"Amperage"] ?: registry[@"InstantAmperage"];
+    double amperage = NAN;
+    if ([current isKindOfClass:NSNumber.class]) {
+        amperage = NNPSignedCurrent(current.unsignedLongLongValue);
+    }
     BOOL charging = [registry[@"IsCharging"] boolValue] || [registry[@"ExternalConnected"] boolValue];
     return @{
         @"percent": @(NNPNumber(registry, @"CurrentCapacity", -1)),
@@ -89,18 +98,21 @@ static double NNPNumber(NSDictionary *dictionary, NSString *key, double fallback
         @"tempC": @(NNPNumber(registry, @"Temperature", 0) / 100.0),
         @"voltage": @(NNPNumber(registry, @"Voltage", 0)),
         @"amperage": @(amperage),
+        @"gaugeTime": @(NNPNumber(registry, @"UpdateTime", 0)),
         @"charging": @(charging),
         @"updated": @([NSDate date].timeIntervalSince1970),
     };
 }
 
 - (NSMutableDictionary *)bucketForHour:(long long)hour {
-    NSMutableDictionary *last = _hours.lastObject;
-    if (last && (long long)NNPNumber(last, @"h", -1) == hour) return last;
+    for (NSMutableDictionary *entry in _hours)
+        if ((long long)NNPNumber(entry, @"h", -1) == hour) return entry;
     NSMutableDictionary *bucket = [@{ @"h": @(hour), @"idleS": @0, @"mediaS": @0, @"dischS": @0, @"chgS": @0,
                                       @"usedMAh": @0, @"pwrSum": @0, @"pwrN": @0, @"pct1": @(-1) } mutableCopy];
     [_hours addObject:bucket];
-    while (_hours.count > NNPStatsMaxHours) [_hours removeObjectAtIndex:0];
+    [_hours sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) { return [a[@"h"] compare:b[@"h"]]; }];
+    long long oldest = (long long)([NSDate date].timeIntervalSince1970 / 3600.0) - NNPStatsMaxHours + 1;
+    while (_hours.count && NNPNumber(_hours.firstObject, @"h", -1) < oldest) [_hours removeObjectAtIndex:0];
     return bucket;
 }
 
@@ -108,38 +120,63 @@ static double NNPNumber(NSDictionary *dictionary, NSString *key, double fallback
     bucket[key] = @(NNPNumber(bucket, key, 0) + value);
 }
 
-- (void)sampleWithMode:(NNPPowerStatsMode)mode {
-    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
-    NSDictionary *battery = [self readBattery];
-    NSMutableDictionary *bucket = [self bucketForHour:(long long)(now / 3600.0)];
-    NSTimeInterval dt = (_lastSampleTime > 0 && now - _lastSampleTime <= NNPPowerStatsMaxGap) ? now - _lastSampleTime : 0;
-    if (dt > 0) [self add:dt forKey:mode == NNPPowerStatsModeIdle ? @"idleS" : @"mediaS" to:bucket];
+// Split all interval totals across clock-hour boundaries; rates use elapsed time.
+- (void)addInterval:(double)start end:(double)end values:(NSDictionary *)values {
+    while (start < end) {
+        long long hour = (long long)floor(start / 3600.0);
+        double stop = NNPNextHourBoundary(start, end);
+        NSMutableDictionary *bucket = [self bucketForHour:hour];
+        for (NSString *key in values) [self add:[values[key] doubleValue] * (stop - start) forKey:key to:bucket];
+        start = stop;
+    }
+}
 
-    if (battery) {
-        BOOL charging = [battery[@"charging"] boolValue];
-        double rawMAh = NNPNumber(battery, @"rawMAh", 0);
-        double percent = NNPNumber(battery, @"percent", -1);
-        if (percent >= 0) bucket[@"pct1"] = @(percent);
-        if (dt > 0) {
-            if (charging) {
-                [self add:dt forKey:@"chgS" to:bucket];
-            } else {
-                [self add:dt forKey:@"dischS" to:bucket];
-                double amperage = NNPNumber(battery, @"amperage", 0);
-                double voltage = NNPNumber(battery, @"voltage", 0);
-                if (amperage < 0 && voltage > 0) {
-                    [self add:voltage * (-amperage) / 1000.0 forKey:@"pwrSum" to:bucket];
-                    [self add:1 forKey:@"pwrN" to:bucket];
-                }
-                if (!_lastCharging && _lastRawMAh > 0 && rawMAh > 0 && rawMAh < _lastRawMAh) {
-                    [self add:_lastRawMAh - rawMAh forKey:@"usedMAh" to:bucket];
+- (void)updateMode:(NNPPowerStatsMode)mode {
+    if (_lastSampleTime > 0 && mode != _lastMode) [self sampleWithMode:mode];
+}
+
+- (void)sampleWithMode:(NNPPowerStatsMode)mode {
+    double now = [NSDate date].timeIntervalSince1970;
+    double monotonic = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW) / 1e9;
+    NSDictionary *battery = [self readBattery];
+    double dt = _lastSampleTime > 0 ? monotonic - _lastMonotonic : 0;
+    // Reject discontinuities rather than attributing unknown time or clock changes to AOD.
+    if (dt > 0 && dt <= NNPPowerStatsMaxGap && fabs((now - _lastSampleTime) - dt) < 2.0) {
+        NSMutableDictionary *rates = [@{(_lastMode == NNPPowerStatsModeIdle ? @"idleS" : @"mediaS"): @1} mutableCopy];
+        if (battery && _lastBattery) {
+            BOOL charging = [battery[@"charging"] boolValue];
+            BOOL previousCharging = [_lastBattery[@"charging"] boolValue];
+            if (charging && previousCharging) rates[@"chgS"] = @1;
+            if (!charging && !previousCharging) {
+                double i0 = NNPNumber(_lastBattery, @"amperage", NAN), i1 = NNPNumber(battery, @"amperage", NAN);
+                double v0 = NNPNumber(_lastBattery, @"voltage", 0), v1 = NNPNumber(battery, @"voltage", 0);
+                double g0 = NNPNumber(_lastBattery, @"gaugeTime", 0), g1 = NNPNumber(battery, @"gaugeTime", 0);
+                BOOL fresh = g0 <= 0 || g1 <= 0 || g1 > g0;
+                if (fresh && isfinite(i0) && isfinite(i1) && i0 <= 0 && i1 <= 0 &&
+                    i0 >= -30000 && i1 >= -30000 && v0 >= 2000 && v0 <= 20000 && v1 >= 2000 && v1 <= 20000) {
+                    // Trapezoidal integration: mA*s/3600 = mAh; mV*mA/1000 = mW.
+                    double chargeRate = NNPChargeRate(i0, i1);
+                    rates[@"dischS2"] = @1;
+                    rates[@"usedMAh2"] = @(chargeRate);
+                    rates[@"energyMWs"] = @(NNPMeanPower(i0, v0, i1, v1));
+                    rates[@"powerS"] = @1;
+                    double c0 = NNPNumber(_lastBattery, @"maxMAh", 0), c1 = NNPNumber(battery, @"maxMAh", 0);
+                    if (c0 > 0 && c1 > 0) {
+                        rates[@"usedPct2"] = @(chargeRate / ((c0 + c1) / 2.0) * 100.0);
+                        rates[@"pctS2"] = @1;
+                    }
                 }
             }
         }
-        _lastRawMAh = rawMAh;
-        _lastCharging = charging;
+        [self addInterval:_lastSampleTime end:now values:rates];
     }
+    NSMutableDictionary *bucket = [self bucketForHour:(long long)(now / 3600.0)];
+    double percent = NNPNumber(battery, @"percent", -1);
+    if (percent >= 0 && percent <= 100) bucket[@"pct1"] = @(percent);
+    _lastBattery = battery; // Failed reads break the electrical baseline.
+    _lastMode = mode;
     _lastSampleTime = now;
+    _lastMonotonic = monotonic;
     _dirty = YES;
     if (now - _lastPersistTime >= NNPPowerStatsPersistInterval) [self persistBattery:battery];
 }
@@ -158,11 +195,10 @@ static double NNPNumber(NSDictionary *dictionary, NSString *key, double fallback
 }
 
 - (void)endRun {
-    NSDictionary *battery = _dirty ? [self readBattery] : nil;
-    _dirty = _dirty || _lastSampleTime > 0;
-    [self persistBattery:battery];
+    if (_lastSampleTime > 0) [self sampleWithMode:_lastMode];
+    [self persistBattery:nil];
     _lastSampleTime = 0;
-    _lastRawMAh = 0;
+    _lastBattery = nil;
 }
 
 - (void)startObservingBattery {
@@ -178,7 +214,7 @@ static double NNPNumber(NSDictionary *dictionary, NSString *key, double fallback
 }
 
 // Event driven (about one event per percent), so the battery line and charging periods stay current even when
-// no AOD is shown. Charging time between events is credited to the hour of the later event.
+// no AOD is shown. Charging intervals are split at hour boundaries.
 - (void)recordBatteryEvent {
     NSDictionary *battery = [self readBattery];
     if (!battery) return;
@@ -187,8 +223,10 @@ static double NNPNumber(NSDictionary *dictionary, NSString *key, double fallback
     double percent = NNPNumber(battery, @"percent", -1);
     if (percent >= 0) bucket[@"pct1"] = @(percent);
     BOOL charging = [battery[@"charging"] boolValue];
-    if (_lastBatteryEventTime > 0 && _lastBatteryCharging && now - _lastBatteryEventTime <= 3 * 3600.0)
-        [self add:MIN(3600.0, now - _lastBatteryEventTime) forKey:@"chgAllS" to:bucket];
+    if (_lastBatteryEventTime > 0 && _lastBatteryCharging && now > _lastBatteryEventTime && now - _lastBatteryEventTime <= 3 * 3600.0)
+        [self addInterval:_lastBatteryEventTime end:now values:@{@"chgAllS": @1}];
+    // Take an AOD boundary sample on every battery event, including charger changes.
+    if (_lastSampleTime > 0) [self sampleWithMode:_lastMode];
     _lastBatteryEventTime = now;
     _lastBatteryCharging = charging;
     _dirty = YES;

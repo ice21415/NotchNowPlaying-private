@@ -3,12 +3,13 @@
 #import "NNPPowerStatsShared.h"
 
 typedef struct {
-    double idleS, mediaS, dischS, chgS, chgAllS, usedMAh, pwrSum, pwrN;
+    double idleS, mediaS, dischS, chgS, chgAllS, usedMAh, pwrSum, pwrN, usedPct, pctS;
 } NNPAggregate;
 
 static double NNPValue(NSDictionary *dictionary, NSString *key, double fallback) {
     id value = dictionary[key];
-    return [value isKindOfClass:NSNumber.class] ? [(NSNumber *)value doubleValue] : fallback;
+    double number = [value isKindOfClass:NSNumber.class] ? [(NSNumber *)value doubleValue] : fallback;
+    return isfinite(number) ? number : fallback;
 }
 
 static NSString *NNPDuration(double seconds) {
@@ -244,12 +245,14 @@ static NSAttributedString *NNPLegend(NSArray<NSArray *> *items) {
         if (hour < startHour || hour > endHour) continue;
         sum.idleS += NNPValue(entry, @"idleS", 0);
         sum.mediaS += NNPValue(entry, @"mediaS", 0);
-        sum.dischS += NNPValue(entry, @"dischS", 0);
+        sum.dischS += NNPValue(entry, @"dischS2", 0);
         sum.chgS += NNPValue(entry, @"chgS", 0);
         sum.chgAllS += NNPValue(entry, @"chgAllS", 0);
-        sum.usedMAh += NNPValue(entry, @"usedMAh", 0);
-        sum.pwrSum += NNPValue(entry, @"pwrSum", 0);
-        sum.pwrN += NNPValue(entry, @"pwrN", 0);
+        sum.usedMAh += NNPValue(entry, @"usedMAh2", 0);
+        sum.pwrSum += NNPValue(entry, @"energyMWs", 0);
+        sum.pwrN += NNPValue(entry, @"powerS", 0);
+        sum.usedPct += NNPValue(entry, @"usedPct2", 0);
+        sum.pctS += NNPValue(entry, @"pctS2", 0);
     }
     return sum;
 }
@@ -267,7 +270,12 @@ static NSAttributedString *NNPLegend(NSArray<NSArray *> *items) {
 
 - (long long)rangeStartHour {
     long long nowHour = (long long)([NSDate date].timeIntervalSince1970 / 3600.0);
-    return nowHour - ([self showsDays] ? 239 : 23);
+    if ([self showsDays]) {
+        NSDate *today = [NSCalendar.currentCalendar startOfDayForDate:[NSDate date]];
+        NSDate *first = [NSCalendar.currentCalendar dateByAddingUnit:NSCalendarUnitDay value:-9 toDate:today options:0];
+        return (long long)floor(first.timeIntervalSince1970 / 3600.0);
+    }
+    return nowHour - 23;
 }
 
 - (void)rebuildCharts {
@@ -337,15 +345,14 @@ static NSAttributedString *NNPLegend(NSArray<NSArray *> *items) {
 - (void)updateSummary {
     NNPAggregate sum = [self currentAggregate];
     double total = sum.idleS + sum.mediaS;
-    _bigValue.text = sum.pwrN >= 3 ? [NSString stringWithFormat:@"%.0f mW", sum.pwrSum / sum.pwrN] : @"—";
+    _bigValue.text = sum.pwrN >= 180 ? [NSString stringWithFormat:@"%.0f mW", sum.pwrSum / sum.pwrN] : @"—";
     _bigCaption.text = [NSString stringWithFormat:@"%@ AOD 顯示期間，整支手機的平均功率（含螢幕與系統，不只是插件）。",
                         [self showsDays] ? @"過去 10 天" : @"過去 24 小時"];
     NSMutableArray *parts = [NSMutableArray arrayWithObject:[NSString stringWithFormat:@"AOD %@", NNPDuration(total)]];
-    double capacity = [self batteryCapacityMAh];
-    if (sum.dischS >= 1800 && capacity > 0)
-        [parts addObject:[NSString stringWithFormat:@"每小時約 %.1f%%", sum.usedMAh / (sum.dischS / 3600.0) / capacity * 100.0]];
-    if (sum.dischS >= 600 && capacity > 0)
-        [parts addObject:[NSString stringWithFormat:@"共用掉約 %.1f%%", sum.usedMAh / capacity * 100.0]];
+    if (sum.pctS >= 1800)
+        [parts addObject:[NSString stringWithFormat:@"每小時約 %.1f%%", sum.usedPct / (sum.pctS / 3600.0)]];
+    if (sum.pctS >= 600)
+        [parts addObject:[NSString stringWithFormat:@"共用掉約 %.1f%%", sum.usedPct]];
     _summaryLine.text = [parts componentsJoinedByString:@" · "];
     _modeLegend.attributedText = NNPLegend(@[@[[NSString stringWithFormat:@"時鐘 %@", NNPDuration(sum.idleS)], UIColor.systemBlueColor],
                                              @[[NSString stringWithFormat:@"音樂 %@", NNPDuration(sum.mediaS)], UIColor.systemGreenColor]]);
@@ -358,11 +365,11 @@ static NSAttributedString *NNPLegend(NSArray<NSArray *> *items) {
         [lines addObject:[NSString stringWithFormat:@"AOD 顯示 %@（時鐘 %@、音樂 %@）", NNPDuration(total), NNPDuration(sum.idleS), NNPDuration(sum.mediaS)]];
     else
         [lines addObject:@"這段期間沒有 AOD 顯示"];
-    if (sum.pwrN > 0) [lines addObject:[NSString stringWithFormat:@"平均功率 %.0f mW（%.0f 筆取樣）", sum.pwrSum / sum.pwrN, sum.pwrN]];
-    double capacity = [self batteryCapacityMAh];
+    if (total > 0) [lines addObject:[NSString stringWithFormat:@"有效放電量測 %@（顯示時間的 %.0f%%）", NNPDuration(sum.pwrN), MIN(100.0, sum.pwrN / total * 100.0)]];
+    if (sum.pwrN > 0) [lines addObject:[NSString stringWithFormat:@"估計平均功率 %.0f mW（有效量測 %.0f 秒）", sum.pwrSum / sum.pwrN, sum.pwrN]];
     if (sum.usedMAh > 0) {
-        NSString *share = capacity > 0 ? [NSString stringWithFormat:@"，約 %.1f%%", sum.usedMAh / capacity * 100.0] : @"";
-        [lines addObject:[NSString stringWithFormat:@"AOD 期間用掉 %.0f mAh%@", sum.usedMAh, share]];
+        NSString *share = sum.pctS > 0 ? [NSString stringWithFormat:@"，約 %.1f%%", sum.usedPct] : @"";
+        [lines addObject:[NSString stringWithFormat:@"AOD 有效量測期間估計用掉 %.1f mAh%@", sum.usedMAh, share]];
     }
     if (MAX(sum.chgS, sum.chgAllS) > 0) [lines addObject:[NSString stringWithFormat:@"充電 %@", NNPDuration(MAX(sum.chgS, sum.chgAllS))]];
     if (percent >= 0) [lines addObject:[NSString stringWithFormat:@"時段結束時電量 %.0f%%", percent]];
@@ -402,21 +409,19 @@ static NSAttributedString *NNPLegend(NSArray<NSArray *> *items) {
 
 - (id)valueAveragePower:(__unused PSSpecifier *)specifier {
     NNPAggregate sum = [self currentAggregate];
-    return sum.pwrN >= 3 ? [NSString stringWithFormat:@"%.0f mW", sum.pwrSum / sum.pwrN] : @"資料不足";
+    return sum.pwrN >= 180 ? [NSString stringWithFormat:@"%.0f mW", sum.pwrSum / sum.pwrN] : @"資料不足";
 }
 
 - (id)valueUsedPercent:(__unused PSSpecifier *)specifier {
     NNPAggregate sum = [self currentAggregate];
-    double capacity = [self batteryCapacityMAh];
-    if (sum.dischS < 600 || capacity <= 0) return @"資料不足";
-    return [NSString stringWithFormat:@"約 %.1f%%", sum.usedMAh / capacity * 100.0];
+    if (sum.pctS < 600) return @"資料不足";
+    return [NSString stringWithFormat:@"約 %.1f%%", sum.usedPct];
 }
 
 - (id)valuePerHour:(__unused PSSpecifier *)specifier {
     NNPAggregate sum = [self currentAggregate];
-    double capacity = [self batteryCapacityMAh];
-    if (sum.dischS < 1800 || capacity <= 0) return @"資料不足";
-    return [NSString stringWithFormat:@"約 %.1f%% / 小時", sum.usedMAh / (sum.dischS / 3600.0) / capacity * 100.0];
+    if (sum.pctS < 1800) return @"資料不足";
+    return [NSString stringWithFormat:@"約 %.1f%% / 小時", sum.usedPct / (sum.pctS / 3600.0)];
 }
 
 - (id)valueCharging:(__unused PSSpecifier *)specifier {
