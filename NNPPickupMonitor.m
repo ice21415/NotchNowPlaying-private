@@ -7,26 +7,27 @@ static __weak NNPPickupMonitor *NNPActiveMonitor;
 static void (*NNPOriginalDelegate4)(id, SEL, id, long long, long long, id);
 static void (*NNPOriginalDelegate3)(id, SEL, id, long long, long long);
 
-static void NNPPickupDeliver(void) {
+static void NNPPickupDeliver(long long gesture, long long orientation) {
+    NNPDiagnosticTrace([NSString stringWithFormat:@"PICKUP event gesture=%lld orientation=%lld", gesture, orientation]);
     dispatch_async(dispatch_get_main_queue(), ^{
         NNPPickupMonitor *monitor = NNPActiveMonitor;
         if (monitor.lifted) monitor.lifted();
     });
 }
 static void NNPObservedDelegate4(id self, SEL _cmd, id manager, long long gesture, long long orientation, id detectedAt) {
-    NNPPickupDeliver();
+    NNPPickupDeliver(gesture, orientation);
     if (NNPOriginalDelegate4) NNPOriginalDelegate4(self, _cmd, manager, gesture, orientation, detectedAt);
 }
 static void NNPObservedDelegate3(id self, SEL _cmd, id manager, long long gesture, long long orientation) {
-    NNPPickupDeliver();
+    NNPPickupDeliver(gesture, orientation);
     if (NNPOriginalDelegate3) NNPOriginalDelegate3(self, _cmd, manager, gesture, orientation);
 }
 
 @interface NNPPickupOwnDelegate : NSObject
 @end
 @implementation NNPPickupOwnDelegate
-- (void)wakeGestureManager:(id)manager didUpdateWakeGesture:(long long)gesture orientation:(long long)orientation detectedAt:(id)detectedAt { NNPPickupDeliver(); }
-- (void)wakeGestureManager:(id)manager didUpdateWakeGesture:(long long)gesture orientation:(long long)orientation { NNPPickupDeliver(); }
+- (void)wakeGestureManager:(id)manager didUpdateWakeGesture:(long long)gesture orientation:(long long)orientation detectedAt:(id)detectedAt { NNPPickupDeliver(gesture, orientation); }
+- (void)wakeGestureManager:(id)manager didUpdateWakeGesture:(long long)gesture orientation:(long long)orientation { NNPPickupDeliver(gesture, orientation); }
 @end
 
 @implementation NNPPickupMonitor {
