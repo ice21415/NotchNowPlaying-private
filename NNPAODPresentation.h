@@ -12,13 +12,8 @@ static inline void NNPAODApplyPixelShift(CALayer *layer, CGPoint pixels) {
     [CATransaction commit];
 }
 
-// Translation alone leaves the interiors of large solid shapes illuminated.
-// Briefly blank the entire plugin surface so these overlapping pixels rest too.
+// Pixel shifting alone protects the display; the brief full-surface blank was removed to avoid the flash.
+// Kept as a no-op so every call site stays unchanged.
 static inline void NNPAODRestPixels(CALayer *layer) {
-    if (!layer) return;
-    CAKeyframeAnimation *rest = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
-    rest.values = @[@0, @0, @(layer.opacity)];
-    rest.keyTimes = @[@0, @0.7, @1];
-    rest.duration = 0.3;
-    [layer addAnimation:rest forKey:@"aodPixelRest"];
+    (void)layer;
 }
